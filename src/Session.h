@@ -2,10 +2,11 @@
 
 #include "Vault.h"
 
+#include <cstdint>
 #include <optional>
 
 // What syncWithDisk found when comparing the note on disk with the session.
-enum class DiskChange
+enum class DiskChange : std::uint8_t
 {
     None,     // Disk still holds the last loaded or saved bytes.
     Reloaded, // The editor was clean, so it now holds the new disk text.
