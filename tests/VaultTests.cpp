@@ -459,7 +459,8 @@ static void sessionCreatesAndTrashesNotes()
     // The extension is added when missing and the new note is selected.
     CHECK(session.createNote(QStringLiteral(" Ideas "), &error));
     CHECK(session.path() == QStringLiteral("Ideas.md"));
-    CHECK(session.content().isEmpty() && !session.dirty());
+    CHECK(session.content().isEmpty());
+    CHECK(!session.dirty());
     CHECK(session.notes().contains(QStringLiteral("Ideas.md")));
     CHECK(session.createNote(QStringLiteral("Folder/Plan.MD"), &error));
     CHECK(session.path() == QStringLiteral("Folder/Plan.MD"));
@@ -501,7 +502,8 @@ static void sessionCreatesAndTrashesNotes()
     const bool trashed = session.trashNote(&error);
     CHECK(::chmod(locked.constData(), 0755) == 0);
     CHECK(trashed);
-    CHECK(session.path().isEmpty() && !session.dirty());
+    CHECK(session.path().isEmpty());
+    CHECK(!session.dirty());
     CHECK(!session.notes().contains(QStringLiteral("Ideas.md")));
 #endif
 }
