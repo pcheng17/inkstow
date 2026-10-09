@@ -50,7 +50,7 @@ public:
     QString notePath() const;
 
 private:
-    bool requireNote(QString *error) const;
+    const Vault *requireNote(QString *error) const;
     bool requireClean(QString *error) const;
     bool reloadNotes(QString *error);
     void clearNote();
