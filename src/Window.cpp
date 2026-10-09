@@ -142,8 +142,8 @@ Window::Window(TrashFunction trash)
         session_.setContent(editor_->toPlainText());
         refresh();
     });
-    // The folder is watched too because atomic replacements by other programs
-    // can drop the file from the watcher.
+    // Watch vault folders for list changes and atomic replacements, which can
+    // drop the selected file from the watcher.
     connect(watcher_, &QFileSystemWatcher::fileChanged, syncTimer_, qOverload<>(&QTimer::start));
     connect(
         watcher_,
@@ -222,10 +222,38 @@ void Window::saveNote()
 void Window::watchNote()
 {
     syncTimer_->stop();
-    const QStringList watched = watcher_->files() + watcher_->directories();
-    if (!watched.isEmpty()) watcher_->removePaths(watched);
+    updateWatches();
+}
+
+void Window::updateWatches()
+{
+    QStringList folders = session_.folders();
     const QString path = session_.notePath();
-    if (!path.isEmpty()) watcher_->addPaths({path, QFileInfo(path).absolutePath()});
+    if (!path.isEmpty()) {
+        QString folder = QFileInfo(path).absolutePath();
+        // If the note's folder disappeared, an existing ancestor can report
+        // its return even when the file and folder watches were dropped.
+        while ((!QFileInfo(folder).isDir() || QFileInfo(folder).isSymLink()) &&
+               QFileInfo(folder).absolutePath() != folder)
+            folder = QFileInfo(folder).absolutePath();
+        if (QFileInfo(folder).isDir() && !QFileInfo(folder).isSymLink() &&
+            !folders.contains(folder))
+            folders.append(folder);
+    }
+    for (const QString &watched : watcher_->directories()) {
+        if (!folders.contains(watched)) watcher_->removePath(watched);
+    }
+    for (const QString &folder : folders) {
+        if (QFileInfo(folder).isDir() && !QFileInfo(folder).isSymLink() &&
+            !watcher_->directories().contains(folder))
+            watcher_->addPath(folder);
+    }
+    for (const QString &watched : watcher_->files()) {
+        if (watched != path) watcher_->removePath(watched);
+    }
+    if (!path.isEmpty() && QFileInfo(path).isFile() && !QFileInfo(path).isSymLink() &&
+        !watcher_->files().contains(path))
+        watcher_->addPath(path);
 }
 
 void Window::syncWithDisk()
@@ -254,13 +282,14 @@ void Window::syncWithDisk()
         showConflictBar(change);
         break;
     }
-    // Replacing or recreating the note or its folder drops it from the watcher.
-    const QString path = session_.notePath();
-    if (path.isEmpty()) return;
-    const QString folder = QFileInfo(path).absolutePath();
-    if (!watcher_->directories().contains(folder) && QFileInfo::exists(folder))
-        watcher_->addPath(folder);
-    if (!watcher_->files().contains(path) && QFileInfo::exists(path)) watcher_->addPath(path);
+    if (session_.hasVault()) {
+        const QStringList previous = session_.notes();
+        QString listError;
+        if (session_.reloadNotes(&listError) && previous != session_.notes()) showNotes();
+    }
+    // File replacements and directory removal drop watches; reconcile after
+    // every rescan, including when the note itself has disappeared.
+    updateWatches();
 }
 
 // Only unsaved edits can be in conflict; a deleted note can only be let go.

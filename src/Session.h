@@ -30,6 +30,7 @@ public:
     // editor has unsaved edits.
     bool createNote(const QString &input, QString *error);
     bool trashNote(QString *error);
+    bool reloadNotes(QString *error);
     // Reloads a clean note changed by another program. Never discards edits.
     DiskChange syncWithDisk(QString *error);
     // Conflict resolution: discard the edits for the disk version, or replace
@@ -44,6 +45,7 @@ public:
     bool hasVault() const { return vault_.has_value(); }
     bool dirty() const { return content_ != savedContent_; }
     const QStringList &notes() const { return notes_; }
+    const QStringList &folders() const { return folders_; }
     const QString &path() const { return path_; }
     const QString &content() const { return content_; }
     // Absolute path of the selected note, or empty when none is selected.
@@ -52,7 +54,6 @@ public:
 private:
     bool requireNote(QString *error) const;
     bool requireClean(QString *error) const;
-    bool reloadNotes(QString *error);
     void clearNote();
     bool write(const QByteArray &expected, QString *error);
     bool decode(const QByteArray &bytes, QString *text, QString *error) const;
@@ -61,6 +62,7 @@ private:
     TrashFunction trash_;
     std::optional<Vault> vault_;
     QStringList notes_;
+    QStringList folders_;
     QString path_;
     QString content_;
     QString savedContent_;

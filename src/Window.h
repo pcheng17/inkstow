@@ -29,6 +29,7 @@ private:
     void refresh();
     void replaceEditor(const QString &text);
     void watchNote();
+    void updateWatches();
     void syncWithDisk();
     void showConflictBar(DiskChange change);
     void reloadFromDisk();

@@ -52,9 +52,10 @@ std::optional<Vault> Vault::open(const QString &folder, QString *error)
     return Vault(root);
 }
 
-bool Vault::listNotes(QStringList *notes, QString *error) const
+bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) const
 {
     QStringList found;
+    QStringList discoveredFolders;
     QStringList pending{root_};
     while (!pending.isEmpty()) {
         QDir dir(pending.takeLast());
@@ -62,6 +63,7 @@ bool Vault::listNotes(QStringList *notes, QString *error) const
             *error = QStringLiteral("Cannot list folder: %1").arg(dir.path());
             return false;
         }
+        discoveredFolders.append(dir.path());
         const QFileInfoList entries = dir.entryInfoList(
             QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
         for (const QFileInfo &entry : entries) {
@@ -78,6 +80,7 @@ bool Vault::listNotes(QStringList *notes, QString *error) const
     }
     found.sort();
     *notes = found;
+    if (folders) *folders = discoveredFolders;
     return true;
 }
 
