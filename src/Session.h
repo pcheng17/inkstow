@@ -20,6 +20,13 @@ public:
   bool save(QString *error);
   // Reloads a clean note changed by another program. Never discards edits.
   DiskChange syncWithDisk(QString *error);
+  // Conflict resolution: discard the edits for the disk version, or replace
+  // the disk version with the edits. Both fail if the note is gone, and
+  // overwriteDisk only replaces the version syncWithDisk last reported.
+  bool reloadFromDisk(QString *error);
+  bool overwriteDisk(QString *error);
+  // Drops unsaved edits, e.g. after the note was deleted outside Inkstow.
+  void discardEdits() { content_ = savedContent_; }
   void setContent(const QString &content) { content_ = content; }
 
   bool dirty() const { return content_ != savedContent_; }
@@ -30,6 +37,8 @@ public:
   QString notePath() const;
 
 private:
+  bool requireNote(QString *error) const;
+  bool write(const QByteArray &expected, QString *error);
   bool decode(const QByteArray &bytes, QString *text, QString *error) const;
   void load(const QString &path, const QByteArray &bytes, const QString &text);
 
@@ -39,5 +48,6 @@ private:
   QString content_;
   QString savedContent_;
   QByteArray savedBytes_;
+  std::optional<QByteArray> conflictBytes_;
   bool hasBom_ = false;
 };

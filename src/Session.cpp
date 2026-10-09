@@ -44,18 +44,19 @@ bool Session::selectNote(const QString &path, QString *error) {
   return true;
 }
 
-bool Session::save(QString *error) {
-  if (!vault_ || path_.isEmpty()) {
-    *error = QStringLiteral("Select a note first.");
+bool Session::save(QString *error) { return write(savedBytes_, error); }
+
+bool Session::write(const QByteArray &expected, QString *error) {
+  if (!requireNote(error))
     return false;
-  }
   const QByteArray bytes =
       (hasBom_ ? QByteArray::fromHex("efbbbf") : QByteArray()) +
       content_.toUtf8();
-  if (!vault_->saveNote(path_, savedBytes_, bytes, error))
+  if (!vault_->saveNote(path_, expected, bytes, error))
     return false;
   savedContent_ = content_;
   savedBytes_ = bytes;
+  conflictBytes_.reset();
   return true;
 }
 
@@ -67,9 +68,10 @@ DiskChange Session::syncWithDisk(QString *error) {
     return DiskChange::Missing;
   if (bytes == savedBytes_)
     return DiskChange::None;
+  conflictBytes_ = bytes;
   if (dirty()) {
     *error = QStringLiteral("Note changed on disk while you have unsaved edits; "
-                            "your edits are kept and saving will be refused.");
+                            "reload from disk or keep your version.");
     return DiskChange::Conflict;
   }
   QString text;
@@ -77,6 +79,34 @@ DiskChange Session::syncWithDisk(QString *error) {
     return DiskChange::Conflict;
   load(path_, bytes, text);
   return DiskChange::Reloaded;
+}
+
+bool Session::reloadFromDisk(QString *error) {
+  if (!requireNote(error))
+    return false;
+  QByteArray bytes;
+  QString text;
+  if (!vault_->readNote(path_, &bytes, error) || !decode(bytes, &text, error))
+    return false;
+  load(path_, bytes, text);
+  return true;
+}
+
+bool Session::overwriteDisk(QString *error) {
+  if (!requireNote(error))
+    return false;
+  if (!conflictBytes_) {
+    *error = QStringLiteral("No outside change to replace.");
+    return false;
+  }
+  return write(*conflictBytes_, error);
+}
+
+bool Session::requireNote(QString *error) const {
+  if (vault_ && !path_.isEmpty())
+    return true;
+  *error = QStringLiteral("Select a note first.");
+  return false;
 }
 
 QString Session::notePath() const {
@@ -104,4 +134,5 @@ void Session::load(const QString &path, const QByteArray &bytes,
   content_ = text;
   savedContent_ = text;
   savedBytes_ = bytes;
+  conflictBytes_.reset();
 }

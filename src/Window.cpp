@@ -57,6 +57,23 @@ Window::Window() {
   toolbar->addWidget(filename_, 1);
   toolbar->addWidget(save_);
   rightLayout->addLayout(toolbar);
+  conflictBar_ = new QWidget;
+  conflictBar_->setObjectName(QStringLiteral("conflictBar"));
+  auto *conflictLayout = new QHBoxLayout(conflictBar_);
+  conflictLayout->setContentsMargins(0, 0, 0, 0);
+  conflictLabel_ = new QLabel;
+  reload_ = new QPushButton(QStringLiteral("Reload from disk"));
+  reload_->setObjectName(QStringLiteral("reloadFromDisk"));
+  keepMine_ = new QPushButton(QStringLiteral("Keep mine"));
+  keepMine_->setObjectName(QStringLiteral("keepMine"));
+  discard_ = new QPushButton(QStringLiteral("Discard edits"));
+  discard_->setObjectName(QStringLiteral("discardEdits"));
+  conflictLayout->addWidget(conflictLabel_, 1);
+  conflictLayout->addWidget(reload_);
+  conflictLayout->addWidget(keepMine_);
+  conflictLayout->addWidget(discard_);
+  conflictBar_->hide();
+  rightLayout->addWidget(conflictBar_);
   rightLayout->addWidget(editor_, 1);
   splitter->addWidget(notes_);
   splitter->addWidget(right);
@@ -77,6 +94,9 @@ Window::Window() {
   connect(open, &QPushButton::clicked, this, [this] { openVault(); });
   connect(folder_, &QLineEdit::returnPressed, this, [this] { openVault(); });
   connect(save_, &QPushButton::clicked, this, [this] { saveNote(); });
+  connect(reload_, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
+  connect(keepMine_, &QPushButton::clicked, this, [this] { keepMine(); });
+  connect(discard_, &QPushButton::clicked, this, [this] { discardEdits(); });
   connect(editor_, &QPlainTextEdit::textChanged, this, [this] {
     session_.setContent(editor_->toPlainText());
     refresh();
@@ -102,6 +122,8 @@ void Window::refresh() {
                                                        : QString())
                               : QStringLiteral("Select a note"));
   save_->setEnabled(selected && session_.dirty());
+  if (!session_.dirty())
+    conflictBar_->hide();
   editor_->setEnabled(selected);
 }
 
@@ -147,6 +169,8 @@ void Window::saveNote() {
   QString error;
   if (!session_.save(&error)) {
     status_->setText(QStringLiteral("Error: ") + error);
+    QString ignored;
+    showConflictBar(session_.syncWithDisk(&ignored));
   } else {
     status_->setText(QStringLiteral("Saved"));
   }
@@ -167,8 +191,10 @@ void Window::syncWithDisk() {
   QString error;
   const int position = editor_->textCursor().position();
   const int scroll = editor_->verticalScrollBar()->value();
-  switch (session_.syncWithDisk(&error)) {
+  const DiskChange change = session_.syncWithDisk(&error);
+  switch (change) {
   case DiskChange::None:
+    conflictBar_->hide(); // An outside change may have been reverted.
     break;
   case DiskChange::Reloaded: {
     replaceEditor(session_.content());
@@ -184,6 +210,7 @@ void Window::syncWithDisk() {
   case DiskChange::Conflict:
   case DiskChange::Missing:
     status_->setText(QStringLiteral("Warning: ") + error);
+    showConflictBar(change);
     break;
   }
   // Replacing or recreating the note or its folder drops it from the watcher.
@@ -195,6 +222,59 @@ void Window::syncWithDisk() {
     watcher_->addPath(folder);
   if (!watcher_->files().contains(path) && QFileInfo::exists(path))
     watcher_->addPath(path);
+}
+
+// Only unsaved edits can be in conflict; a deleted note can only be let go.
+void Window::showConflictBar(DiskChange change) {
+  const bool conflict = change == DiskChange::Conflict;
+  const bool missing = change == DiskChange::Missing;
+  if (!session_.dirty() || !(conflict || missing)) {
+    conflictBar_->hide();
+    return;
+  }
+  conflictLabel_->setText(
+      missing ? QStringLiteral("This note was deleted or moved outside "
+                               "Inkstow. Copy any text you want to keep.")
+              : QStringLiteral("This note changed outside Inkstow while you "
+                               "had unsaved edits."));
+  reload_->setHidden(missing);
+  keepMine_->setHidden(missing);
+  discard_->setHidden(!missing);
+  conflictBar_->show();
+}
+
+void Window::reloadFromDisk() {
+  QString error;
+  if (!session_.reloadFromDisk(&error)) {
+    status_->setText(QStringLiteral("Error: ") + error);
+    return;
+  }
+  {
+    // Replaced through a cursor, not setPlainText, so Undo restores the edits.
+    const QSignalBlocker block(editor_);
+    QTextCursor cursor(editor_->document());
+    cursor.select(QTextCursor::Document);
+    cursor.insertText(session_.content());
+  }
+  status_->setText(QStringLiteral("Reloaded from disk"));
+  refresh();
+}
+
+void Window::keepMine() {
+  QString error;
+  if (!session_.overwriteDisk(&error)) {
+    status_->setText(QStringLiteral("Error: ") + error);
+    syncWithDisk(); // Report whatever is on disk now.
+    return;
+  }
+  status_->setText(QStringLiteral("Saved your version"));
+  refresh();
+}
+
+void Window::discardEdits() {
+  session_.discardEdits();
+  replaceEditor(session_.content());
+  status_->setText(QStringLiteral("Discarded unsaved edits"));
 }
 
 void Window::changeEvent(QEvent *event) {

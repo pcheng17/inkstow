@@ -64,7 +64,14 @@ int main(int argc, char **argv) {
     auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
     auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
-    CHECK(folder && open && notes && editor && save && status);
+    auto *conflictBar = window.findChild<QWidget *>(QStringLiteral("conflictBar"));
+    auto *keepMine = window.findChild<QPushButton *>(QStringLiteral("keepMine"));
+    auto *reload =
+        window.findChild<QPushButton *>(QStringLiteral("reloadFromDisk"));
+    auto *discard = window.findChild<QPushButton *>(QStringLiteral("discardEdits"));
+    CHECK(folder && open && notes && editor && save && status && conflictBar &&
+          keepMine && reload && discard);
+    CHECK(conflictBar->isHidden());
     folder->setText(dir.path());
     open->click();
     CHECK(notes->count() == 2);
@@ -108,6 +115,46 @@ int main(int argc, char **argv) {
     CHECK(editor->toPlainText() == QStringLiteral("local edit"));
     CHECK(readFile(note) == "external edit");
     CHECK(save->isEnabled());
+    CHECK(!conflictBar->isHidden());
+
+    keepMine->click();
+    CHECK(readFile(note) == "local edit");
+    CHECK(conflictBar->isHidden());
+    CHECK(!save->isEnabled());
+
+    editor->setPlainText(QStringLiteral("mine again"));
+    writeFile(note, "theirs");
+    CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
+    reload->click();
+    CHECK(editor->toPlainText() == QStringLiteral("theirs"));
+    CHECK(conflictBar->isHidden());
+    CHECK(!save->isEnabled());
+    editor->undo(); // Reloading can be undone, bringing the edits back.
+    CHECK(editor->toPlainText() == QStringLiteral("mine again"));
+    CHECK(save->isEnabled());
+    CHECK(conflictBar->isHidden()); // The outside version has been seen.
+    save->click();
+    CHECK(readFile(note) == "mine again");
+
+    // Save alone, before the watcher reports anything, also shows the bar.
+    editor->setPlainText(QStringLiteral("mine 3"));
+    writeFile(note, "theirs 3");
+    save->click();
+    CHECK(!conflictBar->isHidden());
+    CHECK(!keepMine->isHidden() && discard->isHidden());
+    reload->click();
+    CHECK(editor->toPlainText() == QStringLiteral("theirs 3"));
+
+    // A deleted note with unsaved edits can be discarded to move on.
+    editor->setPlainText(QStringLiteral("orphaned"));
+    CHECK(QFile::remove(note));
+    CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
+    CHECK(!discard->isHidden() && keepMine->isHidden() && reload->isHidden());
+    discard->click();
+    CHECK(conflictBar->isHidden());
+    CHECK(!save->isEnabled());
+    notes->setCurrentRow(1);
+    CHECK(notes->currentRow() == 1);
   } catch (const std::exception &error) {
     qCritical("%s", error.what());
     return 1;

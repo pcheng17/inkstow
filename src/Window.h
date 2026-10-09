@@ -29,6 +29,10 @@ private:
   void replaceEditor(const QString &text);
   void watchNote();
   void syncWithDisk();
+  void showConflictBar(DiskChange change);
+  void reloadFromDisk();
+  void keepMine();
+  void discardEdits();
 
   Session session_;
   QFileSystemWatcher *watcher_;
@@ -37,6 +41,11 @@ private:
   QListWidget *notes_;
   QPlainTextEdit *editor_;
   QPushButton *save_;
+  QWidget *conflictBar_;
+  QLabel *conflictLabel_;
+  QPushButton *reload_;
+  QPushButton *keepMine_;
+  QPushButton *discard_;
   QLabel *filename_;
   QLabel *status_;
 };

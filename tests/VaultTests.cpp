@@ -223,6 +223,101 @@ static void sessionKeepsTextWhenDiskCannotBeLoaded() {
   CHECK(session.path() == QStringLiteral("note.md"));
 }
 
+static void sessionResolvesConflicts() {
+  QTemporaryDir dir;
+  CHECK(dir.isValid());
+  const QString note = dir.filePath(QStringLiteral("note.md"));
+  writeFile(note, QByteArray::fromHex("efbbbf") + "original");
+  QString error;
+  Session session;
+  CHECK(session.openVault(dir.path(), &error));
+  CHECK(session.selectNote(QStringLiteral("note.md"), &error));
+
+  // Keep mine: replaces the outside version and leaves the session clean.
+  session.setContent(QStringLiteral("mine"));
+  writeFile(note, "theirs");
+  CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+  CHECK(session.overwriteDisk(&error));
+  CHECK(readFile(note) == QByteArray::fromHex("efbbbf") + "mine");
+  CHECK(!session.dirty());
+  CHECK(session.syncWithDisk(&error) == DiskChange::None);
+
+  // Reload from disk: discards the edits for the outside version.
+  session.setContent(QStringLiteral("mine again"));
+  writeFile(note, "theirs again");
+  CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+  CHECK(session.reloadFromDisk(&error));
+  CHECK(session.content() == QStringLiteral("theirs again"));
+  CHECK(!session.dirty());
+  CHECK(readFile(note) == "theirs again");
+
+  // Neither choice can act on a note that is gone; the text is kept.
+  session.setContent(QStringLiteral("orphaned"));
+  CHECK(QFile::remove(note));
+  CHECK(!session.reloadFromDisk(&error));
+  CHECK(!session.overwriteDisk(&error));
+  CHECK(session.content() == QStringLiteral("orphaned"));
+  CHECK(!QFile::exists(note));
+}
+
+static void keepMineRefusesUnseenAndSwappedVersions() {
+  QTemporaryDir dir;
+  CHECK(dir.isValid());
+  const QString note = dir.filePath(QStringLiteral("note.md"));
+  const QString other = dir.filePath(QStringLiteral("other.md"));
+  writeFile(note, "original");
+  writeFile(other, "other");
+  QString error;
+  Session session;
+  CHECK(session.openVault(dir.path(), &error));
+  CHECK(session.selectNote(QStringLiteral("note.md"), &error));
+  session.setContent(QStringLiteral("mine"));
+  CHECK(!session.overwriteDisk(&error)); // No conflict has been seen yet.
+  CHECK(readFile(note) == "original");
+
+  // A second outside change after the conflict was reported is not
+  // overwritten; the next sync reports it instead.
+  writeFile(note, "theirs A");
+  CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+  writeFile(note, "theirs B");
+  CHECK(!session.overwriteDisk(&error));
+  CHECK(readFile(note) == "theirs B");
+  CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+  CHECK(session.overwriteDisk(&error));
+  CHECK(readFile(note) == "mine");
+
+#ifdef Q_OS_UNIX
+  // A note swapped for a link to another note is never written through.
+  session.setContent(QStringLiteral("mine again"));
+  CHECK(QFile::remove(note));
+  CHECK(QFile::link(other, note));
+  CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+  CHECK(!session.overwriteDisk(&error));
+  CHECK(!session.save(&error));
+  CHECK(readFile(other) == "other");
+#endif
+}
+
+static void discardEditsLeavesDeletedNote() {
+  QTemporaryDir dir;
+  CHECK(dir.isValid());
+  const QString note = dir.filePath(QStringLiteral("note.md"));
+  writeFile(note, "original");
+  writeFile(dir.filePath(QStringLiteral("other.md")), "other");
+  QString error;
+  Session session;
+  CHECK(session.openVault(dir.path(), &error));
+  CHECK(session.selectNote(QStringLiteral("note.md"), &error));
+  session.setContent(QStringLiteral("unsaved"));
+  CHECK(QFile::remove(note));
+  CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+  session.discardEdits();
+  CHECK(!session.dirty());
+  CHECK(session.content() == QStringLiteral("original"));
+  CHECK(session.selectNote(QStringLiteral("other.md"), &error));
+  CHECK(!QFile::exists(note));
+}
+
 int main(int argc, char **argv) {
   QCoreApplication app(argc, argv);
   try {
@@ -234,6 +329,9 @@ int main(int argc, char **argv) {
     sessionRetainsLocalEditsOnConflict();
     sessionSyncsExternalEdits();
     sessionKeepsTextWhenDiskCannotBeLoaded();
+    sessionResolvesConflicts();
+    keepMineRefusesUnseenAndSwappedVersions();
+    discardEditsLeavesDeletedNote();
   } catch (const std::exception &error) {
     qCritical("%s", error.what());
     return 1;

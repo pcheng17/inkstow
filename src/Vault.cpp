@@ -9,7 +9,7 @@ namespace {
 void conflict(QString *error) {
   *error =
       QStringLiteral("Save conflict: note changed on disk. Your edits remain "
-                     "in the editor; copy them before reopening the note.");
+                     "in the editor.");
 }
 
 bool readBytes(const QString &path, QByteArray *content, QString *error) {
@@ -79,10 +79,17 @@ std::optional<QString> Vault::notePath(const QString &relative,
     *error = QStringLiteral("Expected a relative Markdown path.");
     return std::nullopt;
   }
+  QString walked = root_;
   for (const QString &segment : relative.split(u'/')) {
     if (segment.isEmpty() || segment == QStringLiteral(".") ||
         segment == QStringLiteral("..")) {
       *error = QStringLiteral("Expected a relative Markdown path.");
+      return std::nullopt;
+    }
+    // Discovery skips links, so a link here means the note was swapped.
+    walked = QDir(walked).filePath(segment);
+    if (QFileInfo(walked).isSymLink()) {
+      *error = QStringLiteral("Note is missing or outside the vault.");
       return std::nullopt;
     }
   }
