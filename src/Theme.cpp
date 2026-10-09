@@ -4,7 +4,7 @@
 #include <QPalette>
 #include <QStyleFactory>
 
-void configureLightTheme(QApplication &)
+void configureLightTheme([[maybe_unused]] QApplication &app)
 {
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     QPalette light;
