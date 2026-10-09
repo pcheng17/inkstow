@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
 
     // Atomic replacement, as many editors save, drops the file from the
     // watcher; later changes must still be noticed.
-    for (const QByteArray bytes : {QByteArray("renamed once"),
+    for (const QByteArray &bytes : {QByteArray("renamed once"),
                                    QByteArray("renamed twice")}) {
       QSaveFile replacement(note);
       CHECK(replacement.open(QIODevice::WriteOnly));
