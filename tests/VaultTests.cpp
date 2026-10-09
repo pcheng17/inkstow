@@ -378,6 +378,23 @@ static void createsNotesSafely()
     CHECK(!QFile::exists(dir.filePath(QStringLiteral("../escape.md"))));
     CHECK(!QDir(dir.filePath(QStringLiteral(".hidden"))).exists());
 
+    // A rejected or failed create leaves no folders behind.
+    QTemporaryDir empty;
+    CHECK(empty.isValid());
+    const auto fresh = Vault::open(empty.path(), &error);
+    CHECK(fresh.has_value());
+    for (const QString &path :
+         {QStringLiteral("x.md/.md"),
+          QStringLiteral("Folder/.md"),
+          QStringLiteral("A/B//c.md"),
+          QStringLiteral("New/.hidden.md"),
+          QStringLiteral("P/../q.md"),
+          QStringLiteral("Long/Deeper/") + QString(300, u'a') + QStringLiteral(".md")})
+    {
+        CHECK(!fresh->createNote(path, &error));
+        CHECK(QDir(empty.path()).isEmpty());
+    }
+
 #ifdef Q_OS_UNIX
     // Neither a linked folder nor a dangling link is written through.
     CHECK(QFile::link(outside.path(), dir.filePath(QStringLiteral("linked"))));
@@ -450,6 +467,9 @@ static void sessionCreatesAndTrashesNotes()
         CHECK(session.createNote(QStringLiteral("folder/Later"), &error));
         CHECK(session.path() == QStringLiteral("Folder/Later.md"));
     }
+    // Decomposed input (as pasted from Finder) is stored and listed composed.
+    CHECK(session.createNote(QStringLiteral("Cafe\u0301"), &error));
+    CHECK(session.path() == QStringLiteral("Caf\u00e9.md"));
     CHECK(session.createNote(QStringLiteral("v1.2"), &error));
     CHECK(session.path() == QStringLiteral("v1.2.md"));
 
@@ -471,6 +491,18 @@ static void sessionCreatesAndTrashesNotes()
     CHECK(!session.notes().contains(QStringLiteral("v1.2.md")));
     CHECK(QFile::exists(trash.filePath(QStringLiteral("v1.2.md"))));
     CHECK(!session.trashNote(&error));
+
+#ifdef Q_OS_UNIX
+    // A trashed note leaves the session even if the vault can't be relisted.
+    CHECK(session.selectNote(QStringLiteral("Ideas.md"), &error));
+    const QByteArray locked = QFile::encodeName(dir.filePath(QStringLiteral("Folder")));
+    CHECK(::chmod(locked.constData(), 0) == 0);
+    const bool trashed = session.trashNote(&error);
+    CHECK(::chmod(locked.constData(), 0755) == 0);
+    CHECK(trashed);
+    CHECK(session.path().isEmpty() && !session.dirty());
+    CHECK(!session.notes().contains(QStringLiteral("Ideas.md")));
+#endif
 }
 
 int main(int argc, char **argv)

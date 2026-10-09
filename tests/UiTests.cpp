@@ -181,6 +181,21 @@ int main(int argc, char **argv)
         CHECK(status->text().startsWith(QStringLiteral("Error")));
         CHECK(newPath->text() == QStringLiteral("../escape"));
 
+        // Unsaved edits disable both, and a confirmation never outlives its note.
+        editor->setPlainText(QStringLiteral("draft"));
+        CHECK(!create->isEnabled() && !remove->isEnabled());
+        editor->setPlainText(QString());
+        CHECK(create->isEnabled() && remove->isEnabled());
+        remove->click();
+        CHECK(!deleteBar->isHidden());
+        notes->setCurrentItem(
+            notes->findItems(QStringLiteral("other.md"), Qt::MatchExactly).first());
+        CHECK(deleteBar->isHidden());
+        CHECK(QFile::exists(dir.filePath(QStringLiteral("other.md"))));
+        notes->setCurrentItem(
+            notes->findItems(QStringLiteral("Ideas.md"), Qt::MatchExactly).first());
+        CHECK(deleteBar->isHidden());
+
         // Deleting asks first, and Cancel leaves the note alone.
         CHECK(remove->isEnabled() && deleteBar->isHidden());
         remove->click();

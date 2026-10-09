@@ -50,6 +50,7 @@ private:
     QPushButton *create_;
     QWidget *deleteBar_;
     QLabel *deleteLabel_;
+    QString deletePath_; // The note the delete confirmation was shown for.
     QWidget *conflictBar_;
     QLabel *conflictLabel_;
     QPushButton *reload_;

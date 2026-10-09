@@ -132,7 +132,8 @@ Window::Window(TrashFunction trash)
     connect(create_, &QPushButton::clicked, this, [this] { createNote(); });
     connect(newPath_, &QLineEdit::returnPressed, this, [this] { createNote(); });
     connect(delete_, &QPushButton::clicked, this, [this] {
-        deleteLabel_->setText(QStringLiteral("Move %1 to the trash?").arg(session_.path()));
+        deletePath_ = session_.path();
+        deleteLabel_->setText(QStringLiteral("Move %1 to the trash?").arg(deletePath_));
         deleteBar_->show();
     });
     connect(confirmDelete, &QPushButton::clicked, this, [this] { trashNote(); });
@@ -163,9 +164,9 @@ void Window::refresh()
                  : QStringLiteral("Select a note"));
     save_->setEnabled(selected && session_.dirty());
     if (!session_.dirty()) conflictBar_->hide();
-    if (!selected) deleteBar_->hide();
-    delete_->setEnabled(selected);
-    create_->setEnabled(session_.hasVault());
+    if (session_.path() != deletePath_) deleteBar_->hide();
+    delete_->setEnabled(selected && !session_.dirty());
+    create_->setEnabled(session_.hasVault() && !session_.dirty());
     editor_->setEnabled(selected);
 }
 
@@ -334,6 +335,7 @@ void Window::createNote()
 {
     QString error;
     if (!session_.createNote(newPath_->text(), &error)) {
+        showNotes(); // The note may exist even if selecting it failed.
         status_->setText(QStringLiteral("Error: ") + error);
         return;
     }
@@ -350,6 +352,10 @@ void Window::trashNote()
     const QString path = session_.path();
     QString error;
     deleteBar_->hide();
+    if (path != deletePath_) {
+        status_->setText(QStringLiteral("Error: the selected note changed; press Delete again."));
+        return;
+    }
     if (!session_.trashNote(&error)) {
         status_->setText(QStringLiteral("Error: ") + error);
         return;

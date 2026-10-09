@@ -173,32 +173,37 @@ bool Vault::createNote(const QString &relative, QString *error) const
         return false;
     }
     const QStringList segments = relative.split(u'/');
-    QString walked = root_;
-    for (qsizetype i = 0; i < segments.size(); ++i) {
-        // Covers "." and ".." too.
-        if (segments[i].isEmpty() || segments[i].startsWith(u'.')) {
+    // Checked up front so a rejected path creates no folders. Covers "." and "..".
+    for (const QString &segment : segments) {
+        if (segment.isEmpty() || segment.startsWith(u'.')) {
             *error = QStringLiteral("Note and folder names can't be empty or start with '.'.");
             return false;
         }
+    }
+    QString walked = root_;
+    QStringList created;
+    const auto fail = [&created, error](const QString &message) {
+        for (auto folder = created.crbegin(); folder != created.crend(); ++folder)
+            QDir().rmdir(*folder);
+        *error = message;
+        return false;
+    };
+    for (qsizetype i = 0; i < segments.size(); ++i) {
         walked = QDir(walked).filePath(segments[i]);
         const QFileInfo info(walked);
-        if (info.isSymLink()) {
-            *error = QStringLiteral("Cannot create a note through a link: %1").arg(relative);
-            return false;
-        }
-        const bool folder = i + 1 < segments.size();
-        if (folder && (info.exists() ? !info.isDir() : !QDir().mkdir(walked))) {
-            *error = QStringLiteral("Cannot create folder: %1").arg(walked);
-            return false;
-        }
+        if (info.isSymLink())
+            return fail(QStringLiteral("Cannot create a note through a link: %1").arg(relative));
+        if (i + 1 == segments.size() || (info.exists() && info.isDir())) continue;
+        if (info.exists() || !QDir().mkdir(walked))
+            return fail(QStringLiteral("Cannot create folder: %1").arg(walked));
+        created.append(walked);
     }
     // NewOnly fails instead of replacing a file created since the checks above.
     QFile file(walked);
     if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
-        *error = QFileInfo::exists(walked)
-                     ? QStringLiteral("A file already exists at %1.").arg(relative)
-                     : file.errorString();
-        return false;
+        return fail(
+            QFileInfo::exists(walked) ? QStringLiteral("A file already exists at %1.").arg(relative)
+                                      : file.errorString());
     }
     return true;
 }

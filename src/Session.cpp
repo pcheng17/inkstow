@@ -100,13 +100,17 @@ bool Session::createNote(const QString &input, QString *error)
         *error = QStringLiteral("Open a vault first.");
         return false;
     }
-    QString path = input.trimmed();
+    // macOS lists names composed, so decomposed input would not match the list.
+    QString path = input.trimmed().normalized(QString::NormalizationForm_C);
     if (!path.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)) path += QStringLiteral(".md");
     if (!vault_->createNote(path, error) || !reloadNotes(error)) return false;
     // A case-insensitive file system may have kept an existing folder's spelling.
     if (!notes_.contains(path)) {
         for (const QString &note : notes_) {
-            if (note.compare(path, Qt::CaseInsensitive) == 0) path = note;
+            if (note.compare(path, Qt::CaseInsensitive) == 0) {
+                path = note;
+                break;
+            }
         }
     }
     return selectNote(path, error);
@@ -116,8 +120,11 @@ bool Session::trashNote(QString *error)
 {
     if (!requireNote(error) || !requireClean(error) || !vault_->trashNote(path_, trash_, error))
         return false;
+    // The note is gone either way; a failed relist only drops it from the list.
+    QString ignored;
+    if (!reloadNotes(&ignored)) notes_.removeAll(path_);
     clearNote();
-    return reloadNotes(error);
+    return true;
 }
 
 bool Session::reloadNotes(QString *error)
