@@ -46,10 +46,11 @@ bool Session::save(QString *error)
 
 bool Session::write(const QByteArray &expected, QString *error)
 {
-    if (!requireNote(error)) return false;
+    const Vault *vault = requireNote(error);
+    if (!vault) return false;
     const QByteArray bytes =
         (hasBom_ ? QByteArray::fromHex("efbbbf") : QByteArray()) + content_.toUtf8();
-    if (!vault_->saveNote(path_, expected, bytes, error)) return false;
+    if (!vault->saveNote(path_, expected, bytes, error)) return false;
     savedContent_ = content_;
     savedBytes_ = bytes;
     conflictBytes_.reset();
@@ -77,10 +78,11 @@ DiskChange Session::syncWithDisk(QString *error)
 
 bool Session::reloadFromDisk(QString *error)
 {
-    if (!requireNote(error)) return false;
+    const Vault *vault = requireNote(error);
+    if (!vault) return false;
     QByteArray bytes;
     QString text;
-    if (!vault_->readNote(path_, &bytes, error) || !decode(bytes, &text, error)) return false;
+    if (!vault->readNote(path_, &bytes, error) || !decode(bytes, &text, error)) return false;
     load(path_, bytes, text);
     return true;
 }
@@ -120,8 +122,8 @@ bool Session::createNote(const QString &input, QString *error)
 
 bool Session::trashNote(QString *error)
 {
-    if (!requireNote(error) || !requireClean(error) || !vault_->trashNote(path_, trash_, error))
-        return false;
+    const Vault *vault = requireNote(error);
+    if (!vault || !requireClean(error) || !vault->trashNote(path_, trash_, error)) return false;
     // The note is gone either way; a failed relist only drops it from the list.
     QString ignored;
     if (!reloadNotes(&ignored)) notes_.removeAll(path_);
@@ -157,11 +159,11 @@ bool Session::requireClean(QString *error) const
     return false;
 }
 
-bool Session::requireNote(QString *error) const
+const Vault *Session::requireNote(QString *error) const
 {
-    if (vault_ && !path_.isEmpty()) return true;
+    if (vault_ && !path_.isEmpty()) return &*vault_;
     *error = QStringLiteral("Select a note first.");
-    return false;
+    return nullptr;
 }
 
 QString Session::notePath() const

@@ -52,7 +52,7 @@ public:
     QString notePath() const;
 
 private:
-    bool requireNote(QString *error) const;
+    const Vault *requireNote(QString *error) const;
     bool requireClean(QString *error) const;
     void clearNote();
     bool write(const QByteArray &expected, QString *error);
