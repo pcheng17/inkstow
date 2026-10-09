@@ -106,7 +106,8 @@ int main(int argc, char **argv)
             folder && open && notes && editor && save && status && conflictBar && keepMine &&
             reload && discard && newPath && create && remove && deleteBar && confirmDelete &&
             cancelDelete);
-        CHECK(!create->isEnabled() && !remove->isEnabled()); // No vault yet.
+        CHECK(!create->isEnabled()); // No vault yet.
+        CHECK(!remove->isEnabled());
         CHECK(conflictBar->isHidden());
         window.show();
         window.activateWindow();
@@ -251,7 +252,8 @@ int main(int argc, char **argv)
         writeFile(note, "theirs 3");
         save->click();
         CHECK(!conflictBar->isHidden());
-        CHECK(!keepMine->isHidden() && discard->isHidden());
+        CHECK(!keepMine->isHidden());
+        CHECK(discard->isHidden());
         reload->click();
         CHECK(editor->toPlainText() == QStringLiteral("theirs 3"));
 
@@ -260,7 +262,9 @@ int main(int argc, char **argv)
         CHECK(QFile::remove(note));
         syncWithoutWatcher();
         CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
-        CHECK(!discard->isHidden() && keepMine->isHidden() && reload->isHidden());
+        CHECK(!discard->isHidden());
+        CHECK(keepMine->isHidden());
+        CHECK(reload->isHidden());
         discard->click();
         CHECK(conflictBar->isHidden());
         CHECK(!save->isEnabled());
@@ -283,7 +287,8 @@ int main(int argc, char **argv)
 
         // Unsaved edits disable both, and a confirmation never outlives its note.
         editor->setPlainText(QStringLiteral("draft"));
-        CHECK(!create->isEnabled() && !remove->isEnabled());
+        CHECK(!create->isEnabled());
+        CHECK(!remove->isEnabled());
         editor->setPlainText(QString());
         CHECK(create->isEnabled() && remove->isEnabled());
         remove->click();
@@ -309,7 +314,8 @@ int main(int argc, char **argv)
         CHECK(!QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
         CHECK(QFile::exists(QDir(trash.path()).filePath(QStringLiteral("Ideas.md"))));
         CHECK(notes->findItems(QStringLiteral("Ideas.md"), Qt::MatchExactly).isEmpty());
-        CHECK(!editor->isEnabled() && !remove->isEnabled());
+        CHECK(!editor->isEnabled());
+        CHECK(!remove->isEnabled());
     } catch (const std::exception &error) {
         qCritical("%s", error.what());
         return 1;
