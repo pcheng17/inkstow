@@ -8,11 +8,13 @@ On Debian/Ubuntu Linux:
 
 ```sh
 sudo ./install --system   # Qt 6 development libraries, CMake, and C++ compiler
-./verify                  # configure, build, run core and offscreen UI tests
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ./build/inkstow           # run the desktop app on a graphical machine
 ```
 
-On other systems, install CMake 3.20+, a C++17 compiler, and Qt 6.4+ Core and Widgets, then run `./verify`. The application uses a light Qt palette even when the desktop's default is dark.
+On other systems, install CMake 3.20+, a C++17 compiler, and Qt 6.4+ Core and Widgets, then use the same CMake build and CTest commands. The application uses a light Qt palette even when the desktop's default is dark.
 
 Enter an absolute path to a vault folder. To avoid altering the checked-in fixture, first copy it to a throwaway directory:
 
@@ -24,9 +26,9 @@ printf '%s\n' "$vault"
 
 Open that path in Inkstow. Only `Welcome.md` and `Folder/Second note.md` should appear; dot-prefixed files and folders are excluded from discovery. Edit and save a note, then confirm the copied file changes on disk. Check that an unsaved note cannot be switched away from. To test a conflict, edit a note in Inkstow without saving, modify the same file externally, then press Save: it should report a conflict and retain the unsaved editor text without overwriting the external version.
 
-## Headless verification
+## Headless tests
 
-`./verify` builds the C++ core, CLI, and Qt Widgets app, runs filesystem and session tests plus an offscreen UI smoke test, and checks CLI note discovery against the fixture vault. No graphical display is required. `build/vault-inspect /path/to/vault` inspects any vault without opening a window.
+The `cmake --build` and `ctest` commands above build the C++ core, CLI, and Qt Widgets app, then run filesystem and session tests plus an offscreen UI smoke test. The tests also check note discovery against the fixture vault. No graphical display is required. Run `./build/vault-inspect tests/fixtures/sample` to inspect the fixture, or pass another throwaway vault path without opening a window.
 
 ## Boundaries and limitations
 
