@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+staged=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(h|cpp)$' || true)
+
+if [[ -z "$staged" ]]; then
+    exit 0
+fi
+
+reformatted=()
+while IFS= read -r file; do
+    before=$(git show ":$file" | sha256sum)
+    clang-format -i "$file"
+    after=$(sha256sum < "$file")
+    if [[ "$before" != "$after" ]]; then
+        git add "$file"
+        reformatted+=("$file")
+    fi
+done <<< "$staged"
+
+if [[ ${#reformatted[@]} -gt 0 ]]; then
+    echo "clang-format reformatted and re-staged:"
+    printf '  %s\n' "${reformatted[@]}"
+fi
