@@ -6,6 +6,8 @@
 #include <QFileInfo>
 #include <QDeadlineTimer>
 #include <QFile>
+#include <QFileSystemWatcher>
+#include <QEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -55,6 +57,23 @@ int main(int argc, char **argv)
     try {
         configureLightTheme(app);
         CHECK(app.palette().color(QPalette::Window) == QColor(QStringLiteral("#faf9fc")));
+        QTemporaryDir probeDir;
+        CHECK(probeDir.isValid());
+        QFileSystemWatcher probe;
+        CHECK(probe.addPath(probeDir.path()));
+        bool notified = false;
+        QObject::connect(&probe, &QFileSystemWatcher::directoryChanged, &app, [&] {
+            notified = true;
+        });
+        writeFile(probeDir.filePath(QStringLiteral("probe.md")), "probe");
+        const bool watcherWorks = waitFor([&] { return notified; }) &&
+                                  !qEnvironmentVariableIsSet("INKSTOW_TEST_NO_EVENTS");
+        if (!watcherWorks)
+            qInfo(
+                "File system events unavailable or disabled; skipping watcher-only checks; using "
+                "activation "
+                "for sync checks.");
+
         QTemporaryDir dir;
         CHECK(dir.isValid());
         const QString note = dir.filePath(QStringLiteral("note.md"));
@@ -89,6 +108,14 @@ int main(int argc, char **argv)
             cancelDelete);
         CHECK(!create->isEnabled() && !remove->isEnabled()); // No vault yet.
         CHECK(conflictBar->isHidden());
+        window.show();
+        window.activateWindow();
+        const auto syncWithoutWatcher = [&] {
+            if (!watcherWorks) {
+                QEvent activation(QEvent::ActivationChange);
+                QCoreApplication::sendEvent(&window, &activation);
+            }
+        };
         folder->setText(dir.path());
         open->click();
         CHECK(notes->count() == 2);
@@ -103,23 +130,93 @@ int main(int argc, char **argv)
         CHECK(readFile(note) == "first edit");
         CHECK(!save->isEnabled());
 
+        // External additions, renames and deletions refresh the list without
+        // replacing the open note or exposing hidden entries.
+        const QString nested = dir.filePath(QStringLiteral("nested"));
+        CHECK(QDir().mkdir(nested));
+        writeFile(QDir(nested).filePath(QStringLiteral("new.md")), "new");
+        syncWithoutWatcher();
+        CHECK(waitFor([&] {
+            return notes->findItems(QStringLiteral("nested/new.md"), Qt::MatchExactly).size() == 1;
+        }));
+        CHECK(notes->currentItem()->text() == QStringLiteral("note.md"));
+        CHECK(editor->toPlainText() == QStringLiteral("first edit"));
+        writeFile(QDir(nested).filePath(QStringLiteral("later.md")), "later");
+        syncWithoutWatcher();
+        CHECK(waitFor([&] {
+            return notes->findItems(QStringLiteral("nested/later.md"), Qt::MatchExactly).size() ==
+                   1;
+        }));
+        CHECK(
+            QFile::rename(
+                QDir(nested).filePath(QStringLiteral("new.md")),
+                QDir(nested).filePath(QStringLiteral("renamed.md"))));
+        syncWithoutWatcher();
+        CHECK(waitFor([&] {
+            return notes->findItems(QStringLiteral("nested/renamed.md"), Qt::MatchExactly).size() ==
+                       1 &&
+                   notes->findItems(QStringLiteral("nested/new.md"), Qt::MatchExactly).isEmpty();
+        }));
+        CHECK(QFile::remove(QDir(nested).filePath(QStringLiteral("renamed.md"))));
+        CHECK(QFile::remove(QDir(nested).filePath(QStringLiteral("later.md"))));
+        CHECK(QDir().rmdir(nested));
+        syncWithoutWatcher();
+        CHECK(waitFor([&] {
+            return notes->findItems(QStringLiteral("nested/later.md"), Qt::MatchExactly).isEmpty();
+        }));
+
+        // Losing and recreating the selected note's folder must not strand
+        // the watcher: a later write must still reach the editor.
+        if (watcherWorks) {
+            CHECK(QDir().mkdir(nested));
+            const QString subnote = QDir(nested).filePath(QStringLiteral("note.md"));
+            writeFile(subnote, "sub original");
+            CHECK(waitFor([&] {
+                return !notes->findItems(QStringLiteral("nested/note.md"), Qt::MatchExactly)
+                            .isEmpty();
+            }));
+            notes->setCurrentItem(
+                notes->findItems(QStringLiteral("nested/note.md"), Qt::MatchExactly).first());
+            CHECK(editor->toPlainText() == QStringLiteral("sub original"));
+            CHECK(QFile::remove(subnote));
+            CHECK(QDir().rmdir(nested));
+            CHECK(waitFor([&] {
+                return notes->findItems(QStringLiteral("nested/note.md"), Qt::MatchExactly)
+                    .isEmpty();
+            }));
+            CHECK(QDir().mkdir(nested));
+            writeFile(subnote, "sub recreated");
+            CHECK(
+                waitFor([&] { return editor->toPlainText() == QStringLiteral("sub recreated"); }));
+            writeFile(subnote, "sub changed again");
+            CHECK(waitFor(
+                [&] { return editor->toPlainText() == QStringLiteral("sub changed again"); }));
+            notes->setCurrentItem(
+                notes->findItems(QStringLiteral("note.md"), Qt::MatchExactly).first());
+        }
+
         writeFile(note, "outside edit");
+        syncWithoutWatcher();
         CHECK(waitFor([&] { return editor->toPlainText() == QStringLiteral("outside edit"); }));
         CHECK(!save->isEnabled());
         CHECK(status->text().contains(QStringLiteral("Reloaded")));
 
         // Atomic replacement, as many editors save, drops the file from the
         // watcher; later changes must still be noticed.
-        for (const QByteArray &bytes : {QByteArray("renamed once"), QByteArray("renamed twice")}) {
-            QSaveFile replacement(note);
-            CHECK(replacement.open(QIODevice::WriteOnly));
-            CHECK(replacement.write(bytes) == bytes.size());
-            CHECK(replacement.commit());
-            CHECK(waitFor([&] { return editor->toPlainText() == QString::fromUtf8(bytes); }));
-        }
+        if (watcherWorks)
+            for (const QByteArray &bytes :
+                 {QByteArray("renamed once"), QByteArray("renamed twice")})
+            {
+                QSaveFile replacement(note);
+                CHECK(replacement.open(QIODevice::WriteOnly));
+                CHECK(replacement.write(bytes) == bytes.size());
+                CHECK(replacement.commit());
+                CHECK(waitFor([&] { return editor->toPlainText() == QString::fromUtf8(bytes); }));
+            }
 
         editor->setPlainText(QStringLiteral("local edit"));
         writeFile(note, "external edit");
+        syncWithoutWatcher();
         CHECK(waitFor([&] { return status->text().contains(QStringLiteral("changed on disk")); }));
         CHECK(editor->toPlainText() == QStringLiteral("local edit"));
         save->click();
@@ -136,6 +233,7 @@ int main(int argc, char **argv)
 
         editor->setPlainText(QStringLiteral("mine again"));
         writeFile(note, "theirs");
+        syncWithoutWatcher();
         CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
         reload->click();
         CHECK(editor->toPlainText() == QStringLiteral("theirs"));
@@ -160,13 +258,15 @@ int main(int argc, char **argv)
         // A deleted note with unsaved edits can be discarded to move on.
         editor->setPlainText(QStringLiteral("orphaned"));
         CHECK(QFile::remove(note));
+        syncWithoutWatcher();
         CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
         CHECK(!discard->isHidden() && keepMine->isHidden() && reload->isHidden());
         discard->click();
         CHECK(conflictBar->isHidden());
         CHECK(!save->isEnabled());
-        notes->setCurrentRow(1);
-        CHECK(notes->currentRow() == 1);
+        notes->setCurrentItem(
+            notes->findItems(QStringLiteral("other.md"), Qt::MatchExactly).first());
+        CHECK(notes->currentItem()->text() == QStringLiteral("other.md"));
 
         // Creating a note adds it to the list and opens it.
         newPath->setText(QStringLiteral("Ideas"));

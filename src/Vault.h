@@ -21,7 +21,8 @@ public:
     static std::optional<Vault> open(const QString &folder, QString *error);
 
     const QString &root() const { return root_; }
-    bool listNotes(QStringList *notes, QString *error) const;
+    // Optionally returns every discoverable folder, including empty folders and the root.
+    bool listNotes(QStringList *notes, QString *error, QStringList *folders = nullptr) const;
     bool readNote(const QString &relative, QByteArray *content, QString *error) const;
     // The disk bytes must still equal expected. The replacement is staged in the
     // same directory and renamed into place; other programs can race the final

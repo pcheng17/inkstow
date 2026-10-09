@@ -426,8 +426,8 @@ static void trashesNotes()
     CHECK(!vault->trashNote(QStringLiteral("note.md"), trashInto(trash.path()), &error));
     CHECK(!vault->trashNote(QStringLiteral("../x.md"), trashInto(trash.path()), &error));
 
-    const TrashFunction failing = [](const QString &, QString *error) {
-        *error = QStringLiteral("No trash here.");
+    const TrashFunction failing = [](const QString &, QString *trashError) {
+        *trashError = QStringLiteral("No trash here.");
         return false;
     };
     CHECK(!vault->trashNote(QStringLiteral("other.md"), failing, &error));

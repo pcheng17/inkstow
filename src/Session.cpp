@@ -12,9 +12,11 @@ bool Session::openVault(const QString &folder, QString *error)
     auto next = Vault::open(folder, error);
     if (!next) return false;
     QStringList notes;
-    if (!next->listNotes(&notes, error)) return false;
+    QStringList folders;
+    if (!next->listNotes(&notes, error, &folders)) return false;
     vault_ = std::move(next);
     notes_ = notes;
+    folders_ = folders;
     clearNote();
     return true;
 }
@@ -129,9 +131,12 @@ bool Session::trashNote(QString *error)
 
 bool Session::reloadNotes(QString *error)
 {
+    if (!vault_) return false;
     QStringList notes;
-    if (!vault_->listNotes(&notes, error)) return false;
+    QStringList folders;
+    if (!vault_->listNotes(&notes, error, &folders)) return false;
     notes_ = notes;
+    folders_ = folders;
     return true;
 }
 
