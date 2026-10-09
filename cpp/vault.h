@@ -13,6 +13,7 @@ class Vault {
 public:
   static std::optional<Vault> open(const QString &folder, QString *error);
 
+  const QString &root() const { return root_; }
   bool listNotes(QStringList *notes, QString *error) const;
   bool readNote(const QString &relative, QByteArray *content,
                 QString *error) const;

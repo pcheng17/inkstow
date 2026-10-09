@@ -1,6 +1,8 @@
 #include "window.h"
 
 #include <QCloseEvent>
+#include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -8,9 +10,14 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QTextCursor>
+#include <QTimer>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 Window::Window() {
   setWindowTitle(QStringLiteral("Inkstow"));
@@ -60,6 +67,11 @@ Window::Window() {
   status_->setObjectName(QStringLiteral("status"));
   page->addWidget(status_);
   setCentralWidget(central);
+  watcher_ = new QFileSystemWatcher(this);
+  // Waits for a burst of writes to settle so a half-written note is not loaded.
+  syncTimer_ = new QTimer(this);
+  syncTimer_->setSingleShot(true);
+  syncTimer_->setInterval(150);
   refresh();
 
   connect(open, &QPushButton::clicked, this, [this] { openVault(); });
@@ -69,6 +81,13 @@ Window::Window() {
     session_.setContent(editor_->toPlainText());
     refresh();
   });
+  // The folder is watched too because atomic replacements by other programs
+  // can drop the file from the watcher.
+  connect(watcher_, &QFileSystemWatcher::fileChanged, syncTimer_,
+          qOverload<>(&QTimer::start));
+  connect(watcher_, &QFileSystemWatcher::directoryChanged, syncTimer_,
+          qOverload<>(&QTimer::start));
+  connect(syncTimer_, &QTimer::timeout, this, [this] { syncWithDisk(); });
   connect(notes_, &QListWidget::currentTextChanged, this,
           [this](const QString &path) {
             if (!path.isEmpty() && path != session_.path())
@@ -104,6 +123,7 @@ void Window::openVault() {
     notes_->addItems(session_.notes());
   }
   replaceEditor(QString());
+  watchNote();
   status_->setText(
       QStringLiteral("Found %1 notes").arg(session_.notes().size()));
 }
@@ -118,6 +138,7 @@ void Window::selectNote(const QString &path) {
     return;
   }
   replaceEditor(session_.content());
+  watchNote();
   editor_->setFocus();
   status_->setText(QStringLiteral("Opened ") + path);
 }
@@ -130,6 +151,57 @@ void Window::saveNote() {
     status_->setText(QStringLiteral("Saved"));
   }
   refresh();
+}
+
+void Window::watchNote() {
+  syncTimer_->stop();
+  const QStringList watched = watcher_->files() + watcher_->directories();
+  if (!watched.isEmpty())
+    watcher_->removePaths(watched);
+  const QString path = session_.notePath();
+  if (!path.isEmpty())
+    watcher_->addPaths({path, QFileInfo(path).absolutePath()});
+}
+
+void Window::syncWithDisk() {
+  QString error;
+  const int position = editor_->textCursor().position();
+  const int scroll = editor_->verticalScrollBar()->value();
+  switch (session_.syncWithDisk(&error)) {
+  case DiskChange::None:
+    break;
+  case DiskChange::Reloaded: {
+    replaceEditor(session_.content());
+    QTextCursor cursor = editor_->textCursor();
+    cursor.setPosition(
+        std::min(position, editor_->document()->characterCount() - 1));
+    editor_->setTextCursor(cursor);
+    editor_->verticalScrollBar()->setValue(scroll);
+    status_->setText(QStringLiteral("Reloaded %1 after an outside change")
+                         .arg(session_.path()));
+    break;
+  }
+  case DiskChange::Conflict:
+  case DiskChange::Missing:
+    status_->setText(QStringLiteral("Warning: ") + error);
+    break;
+  }
+  // Replacing or recreating the note or its folder drops it from the watcher.
+  const QString path = session_.notePath();
+  if (path.isEmpty())
+    return;
+  const QString folder = QFileInfo(path).absolutePath();
+  if (!watcher_->directories().contains(folder) && QFileInfo::exists(folder))
+    watcher_->addPath(folder);
+  if (!watcher_->files().contains(path) && QFileInfo::exists(path))
+    watcher_->addPath(path);
+}
+
+void Window::changeEvent(QEvent *event) {
+  // Catches changes the watcher missed while the app was in the background.
+  if (event->type() == QEvent::ActivationChange && isActiveWindow())
+    syncWithDisk();
+  QMainWindow::changeEvent(event);
 }
 
 void Window::closeEvent(QCloseEvent *event) {

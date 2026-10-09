@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QTemporaryDir>
 
 #include <stdexcept>
@@ -164,6 +165,64 @@ static void sessionRetainsLocalEditsOnConflict() {
   CHECK(!session.selectNote(QStringLiteral("other.md"), &error));
 }
 
+static void sessionSyncsExternalEdits() {
+  QTemporaryDir dir;
+  CHECK(dir.isValid());
+  const QString note = dir.filePath(QStringLiteral("note.md"));
+  writeFile(note, "original");
+  QString error;
+  Session session;
+  CHECK(session.syncWithDisk(&error) == DiskChange::None); // No note yet.
+  CHECK(session.openVault(dir.path(), &error));
+  CHECK(session.selectNote(QStringLiteral("note.md"), &error));
+  CHECK(session.notePath() == QFileInfo(note).canonicalFilePath());
+  CHECK(session.syncWithDisk(&error) == DiskChange::None);
+
+  // A clean editor follows the disk, including a newly added BOM.
+  writeFile(note, QByteArray::fromHex("efbbbf") + "external");
+  CHECK(session.syncWithDisk(&error) == DiskChange::Reloaded);
+  CHECK(session.content() == QStringLiteral("external"));
+  CHECK(!session.dirty());
+  session.setContent(QStringLiteral("saved"));
+  CHECK(session.save(&error));
+  CHECK(readFile(note) == QByteArray::fromHex("efbbbf") + "saved");
+  CHECK(session.syncWithDisk(&error) == DiskChange::None); // Our own save.
+  writeFile(note, "no bom");
+  CHECK(session.syncWithDisk(&error) == DiskChange::Reloaded);
+  session.setContent(QStringLiteral("still no bom"));
+  CHECK(session.save(&error));
+  CHECK(readFile(note) == "still no bom");
+
+  // Unsaved edits are kept, and saving still refuses to overwrite.
+  session.setContent(QStringLiteral("unsaved"));
+  writeFile(note, "external again");
+  CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+  CHECK(error.contains(QStringLiteral("changed on disk")));
+  CHECK(session.content() == QStringLiteral("unsaved"));
+  CHECK(session.dirty());
+  CHECK(!session.save(&error));
+  CHECK(readFile(note) == "external again");
+}
+
+static void sessionKeepsTextWhenDiskCannotBeLoaded() {
+  QTemporaryDir dir;
+  CHECK(dir.isValid());
+  const QString note = dir.filePath(QStringLiteral("note.md"));
+  writeFile(note, "original");
+  QString error;
+  Session session;
+  CHECK(session.openVault(dir.path(), &error));
+  CHECK(session.selectNote(QStringLiteral("note.md"), &error));
+  writeFile(note, QByteArray::fromHex("ff"));
+  CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+  CHECK(error.contains(QStringLiteral("UTF-8")));
+  CHECK(session.content() == QStringLiteral("original"));
+  CHECK(QFile::remove(note));
+  CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+  CHECK(session.content() == QStringLiteral("original"));
+  CHECK(session.path() == QStringLiteral("note.md"));
+}
+
 int main(int argc, char **argv) {
   QCoreApplication app(argc, argv);
   try {
@@ -173,6 +232,8 @@ int main(int argc, char **argv) {
     preservesUtf8BomWhenEditing();
     rejectsInvalidUtf8AndKeepsPriorVaultOnFailure();
     sessionRetainsLocalEditsOnConflict();
+    sessionSyncsExternalEdits();
+    sessionKeepsTextWhenDiskCannotBeLoaded();
   } catch (const std::exception &error) {
     qCritical("%s", error.what());
     return 1;

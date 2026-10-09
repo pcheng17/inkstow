@@ -9,13 +9,16 @@ class QLineEdit;
 class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
+class QTimer;
 class QCloseEvent;
+class QFileSystemWatcher;
 
 class Window : public QMainWindow {
 public:
   Window();
 
 protected:
+  void changeEvent(QEvent *event) override;
   void closeEvent(QCloseEvent *event) override;
 
 private:
@@ -24,8 +27,12 @@ private:
   void saveNote();
   void refresh();
   void replaceEditor(const QString &text);
+  void watchNote();
+  void syncWithDisk();
 
   Session session_;
+  QFileSystemWatcher *watcher_;
+  QTimer *syncTimer_;
   QLineEdit *folder_;
   QListWidget *notes_;
   QPlainTextEdit *editor_;

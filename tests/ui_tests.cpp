@@ -2,13 +2,16 @@
 #include "window.h"
 
 #include <QApplication>
+#include <QDeadlineTimer>
 #include <QFile>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSaveFile>
 #include <QTemporaryDir>
+#include <QThread>
 
 #include <stdexcept>
 
@@ -29,6 +32,16 @@ static QByteArray readFile(const QString &path) {
   QFile file(path);
   CHECK(file.open(QIODevice::ReadOnly));
   return file.readAll();
+}
+
+// Lets the file watcher deliver its notifications.
+template <typename Done> static bool waitFor(Done done) {
+  QDeadlineTimer deadline(5000);
+  while (!done() && !deadline.hasExpired()) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    QThread::msleep(10);
+  }
+  return done();
 }
 
 int main(int argc, char **argv) {
@@ -66,8 +79,30 @@ int main(int argc, char **argv) {
     CHECK(readFile(note) == "first edit");
     CHECK(!save->isEnabled());
 
+    writeFile(note, "outside edit");
+    CHECK(waitFor(
+        [&] { return editor->toPlainText() == QStringLiteral("outside edit"); }));
+    CHECK(!save->isEnabled());
+    CHECK(status->text().contains(QStringLiteral("Reloaded")));
+
+    // Atomic replacement, as many editors save, drops the file from the
+    // watcher; later changes must still be noticed.
+    for (const QByteArray bytes : {QByteArray("renamed once"),
+                                   QByteArray("renamed twice")}) {
+      QSaveFile replacement(note);
+      CHECK(replacement.open(QIODevice::WriteOnly));
+      CHECK(replacement.write(bytes) == bytes.size());
+      CHECK(replacement.commit());
+      CHECK(waitFor([&] {
+        return editor->toPlainText() == QString::fromUtf8(bytes);
+      }));
+    }
+
     editor->setPlainText(QStringLiteral("local edit"));
     writeFile(note, "external edit");
+    CHECK(waitFor(
+        [&] { return status->text().contains(QStringLiteral("changed on disk")); }));
+    CHECK(editor->toPlainText() == QStringLiteral("local edit"));
     save->click();
     CHECK(status->text().contains(QStringLiteral("Save conflict")));
     CHECK(editor->toPlainText() == QStringLiteral("local edit"));
