@@ -9,5 +9,5 @@ int main(int argc, char **argv)
     configureLightTheme(app);
     Window window;
     window.show();
-    return app.exec();
+    return QApplication::exec();
 }

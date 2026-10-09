@@ -4,9 +4,9 @@
 #include <QPalette>
 #include <QStyleFactory>
 
-void configureLightTheme(QApplication &app)
+void configureLightTheme([[maybe_unused]] QApplication &app)
 {
-    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+    QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     QPalette light;
     light.setColor(QPalette::Window, QColor(QStringLiteral("#faf9fc")));
     light.setColor(QPalette::WindowText, QColor(QStringLiteral("#24212b")));
@@ -17,5 +17,5 @@ void configureLightTheme(QApplication &app)
     light.setColor(QPalette::ButtonText, QColor(QStringLiteral("#24212b")));
     light.setColor(QPalette::Highlight, QColor(QStringLiteral("#e7def4")));
     light.setColor(QPalette::HighlightedText, QColor(QStringLiteral("#24212b")));
-    app.setPalette(light);
+    QApplication::setPalette(light);
 }

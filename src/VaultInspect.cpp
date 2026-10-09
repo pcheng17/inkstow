@@ -8,12 +8,12 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     QTextStream out(stdout);
     QTextStream err(stderr);
-    if (app.arguments().size() != 2) {
+    if (QCoreApplication::arguments().size() != 2) {
         err << "Usage: vault-inspect <vault-folder>\n";
         return 1;
     }
     QString error;
-    const auto vault = Vault::open(app.arguments().at(1), &error);
+    const auto vault = Vault::open(QCoreApplication::arguments().at(1), &error);
     QStringList notes;
     if (!vault || !vault->listNotes(&notes, &error)) {
         err << "Vault error: " << error << '\n';
