@@ -30,6 +30,13 @@ bool readBytes(const QString &path, QByteArray *content, QString *error)
 }
 } // namespace
 
+bool moveToSystemTrash(const QString &path, QString *error)
+{
+    if (QFile::moveToTrash(path)) return true;
+    *error = QStringLiteral("Could not move the note to the trash, so it was not deleted.");
+    return false;
+}
+
 std::optional<Vault> Vault::open(const QString &folder, QString *error)
 {
     QFileInfo info(folder);
@@ -155,4 +162,49 @@ bool Vault::saveNote(
         return false;
     }
     return true;
+}
+
+bool Vault::createNote(const QString &relative, QString *error) const
+{
+    if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
+        !relative.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
+    {
+        *error = QStringLiteral("Expected a relative Markdown path.");
+        return false;
+    }
+    const QStringList segments = relative.split(u'/');
+    QString walked = root_;
+    for (qsizetype i = 0; i < segments.size(); ++i) {
+        // Covers "." and ".." too.
+        if (segments[i].isEmpty() || segments[i].startsWith(u'.')) {
+            *error = QStringLiteral("Note and folder names can't be empty or start with '.'.");
+            return false;
+        }
+        walked = QDir(walked).filePath(segments[i]);
+        const QFileInfo info(walked);
+        if (info.isSymLink()) {
+            *error = QStringLiteral("Cannot create a note through a link: %1").arg(relative);
+            return false;
+        }
+        const bool folder = i + 1 < segments.size();
+        if (folder && (info.exists() ? !info.isDir() : !QDir().mkdir(walked))) {
+            *error = QStringLiteral("Cannot create folder: %1").arg(walked);
+            return false;
+        }
+    }
+    // NewOnly fails instead of replacing a file created since the checks above.
+    QFile file(walked);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+        *error = QFileInfo::exists(walked)
+                     ? QStringLiteral("A file already exists at %1.").arg(relative)
+                     : file.errorString();
+        return false;
+    }
+    return true;
+}
+
+bool Vault::trashNote(const QString &relative, const TrashFunction &trash, QString *error) const
+{
+    const auto path = notePath(relative, error);
+    return path && trash(*path, error);
 }

@@ -17,9 +17,19 @@ enum class DiskChange
 class Session
 {
 public:
+    explicit Session(TrashFunction trash = moveToSystemTrash)
+        : trash_(std::move(trash))
+    {
+    }
+
     bool openVault(const QString &folder, QString *error);
     bool selectNote(const QString &path, QString *error);
     bool save(QString *error);
+    // Creates and selects a note at a vault-relative path, adding ".md" when
+    // missing. Moves the selected note to the trash. Both refuse while the
+    // editor has unsaved edits.
+    bool createNote(const QString &input, QString *error);
+    bool trashNote(QString *error);
     // Reloads a clean note changed by another program. Never discards edits.
     DiskChange syncWithDisk(QString *error);
     // Conflict resolution: discard the edits for the disk version, or replace
@@ -31,6 +41,7 @@ public:
     void discardEdits() { content_ = savedContent_; }
     void setContent(const QString &content) { content_ = content; }
 
+    bool hasVault() const { return vault_.has_value(); }
     bool dirty() const { return content_ != savedContent_; }
     const QStringList &notes() const { return notes_; }
     const QString &path() const { return path_; }
@@ -40,10 +51,14 @@ public:
 
 private:
     bool requireNote(QString *error) const;
+    bool requireClean(QString *error) const;
+    bool reloadNotes(QString *error);
+    void clearNote();
     bool write(const QByteArray &expected, QString *error);
     bool decode(const QByteArray &bytes, QString *text, QString *error) const;
     void load(const QString &path, const QByteArray &bytes, const QString &text);
 
+    TrashFunction trash_;
     std::optional<Vault> vault_;
     QStringList notes_;
     QString path_;

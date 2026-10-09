@@ -32,6 +32,16 @@ static QByteArray readFile(const QString &path)
     return file.readAll();
 }
 
+// Stands in for the system trash so tests don't fill the real one.
+static TrashFunction trashInto(const QString &folder)
+{
+    return [folder](const QString &path, QString *error) {
+        if (QFile::rename(path, QDir(folder).filePath(QFileInfo(path).fileName()))) return true;
+        *error = QStringLiteral("Fake trash failed.");
+        return false;
+    };
+}
+
 static void fixtureDiscovery()
 {
     QString error;
@@ -330,6 +340,139 @@ static void discardEditsLeavesDeletedNote()
     CHECK(!QFile::exists(note));
 }
 
+static void createsNotesSafely()
+{
+    QTemporaryDir dir;
+    QTemporaryDir outside;
+    CHECK(dir.isValid() && outside.isValid());
+    QString error;
+    const auto vault = Vault::open(dir.path(), &error);
+    CHECK(vault.has_value());
+
+    CHECK(vault->createNote(QStringLiteral("Folder/Sub/New.md"), &error));
+    CHECK(readFile(dir.filePath(QStringLiteral("Folder/Sub/New.md"))).isEmpty());
+    QStringList notes;
+    CHECK(vault->listNotes(&notes, &error));
+    CHECK(notes == QStringList{QStringLiteral("Folder/Sub/New.md")});
+
+    // Never overwrites an existing file.
+    writeFile(dir.filePath(QStringLiteral("Folder/Sub/New.md")), "kept");
+    CHECK(!vault->createNote(QStringLiteral("Folder/Sub/New.md"), &error));
+    CHECK(error.contains(QStringLiteral("exists")));
+    CHECK(readFile(dir.filePath(QStringLiteral("Folder/Sub/New.md"))) == "kept");
+
+    for (const QString &path :
+         {QStringLiteral("../escape.md"),
+          QStringLiteral("/tmp/absolute.md"),
+          QStringLiteral(".hidden.md"),
+          QStringLiteral(".hidden/note.md"),
+          QStringLiteral("Folder/.draft.md"),
+          QStringLiteral(".obsidian/note.md"),
+          QStringLiteral("Folder//note.md"),
+          QStringLiteral("Folder\\note.md"),
+          QStringLiteral("note.txt"),
+          QStringLiteral("")})
+    {
+        CHECK(!vault->createNote(path, &error));
+    }
+    CHECK(!QFile::exists(dir.filePath(QStringLiteral("../escape.md"))));
+    CHECK(!QDir(dir.filePath(QStringLiteral(".hidden"))).exists());
+
+#ifdef Q_OS_UNIX
+    // Neither a linked folder nor a dangling link is written through.
+    CHECK(QFile::link(outside.path(), dir.filePath(QStringLiteral("linked"))));
+    CHECK(!vault->createNote(QStringLiteral("linked/note.md"), &error));
+    CHECK(!vault->createNote(QStringLiteral("linked/Sub/note.md"), &error));
+    const QString target = outside.filePath(QStringLiteral("target.md"));
+    CHECK(QFile::link(target, dir.filePath(QStringLiteral("dangling.md"))));
+    CHECK(!vault->createNote(QStringLiteral("dangling.md"), &error));
+    CHECK(!QFile::exists(target));
+    CHECK(QDir(outside.path()).isEmpty());
+#endif
+}
+
+static void trashesNotes()
+{
+    QTemporaryDir dir;
+    QTemporaryDir trash;
+    CHECK(dir.isValid() && trash.isValid());
+    writeFile(dir.filePath(QStringLiteral("note.md")), "note");
+    writeFile(dir.filePath(QStringLiteral("other.md")), "other");
+    QString error;
+    const auto vault = Vault::open(dir.path(), &error);
+    CHECK(vault.has_value());
+
+    CHECK(vault->trashNote(QStringLiteral("note.md"), trashInto(trash.path()), &error));
+    CHECK(!QFile::exists(dir.filePath(QStringLiteral("note.md"))));
+    CHECK(readFile(trash.filePath(QStringLiteral("note.md"))) == "note");
+
+    CHECK(!vault->trashNote(QStringLiteral("note.md"), trashInto(trash.path()), &error));
+    CHECK(!vault->trashNote(QStringLiteral("../x.md"), trashInto(trash.path()), &error));
+
+    const TrashFunction failing = [](const QString &, QString *error) {
+        *error = QStringLiteral("No trash here.");
+        return false;
+    };
+    CHECK(!vault->trashNote(QStringLiteral("other.md"), failing, &error));
+    CHECK(error == QStringLiteral("No trash here."));
+    CHECK(readFile(dir.filePath(QStringLiteral("other.md"))) == "other");
+
+#ifdef Q_OS_UNIX
+    CHECK(
+        QFile::link(
+            dir.filePath(QStringLiteral("other.md")),
+            dir.filePath(QStringLiteral("link.md"))));
+    CHECK(!vault->trashNote(QStringLiteral("link.md"), trashInto(trash.path()), &error));
+    CHECK(QFileInfo(dir.filePath(QStringLiteral("link.md"))).isSymLink());
+#endif
+}
+
+static void sessionCreatesAndTrashesNotes()
+{
+    QTemporaryDir dir;
+    QTemporaryDir trash;
+    CHECK(dir.isValid() && trash.isValid());
+    writeFile(dir.filePath(QStringLiteral("note.md")), "note");
+    QString error;
+    Session session(trashInto(trash.path()));
+    CHECK(!session.trashNote(&error)); // Nothing open yet.
+    CHECK(session.openVault(dir.path(), &error));
+
+    // The extension is added when missing and the new note is selected.
+    CHECK(session.createNote(QStringLiteral(" Ideas "), &error));
+    CHECK(session.path() == QStringLiteral("Ideas.md"));
+    CHECK(session.content().isEmpty() && !session.dirty());
+    CHECK(session.notes().contains(QStringLiteral("Ideas.md")));
+    CHECK(session.createNote(QStringLiteral("Folder/Plan.MD"), &error));
+    CHECK(session.path() == QStringLiteral("Folder/Plan.MD"));
+    // On case-insensitive file systems, an existing folder keeps its spelling.
+    if (QFileInfo::exists(dir.filePath(QStringLiteral("folder")))) {
+        CHECK(session.createNote(QStringLiteral("folder/Later"), &error));
+        CHECK(session.path() == QStringLiteral("Folder/Later.md"));
+    }
+    CHECK(session.createNote(QStringLiteral("v1.2"), &error));
+    CHECK(session.path() == QStringLiteral("v1.2.md"));
+
+    // An existing note is not replaced, and the selection stays.
+    CHECK(!session.createNote(QStringLiteral("note"), &error));
+    CHECK(session.path() == QStringLiteral("v1.2.md"));
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "note");
+
+    // Unsaved edits block both, so nothing is lost silently.
+    session.setContent(QStringLiteral("unsaved"));
+    CHECK(!session.createNote(QStringLiteral("Another"), &error));
+    CHECK(!QFile::exists(dir.filePath(QStringLiteral("Another.md"))));
+    CHECK(!session.trashNote(&error));
+    CHECK(QFile::exists(dir.filePath(QStringLiteral("v1.2.md"))));
+    session.discardEdits();
+
+    CHECK(session.trashNote(&error));
+    CHECK(session.path().isEmpty() && session.content().isEmpty());
+    CHECK(!session.notes().contains(QStringLiteral("v1.2.md")));
+    CHECK(QFile::exists(trash.filePath(QStringLiteral("v1.2.md"))));
+    CHECK(!session.trashNote(&error));
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -345,6 +488,9 @@ int main(int argc, char **argv)
         sessionResolvesConflicts();
         keepMineRefusesUnseenAndSwappedVersions();
         discardEditsLeavesDeletedNote();
+        createsNotesSafely();
+        trashesNotes();
+        sessionCreatesAndTrashesNotes();
     } catch (const std::exception &error) {
         qCritical("%s", error.what());
         return 1;
