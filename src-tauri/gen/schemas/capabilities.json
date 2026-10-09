@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Core commands only; no direct filesystem access from web content.","local":true,"windows":["main"],"permissions":["core:default"]}}

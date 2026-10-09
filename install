@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 case "${1:-}" in
   --system)
     if [[ $EUID -ne 0 ]]; then echo 'Run with sudo: sudo ./install --system' >&2; exit 1; fi
-    if ! command -v apt-get >/dev/null; then echo 'Linux apt is required for --system; see Tauri prerequisites for other distributions.' >&2; exit 1; fi
-    packages=(libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf libssl-dev pkg-config build-essential curl file)
+    if ! command -v apt-get >/dev/null; then echo 'Ubuntu/Debian apt is required for --system.' >&2; exit 1; fi
+    packages=(build-essential cmake qt6-base-dev qt6-base-dev-tools)
     missing=()
     for pkg in "${packages[@]}"; do
       dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed' || missing+=("$pkg")
@@ -16,21 +15,8 @@ case "${1:-}" in
       apt-get install -y "${missing[@]}"
     fi
     ;;
-  --user)
-    if [[ $EUID -eq 0 ]]; then echo 'Run --user as a regular user.' >&2; exit 1; fi
-    command -v npm >/dev/null || { echo 'Install Node.js and npm first.' >&2; exit 1; }
-    if [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
-      curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path
-    fi
-    "$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal
-    "$HOME/.cargo/bin/rustup" default stable
-    "$HOME/.cargo/bin/rustup" component add rustfmt clippy
-    cd "$ROOT"
-    npm ci
-    echo 'Ready. Add ~/.cargo/bin to PATH, or use source "$HOME/.cargo/env".'
-    ;;
   *)
-    echo 'Usage: ./install --user | sudo ./install --system' >&2
+    echo 'Usage: sudo ./install --system' >&2
     exit 1
     ;;
 esac
