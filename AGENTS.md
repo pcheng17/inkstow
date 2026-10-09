@@ -1,6 +1,6 @@
 # Inkstow agent workflow
 
-Temporary repository rule: Do all work directly on `main` in this repository directory. Do not create or use feature branches or additional worktrees.
+Make each change on a new branch in its own git worktree, and merge it through a pull request. Never commit or push to `main`.
 
 For changes to the vault core or UI, run the CMake build and CTest commands in README's "Install and run" section before reporting success. On macOS, the `ui-smoke` test needs file system events (FSEvents); a sandbox that blocks them makes its outside-edit checks time out, so run it unsandboxed. These build the C++/Qt app and run core and offscreen UI tests against disposable fixtures.
 
