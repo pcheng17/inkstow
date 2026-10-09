@@ -28,6 +28,14 @@ printf '%s\n' "$vault"
 
 Open that path in Inkstow. Only `Welcome.md` and `Folder/Second note.md` should appear; dot-prefixed files and folders are excluded from discovery. Edit and save a note, then confirm the copied file changes on disk. Check that an unsaved note cannot be switched away from. With no unsaved edits, change the open note from another program: Inkstow should reload it and say so in the status bar. To test a conflict, edit a note in Inkstow without saving, modify the same file externally, then press Save: it should report a conflict, retain the unsaved editor text without overwriting the external version, and show a bar with **Reload from disk** (discard your edits) and **Keep mine** (replace the external version).
 
+## Pre-commit hook
+
+The `.githooks/pre-commit` hook auto-formats staged `.h` and `.cpp` files with `clang-format` before each commit. Install `clang-format` and activate the hook once after cloning:
+
+```sh
+git config core.hooksPath .githooks
+```
+
 ## Headless tests
 
 The build and test commands above build the C++ core, CLI, and Qt Widgets app, then run filesystem and session tests plus an offscreen UI smoke test. The tests also check note discovery against the fixture vault. No graphical display is required. Run `./build/debug/vault-inspect tests/fixtures/sample` to inspect the fixture, or pass another throwaway vault path without opening a window.
