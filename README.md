@@ -8,13 +8,13 @@ On Debian/Ubuntu Linux (macOS notes follow):
 
 ```sh
 sudo ./scripts/install --system   # Qt 6 development libraries, CMake, and C++ compiler
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-./build/inkstow           # run the desktop app on a graphical machine
+cmake --preset debug      # or: release
+cmake --build --preset debug --parallel
+ctest --preset debug
+./build/debug/inkstow     # run the desktop app on a graphical machine
 ```
 
-On macOS, install Xcode or its Command Line Tools and [Homebrew](https://brew.sh), then run `./scripts/install --system` without `sudo` (it installs Homebrew's `cmake` and `qt`) and the same CMake build and CTest commands. CMake finds Homebrew's Qt through `brew --prefix qt`; pass `-DCMAKE_PREFIX_PATH=/path/to/qt` to use another Qt. If linking fails with `framework 'AGL' not found`, your Qt predates the macOS 26 SDK, which dropped AGL: run `brew upgrade qt` (6.9.0 fails; 6.11.2 works), then delete `build/` and reconfigure.
+On macOS, install Xcode or its Command Line Tools and [Homebrew](https://brew.sh), then run `./scripts/install --system` without `sudo` (it installs Homebrew's `cmake` and `qt`) and the same CMake build and CTest commands. CMake finds Homebrew's Qt through `brew --prefix qt`; pass `-DCMAKE_PREFIX_PATH=/path/to/qt` to use another Qt. If linking fails with `framework 'AGL' not found`, your Qt predates the macOS 26 SDK, which dropped AGL: run `brew upgrade qt` (6.9.0 fails; 6.11.2 works), then delete `build/` and reconfigure. Presets need CMake 3.21+; with an older CMake, use `cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug` and `ctest --test-dir build/debug --output-on-failure`.
 
 On other systems, install CMake 3.20+, a C++17 compiler, and Qt 6.4+ Core and Widgets, then use the same CMake build and CTest commands. The application uses a light Qt palette even when the desktop's default is dark.
 
@@ -30,7 +30,7 @@ Open that path in Inkstow. Only `Welcome.md` and `Folder/Second note.md` should 
 
 ## Headless tests
 
-The `cmake --build` and `ctest` commands above build the C++ core, CLI, and Qt Widgets app, then run filesystem and session tests plus an offscreen UI smoke test. The tests also check note discovery against the fixture vault. No graphical display is required. Run `./build/vault-inspect tests/fixtures/sample` to inspect the fixture, or pass another throwaway vault path without opening a window.
+The build and test commands above build the C++ core, CLI, and Qt Widgets app, then run filesystem and session tests plus an offscreen UI smoke test. The tests also check note discovery against the fixture vault. No graphical display is required. Run `./build/debug/vault-inspect tests/fixtures/sample` to inspect the fixture, or pass another throwaway vault path without opening a window.
 
 ## Boundaries and limitations
 

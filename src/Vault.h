@@ -9,24 +9,29 @@
 
 // Filesystem-only vault operations. Paths are relative to the vault and use
 // '/'.
-class Vault {
+class Vault
+{
 public:
-  static std::optional<Vault> open(const QString &folder, QString *error);
+    static std::optional<Vault> open(const QString &folder, QString *error);
 
-  const QString &root() const { return root_; }
-  bool listNotes(QStringList *notes, QString *error) const;
-  bool readNote(const QString &relative, QByteArray *content,
-                QString *error) const;
-  // The disk bytes must still equal expected. The replacement is staged in the
-  // same directory and renamed into place; other programs can race the final
-  // check.
-  bool saveNote(const QString &relative, const QByteArray &expected,
-                const QByteArray &content, QString *error) const;
+    const QString &root() const { return root_; }
+    bool listNotes(QStringList *notes, QString *error) const;
+    bool readNote(const QString &relative, QByteArray *content, QString *error) const;
+    // The disk bytes must still equal expected. The replacement is staged in the
+    // same directory and renamed into place; other programs can race the final
+    // check.
+    bool saveNote(
+        const QString &relative,
+        const QByteArray &expected,
+        const QByteArray &content,
+        QString *error) const;
 
 private:
-  explicit Vault(QString root) : root_(std::move(root)) {}
-  std::optional<QString> notePath(const QString &relative,
-                                  QString *error) const;
+    explicit Vault(QString root)
+        : root_(std::move(root))
+    {
+    }
+    std::optional<QString> notePath(const QString &relative, QString *error) const;
 
-  QString root_;
+    QString root_;
 };
