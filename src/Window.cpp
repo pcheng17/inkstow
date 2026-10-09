@@ -21,6 +21,16 @@
 
 Window::Window(TrashFunction trash)
     : session_(std::move(trash))
+    , watcher_(new QFileSystemWatcher(this))
+    , syncTimer_(new QTimer(this))
+    , folder_(new QLineEdit)
+    , notes_(new QListWidget)
+    , editor_(new QPlainTextEdit)
+    , newPath_(new QLineEdit)
+    , deleteBar_(new QWidget)
+    , deleteLabel_(new QLabel)
+    , conflictBar_(new QWidget)
+    , conflictLabel_(new QLabel)
 {
     setWindowTitle(QStringLiteral("Inkstow"));
     resize(1100, 750);
@@ -32,7 +42,6 @@ Window::Window(TrashFunction trash)
     titleFont.setBold(true);
     titleFont.setPointSize(14);
     title->setFont(titleFont);
-    folder_ = new QLineEdit;
     folder_->setObjectName(QStringLiteral("vaultFolder"));
     folder_->setPlaceholderText(QStringLiteral("/path/to/vault"));
     auto *open = new QPushButton(QStringLiteral("Open"));
@@ -45,9 +54,7 @@ Window::Window(TrashFunction trash)
     page->addLayout(header);
 
     auto *splitter = new QSplitter;
-    notes_ = new QListWidget;
     notes_->setObjectName(QStringLiteral("notes"));
-    editor_ = new QPlainTextEdit;
     editor_->setObjectName(QStringLiteral("editor"));
     editor_->setPlaceholderText(QStringLiteral("Select a note"));
     auto *right = new QWidget;
@@ -62,11 +69,9 @@ Window::Window(TrashFunction trash)
     toolbar->addWidget(delete_);
     toolbar->addWidget(save_);
     rightLayout->addLayout(toolbar);
-    conflictBar_ = new QWidget;
     conflictBar_->setObjectName(QStringLiteral("conflictBar"));
     auto *conflictLayout = new QHBoxLayout(conflictBar_);
     conflictLayout->setContentsMargins(0, 0, 0, 0);
-    conflictLabel_ = new QLabel;
     reload_ = new QPushButton(QStringLiteral("Reload from disk"));
     reload_->setObjectName(QStringLiteral("reloadFromDisk"));
     keepMine_ = new QPushButton(QStringLiteral("Keep mine"));
@@ -79,11 +84,9 @@ Window::Window(TrashFunction trash)
     conflictLayout->addWidget(discard_);
     conflictBar_->hide();
     rightLayout->addWidget(conflictBar_);
-    deleteBar_ = new QWidget;
     deleteBar_->setObjectName(QStringLiteral("deleteBar"));
     auto *deleteLayout = new QHBoxLayout(deleteBar_);
     deleteLayout->setContentsMargins(0, 0, 0, 0);
-    deleteLabel_ = new QLabel;
     auto *confirmDelete = new QPushButton(QStringLiteral("Move to trash"));
     confirmDelete->setObjectName(QStringLiteral("confirmDelete"));
     auto *cancelDelete = new QPushButton(QStringLiteral("Cancel"));
@@ -98,7 +101,6 @@ Window::Window(TrashFunction trash)
     auto *leftLayout = new QVBoxLayout(left);
     leftLayout->setContentsMargins(0, 0, 0, 0);
     auto *newNote = new QHBoxLayout;
-    newPath_ = new QLineEdit;
     newPath_->setObjectName(QStringLiteral("newNotePath"));
     newPath_->setPlaceholderText(QStringLiteral("Folder/New note"));
     create_ = new QPushButton(QStringLiteral("Create"));
@@ -116,9 +118,7 @@ Window::Window(TrashFunction trash)
     status_->setObjectName(QStringLiteral("status"));
     page->addWidget(status_);
     setCentralWidget(central);
-    watcher_ = new QFileSystemWatcher(this);
     // Waits for a burst of writes to settle so a half-written note is not loaded.
-    syncTimer_ = new QTimer(this);
     syncTimer_->setSingleShot(true);
     syncTimer_->setInterval(150);
     refresh();
