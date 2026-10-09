@@ -7,14 +7,14 @@ Prototype of a non-Electron Markdown vault editor built in C++17 and Qt 6 Widget
 On Debian/Ubuntu Linux (macOS notes follow):
 
 ```sh
-sudo ./install --system   # Qt 6 development libraries, CMake, and C++ compiler
+sudo ./scripts/install --system   # Qt 6 development libraries, CMake, and C++ compiler
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/inkstow           # run the desktop app on a graphical machine
 ```
 
-On macOS, install Xcode or its Command Line Tools and [Homebrew](https://brew.sh), then run `./install --system` without `sudo` (it installs Homebrew's `cmake` and `qt`) and the same CMake build and CTest commands. CMake finds Homebrew's Qt through `brew --prefix qt`; pass `-DCMAKE_PREFIX_PATH=/path/to/qt` to use another Qt. If linking fails with `framework 'AGL' not found`, your Qt predates the macOS 26 SDK, which dropped AGL: run `brew upgrade qt` (6.9.0 fails; 6.11.2 works), then delete `build/` and reconfigure.
+On macOS, install Xcode or its Command Line Tools and [Homebrew](https://brew.sh), then run `./scripts/install --system` without `sudo` (it installs Homebrew's `cmake` and `qt`) and the same CMake build and CTest commands. CMake finds Homebrew's Qt through `brew --prefix qt`; pass `-DCMAKE_PREFIX_PATH=/path/to/qt` to use another Qt. If linking fails with `framework 'AGL' not found`, your Qt predates the macOS 26 SDK, which dropped AGL: run `brew upgrade qt` (6.9.0 fails; 6.11.2 works), then delete `build/` and reconfigure.
 
 On other systems, install CMake 3.20+, a C++17 compiler, and Qt 6.4+ Core and Widgets, then use the same CMake build and CTest commands. The application uses a light Qt palette even when the desktop's default is dark.
 
