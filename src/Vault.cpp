@@ -107,7 +107,7 @@ std::optional<QString> Vault::notePath(const QString &relative, QString *error) 
         }
     }
     QFileInfo info(QDir(root_).filePath(relative));
-    const QString resolved = info.canonicalFilePath();
+    QString resolved = info.canonicalFilePath();
     const QString prefix = root_.endsWith(u'/') ? root_ : root_ + u'/';
     if (!info.isFile() || !resolved.startsWith(prefix) ||
         resolved.startsWith(prefix + QStringLiteral(".obsidian/")))
