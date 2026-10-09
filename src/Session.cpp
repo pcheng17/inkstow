@@ -172,7 +172,7 @@ QString Session::notePath() const
     return QDir(vault_->root()).filePath(path_);
 }
 
-bool Session::decode(const QByteArray &bytes, QString *text, QString *error) const
+bool Session::decode(const QByteArray &bytes, QString *text, QString *error)
 {
     QStringDecoder decoder(QStringDecoder::Utf8);
     *text = decoder.decode(bytes);

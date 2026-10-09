@@ -56,7 +56,7 @@ private:
     bool requireClean(QString *error) const;
     void clearNote();
     bool write(const QByteArray &expected, QString *error);
-    bool decode(const QByteArray &bytes, QString *text, QString *error) const;
+    static bool decode(const QByteArray &bytes, QString *text, QString *error);
     void load(const QString &path, const QByteArray &bytes, const QString &text);
 
     TrashFunction trash_;
