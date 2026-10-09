@@ -34,7 +34,8 @@ export class Session {
     if (!this.path) throw new Error("Select a note first.");
     const path = this.path;
     const content = this.content;
-    await this.api.saveNote(path, content);
+    const expected = this.savedContent;
+    await this.api.saveNote(path, expected, content);
     // Do not mark newer, unsaved edits as saved if a save finishes late.
     if (this.path === path) this.savedContent = content;
   }

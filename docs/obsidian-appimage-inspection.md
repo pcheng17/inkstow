@@ -1,0 +1,41 @@
+# Obsidian 1.14.4 AppImage: static inspection
+
+Source: `../tmp/Obsidian-1.14.4.AppImage` (SHA-256 `6362ddbeeeebb7bbccb48fae009572cf2284ef92f5c919c1332aba48de6ffeaa`). Inspected by listing its SquashFS at offset 188392 and extracting only its two ASAR archives into a temporary directory outside the repo. No Obsidian executable or bundled JavaScript was run; no vault was touched. Offsets below are **Unicode character positions in the extracted ASAR members decoded as UTF-8**, not byte offsets in the AppImage. Search for the method name when navigating the minified file. This is a static reading of bundled code, not a verified behavioral test. Do not commit the extracted proprietary bundles.
+
+## Where the code lives
+
+- `resources/app.asar` (SHA-256 `2b50b52ddab21f81ca113e6b6f3ce83b0274aa6fa3a7e09f99d779c159fe4492`) is a 73,695-byte Electron bootstrap. Its `main.js` selects a downloaded `obsidian-*.asar` from application data if eligible, otherwise loads the built-in `resources/obsidian.asar` (`main.js`, startup routine, around lines 421-480). Thus a running installation may differ from the bundled version.
+- `resources/obsidian.asar` (SHA-256 `146ef8470d8cbb4a6db209bdc19bf2bad13350444186c0fd93c31087b142b92f`) contains the main app code: a 3,942,126-byte minified `app.js`, a 203,702-byte `main.js`, and packaged assets. Its `package.json` reports version 1.14.4. The desktop app's core is available as bundled JavaScript, not just native machine code. Native `.node` modules also exist in `app.asar.unpacked` (see the SquashFS listing), but were not disassembled.
+
+## Link-resolution clues in bundled `app.js`
+
+The minified metadata-cache implementation has readable method names. The following is a summary, **not a source transcription**:
+
+- `getFirstLinkpathDest` returns the first candidate from `getLinkpathDest` (`app.js` offsets ~1750670-1750810). `resolveLinks` uses it to populate resolved and unresolved links (~1759650); this makes candidate ordering important.
+- `getLinkpathDest` (~1750786-1751979) first tries a direct vault path (and then the same path with `.md` appended) for `file:`-style paths or sources beginning with `file:`. Otherwise it looks up a lowercase basename, trying the supplied extension and then `.md`. Exact relative paths and exact root-relative paths take precedence. For ambiguous bare names, candidates under the source folder prefix come first, with shorter full paths first within each group. A leading `/` does not fall back to loose basename matching. This is a hypothesis about behavior inferred from the control flow; test it, especially case handling, duplicates and ties.
+- Candidate lookup is populated from loaded files using lowercased filenames (`uniqueFileLookup.add`, ~1757020 and ~1761656), not just Markdown files. A path comparator uses path length (`RR`, ~1745552). `getLinkpath` strips the `#` subpath before resolution (`zm`, ~778271), and another helper separates path from heading/block subpath (`qm`, same area). These findings suggest heading/block lookup is a distinct stage.
+- `fileToLinktext` (~1754082) branches on the `newLinkFormat` setting: absolute, relative, or shortest-unique-link form. For shortest links it checks whether basename lookup resolves uniquely to the target before using a bare filename; otherwise it uses a qualified path.
+
+## Configuration clue
+
+The vault code has a default configuration directory of `.obsidian` and a `setConfigDir` method that validates and can change it (`app.js` ~1412168 and ~1416075). Inkstow currently hardcodes `.obsidian`; the bundle is evidence that the default is not the only configuration path.
+
+## Further vault-core findings
+
+These are independent paths through `resources/obsidian.asar`'s bundled `app.js`, inferred from minified code. They are **not** promises that every platform, setting, or future version follows the same path.
+
+- **Discovery and hidden paths:** the desktop filesystem adapter's recursive listing calls a helper that treats any path segment beginning with `.` as hidden, and reconciles it as absent from the normal file tree (`listRecursiveChild` ~547405; hidden-segment helper `Al` ~543441). The vault exposes separate `getMarkdownFiles` and `getFiles` methods (~1429067). Inkstow's note discovery now skips dot-prefixed entries too, with a regression fixture; a live Obsidian comparison is still needed. Configuration access is separate, so this does not mean `.obsidian` is ignored for settings.
+- **External changes and indexing:** the desktop adapter uses `fs.watch` events and reconciles affected paths; the metadata cache subscribes to create, modify, delete, rename and external-watch events (`app.js` ~560031, ~1754568). A worker computes file metadata, while file and metadata cache stores are opened via IndexedDB (`_preload` ~1755060). The cache appears rebuildable and distinct from Markdown content; the exact timing and reliability of watcher notifications require live tests.
+- **Note read and save:** `vault.read` removes a leading UTF-8 BOM character from text it returns and may cache the result (~1423206). `vault.modify` forwards text to `adapter.write` (~1425209); the desktop adapter shown calls `fsPromises.writeFile` on the full path and then reconciles it (~550288). That path does not show a temp-file rename or an expected-content compare. Inkstow's atomic conflict check is a deliberate safety difference, **not** evidence that it duplicates Obsidian's save semantics.
+- **Concurrent editing:** the text editor's `onModify` reload path, if it has dirty local text, applies the local diff from the previous version onto the new disk text (`loadFileInternal` ~2809027; diff/patch helper `e2` ~2678935). On a failed save it can ask the file-recovery plugin to retain a backup (`save` ~2807900; `storeTextFileBackup` ~1802863). Static inspection does not establish how overlaps are resolved, whether recovery is enabled, or what happens if the patch fails. Inkstow currently retains local text and rejects the conflicting save instead of merging.
+- **Properties:** `getFrontMatterInfo` recognizes leading `---` and a closing delimiter at the start of a line (`pm` ~770690). `processFrontMatter` calls `vault.process` with a parse/mutate/serialize transform (`vB` ~1804154; method ~1802593). Editing properties can therefore rewrite their YAML formatting, unlike an ordinary opaque note read/save. Do not infer full YAML semantics from this alone.
+- **Rename/link updates:** the metadata cache tracks references and invalidates relevant resolved/unresolved links after a file rename (~1763632). A link-update path collects references and either rewrites links automatically when `alwaysUpdateLinks` is set or presents a confirmation with choices (`updateAllLinks` ~1791043). It processes each affected note (~1753221). This is a separate operation from physically renaming the file; the precise rewrite rules need fixtures.
+
+## Investigation priorities for a compatibility spec
+
+1. **Vault inventory:** disposable vault with hidden files/folders, attachments, a custom config directory, and a BOM-bearing Markdown file. Compare listing and reads with the bundle's clues. This gives the index a reliable boundary.
+2. **Links:** duplicate filenames at different depths, exact relative/root paths, case variants, explicit extensions, leading `/`, heading fragments, and non-Markdown attachment names. Capture where Obsidian navigates, not just the visible link styling.
+3. **External edit:** open a note, make local and external changes in disjoint and overlapping regions, and observe text and file-recovery behavior without putting real notes at risk. Specify whether Inkstow should mimic Obsidian's merge or intentionally keep its safer reject-and-recover flow.
+4. **Properties and rename:** change one YAML property and rename a linked note with each link-update setting; diff bytes before/after. Only then define rewriting rules.
+
+For each case, record the observed app version, relevant settings, input files, actions, resulting files, and unresolved uncertainty. The code above provides hypotheses and test targets; static bundle inspection alone cannot establish runtime behavior, filesystem timing, or compatibility across versions. Check whether the running app loads an updated ASAR instead of the built-in one.

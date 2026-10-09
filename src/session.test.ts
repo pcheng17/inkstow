@@ -19,7 +19,7 @@ describe("session", () => {
     await expect(session.selectNote("other.md")).rejects.toThrow("Save");
     expect(session.path).toBe("note.md");
     await session.save();
-    expect(api.saveNote).toHaveBeenCalledWith("note.md", "edited [[other]]");
+    expect(api.saveNote).toHaveBeenCalledWith("note.md", "note.md", "edited [[other]]");
     expect(session.dirty).toBe(false);
     await session.selectNote("other.md");
     expect(session.content).toBe("other.md");
@@ -39,6 +39,32 @@ describe("session", () => {
     await pending;
     expect(session.dirty).toBe(true);
     expect(session.savedContent).toBe("first edit");
+    expect(api.saveNote).toHaveBeenCalledWith("note.md", "note.md", "first edit");
+  });
+
+  it("keeps local edits when an external change rejects a second save", async () => {
+    let disk = "original";
+    const api = makeApi();
+    api.readNote = vi.fn(async () => disk);
+    api.saveNote = vi.fn(async (_path, expected, content) => {
+      if (disk !== expected) throw new Error("Save conflict: note changed on disk");
+      disk = content;
+    });
+    const session = new Session(api);
+    await session.openVault("/vault");
+    await session.selectNote("note.md");
+    session.content = "first edit";
+    await session.save();
+    expect(disk).toBe("first edit");
+    session.content = "local unsaved edit";
+    disk = "external edit";
+    await expect(session.save()).rejects.toThrow("Save conflict");
+    expect(api.saveNote).toHaveBeenLastCalledWith("note.md", "first edit", "local unsaved edit");
+    expect(disk).toBe("external edit");
+    expect(session.content).toBe("local unsaved edit");
+    expect(session.savedContent).toBe("first edit");
+    expect(session.dirty).toBe(true);
+    await expect(session.selectNote("other.md")).rejects.toThrow("Save");
   });
 
   it("retains the prior vault when opening another vault fails", async () => {

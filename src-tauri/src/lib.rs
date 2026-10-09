@@ -24,8 +24,13 @@ fn read_note(path: String, state: State<'_, ActiveVault>) -> Result<String, Stri
 }
 
 #[tauri::command]
-fn save_note(path: String, content: String, state: State<'_, ActiveVault>) -> Result<(), String> {
-    with_vault(state, |vault| vault.save_note(&path, &content))
+fn save_note(
+    path: String,
+    expected: String,
+    content: String,
+    state: State<'_, ActiveVault>,
+) -> Result<(), String> {
+    with_vault(state, |vault| vault.save_note(&path, &expected, &content))
 }
 
 fn with_vault<T>(
