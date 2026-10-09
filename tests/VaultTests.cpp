@@ -68,7 +68,8 @@ static void savesAndRejectsConflicts()
     QByteArray original;
     CHECK(vault->readNote(QStringLiteral("note.md"), &original, &error));
 #ifdef Q_OS_UNIX
-    struct stat before{}, after{};
+    struct stat before{};
+    struct stat after{};
     CHECK(::chmod(QFile::encodeName(path).constData(), 0640) == 0);
     CHECK(::stat(QFile::encodeName(path).constData(), &before) == 0);
 #endif
