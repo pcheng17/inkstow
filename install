@@ -1,22 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-case "${1:-}" in
-  --system)
-    if [[ $EUID -ne 0 ]]; then echo 'Run with sudo: sudo ./install --system' >&2; exit 1; fi
-    if ! command -v apt-get >/dev/null; then echo 'Ubuntu/Debian apt is required for --system.' >&2; exit 1; fi
-    packages=(build-essential cmake qt6-base-dev qt6-base-dev-tools)
-    missing=()
-    for pkg in "${packages[@]}"; do
-      dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed' || missing+=("$pkg")
-    done
-    if ((${#missing[@]})); then
-      apt-get update
-      apt-get install -y "${missing[@]}"
-    fi
-    ;;
-  *)
-    echo 'Usage: sudo ./install --system' >&2
-    exit 1
-    ;;
+usage() {
+  echo 'Usage: sudo ./install --system   # Debian/Ubuntu' >&2
+  echo '       ./install --system        # macOS with Homebrew' >&2
+  exit 1
+}
+
+install_apt() {
+  if [[ $EUID -ne 0 ]]; then echo 'Run with sudo: sudo ./install --system' >&2; exit 1; fi
+  if ! command -v apt-get >/dev/null; then echo 'Ubuntu/Debian apt is required for --system.' >&2; exit 1; fi
+  packages=(build-essential cmake qt6-base-dev qt6-base-dev-tools)
+  missing=()
+  for pkg in "${packages[@]}"; do
+    dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed' || missing+=("$pkg")
+  done
+  if ((${#missing[@]})); then
+    apt-get update
+    apt-get install -y "${missing[@]}"
+  fi
+}
+
+install_brew() {
+  if [[ $EUID -eq 0 ]]; then echo 'Homebrew refuses to run as root: ./install --system' >&2; exit 1; fi
+  if ! command -v brew >/dev/null; then echo 'Homebrew is required on macOS: https://brew.sh' >&2; exit 1; fi
+  if ! xcode-select -p >/dev/null 2>&1; then echo 'Install a C++ compiler first: xcode-select --install' >&2; exit 1; fi
+  packages=(cmake qt)
+  missing=()
+  for pkg in "${packages[@]}"; do
+    brew list --versions "$pkg" >/dev/null || missing+=("$pkg")
+  done
+  if ((${#missing[@]})); then
+    brew install "${missing[@]}"
+  fi
+}
+
+[[ "${1:-}" == --system ]] || usage
+case "$(uname -s)" in
+  Darwin) install_brew ;;
+  Linux) install_apt ;;
+  *) echo 'Unsupported system; install CMake, a C++17 compiler, and Qt 6.4+ manually.' >&2; exit 1 ;;
 esac

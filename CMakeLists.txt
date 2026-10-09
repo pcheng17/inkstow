@@ -4,6 +4,19 @@ project(Inkstow VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Homebrew's Qt is not on CMake's default search path.
+if(APPLE AND NOT Qt6_DIR)
+  find_program(BREW_EXECUTABLE brew)
+  if(BREW_EXECUTABLE)
+    execute_process(COMMAND "${BREW_EXECUTABLE}" --prefix qt
+                    OUTPUT_VARIABLE BREW_QT_PREFIX
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(IS_DIRECTORY "${BREW_QT_PREFIX}")
+      list(APPEND CMAKE_PREFIX_PATH "${BREW_QT_PREFIX}")
+    endif()
+  endif()
+endif()
+
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets)
 
 add_library(vault-core cpp/vault.cpp cpp/session.cpp)
