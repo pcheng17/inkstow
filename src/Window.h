@@ -1,6 +1,6 @@
 #pragma once
 
-#include "session.h"
+#include "Session.h"
 
 #include <QMainWindow>
 

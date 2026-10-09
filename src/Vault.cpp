@@ -1,4 +1,4 @@
-#include "vault.h"
+#include "Vault.h"
 
 #include <QDir>
 #include <QFile>

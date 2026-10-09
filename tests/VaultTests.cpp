@@ -1,4 +1,4 @@
-#include "session.h"
+#include "Session.h"
 
 #include <QCoreApplication>
 #include <QDir>

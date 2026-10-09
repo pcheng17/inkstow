@@ -1,5 +1,5 @@
-#include "theme.h"
-#include "window.h"
+#include "Theme.h"
+#include "Window.h"
 
 #include <QApplication>
 
