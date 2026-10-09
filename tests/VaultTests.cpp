@@ -409,6 +409,127 @@ static void createsNotesSafely()
 #endif
 }
 
+static void mergeOutsideEdits()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("note.md"));
+    QString error;
+    Session session;
+    writeFile(path, "one\ntwo\nthree\nfour\n");
+    CHECK(session.openVault(dir.path(), &error));
+    CHECK(session.selectNote(QStringLiteral("note.md"), &error));
+    session.setContent(QStringLiteral("ONE\ntwo\nthree\nfour\n"));
+    writeFile(path, "one\ntwo\nthree\nFOUR\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.content() == QStringLiteral("ONE\ntwo\nthree\nFOUR\n"));
+    CHECK(session.dirty());
+    CHECK(readFile(path) == "one\ntwo\nthree\nFOUR\n");
+    writeFile(path, "newer\n");
+    CHECK(!session.save(&error));
+    CHECK(session.content() == QStringLiteral("ONE\ntwo\nthree\nFOUR\n"));
+    CHECK(readFile(path) == "newer\n");
+    writeFile(path, "one\ntwo\nthree\nFOUR\n");
+    CHECK(session.save(&error));
+    CHECK(readFile(path) == "ONE\ntwo\nthree\nFOUR\n");
+
+    writeFile(path, "one\ntwo\nthree\nfour\n");
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent(QStringLiteral("one\nlocal\nthree\nfour\n"));
+    writeFile(path, "one\noutside\nthree\nfour\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    writeFile(path, "one\nnewer\nthree\nfour\n");
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(session.content() == QStringLiteral("one\nlocal\nthree\nfour\n"));
+    writeFile(path, "one\noutside\nthree\nfour\n");
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.content().contains(
+        QStringLiteral("<<<<<<< mine\nlocal\n=======\noutside\n>>>>>>> outside")));
+    CHECK(readFile(path) == "one\noutside\nthree\nfour\n");
+    CHECK(session.save(&error)); // Markers are only written when explicitly saved.
+
+    writeFile(path, "one\ntwo\nthree\n");
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent(QStringLiteral("one\nthree\n"));
+    writeFile(path, "one\nchanged\nthree\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.content().contains(QStringLiteral("<<<<<<< mine")));
+
+    // An outside insertion inside a locally deleted region is a conflict:
+    // applying it separately would silently restore deleted lines.
+    writeFile(path, "a\nb\nc\nd\ne");
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent(QStringLiteral("a\nX\ne"));
+    writeFile(path, "a\nb\nc\nY\nd\ne");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.content().contains(QStringLiteral("<<<<<<< mine")));
+    CHECK(session.content().contains(QStringLiteral("a\n<<<<<<< mine\nX\n=======\nb\nc\nY\nd")));
+    CHECK(readFile(path) == "a\nb\nc\nY\nd\ne");
+
+    // Large notes fail safely rather than allocating a quadratic diff table.
+    QByteArray lines;
+    for (int i = 0; i < 1500; ++i)
+        lines += "x\n";
+    writeFile(path, lines);
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent(session.content() + QStringLiteral("mine\n"));
+    writeFile(path, lines + "outside\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    const QString edits = session.content();
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(error.contains(QStringLiteral("too large")));
+    CHECK(session.content() == edits);
+    CHECK(readFile(path) == lines + "outside\n");
+}
+
+static void saveMissingAsNewNote()
+{
+    QTemporaryDir dir;
+    QTemporaryDir outside;
+    CHECK(dir.isValid() && outside.isValid());
+    const QString path = dir.filePath(QStringLiteral("note.md"));
+    writeFile(path, "old");
+    QString error;
+    Session session;
+    CHECK(session.openVault(dir.path(), &error));
+    CHECK(session.selectNote(QStringLiteral("note.md"), &error));
+    session.setContent(QStringLiteral("recovered"));
+    CHECK(QFile::remove(path));
+    CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+    writeFile(path, "collision");
+    CHECK(!session.saveAsNewNote(&error));
+    CHECK(readFile(path) == "collision");
+    CHECK(session.content() == QStringLiteral("recovered"));
+    CHECK(QFile::remove(path));
+#ifdef Q_OS_UNIX
+    const QString target = outside.filePath(QStringLiteral("target.md"));
+    CHECK(QFile::link(target, path));
+    CHECK(!session.saveAsNewNote(&error));
+    CHECK(!QFile::exists(target));
+    CHECK(QFile::remove(path));
+#endif
+    CHECK(session.saveAsNewNote(&error));
+    CHECK(readFile(path) == "recovered");
+    CHECK(!session.dirty());
+    CHECK(session.notes().contains(QStringLiteral("note.md")));
+    const auto vault = Vault::open(dir.path(), &error);
+    CHECK(vault.has_value());
+    CHECK(!vault->createNoteWithContent(QStringLiteral(".hidden.md"), "bad", &error));
+    CHECK(!vault->createNoteWithContent(QStringLiteral("sub/../bad.md"), "bad", &error));
+    CHECK(!vault->createNoteWithContent(QStringLiteral("note.md"), "bad", &error));
+    CHECK(readFile(path) == "recovered");
+#ifdef Q_OS_UNIX
+    CHECK(QFile::link(outside.path(), dir.filePath(QStringLiteral("linked"))));
+    CHECK(!vault->createNoteWithContent(QStringLiteral("linked/new.md"), "bad", &error));
+    CHECK(QDir(outside.path()).isEmpty());
+#endif
+    CHECK(vault->createNoteWithContent(QStringLiteral("fresh/actual.md"), "new body", &error));
+    CHECK(readFile(dir.filePath(QStringLiteral("fresh/actual.md"))) == "new body");
+}
+
 static void trashesNotes()
 {
     QTemporaryDir dir;
@@ -524,6 +645,8 @@ int main(int argc, char **argv)
         keepMineRefusesUnseenAndSwappedVersions();
         discardEditsLeavesDeletedNote();
         createsNotesSafely();
+        mergeOutsideEdits();
+        saveMissingAsNewNote();
         trashesNotes();
         sessionCreatesAndTrashesNotes();
     } catch (const std::exception &error) {

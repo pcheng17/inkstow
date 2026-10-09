@@ -76,11 +76,17 @@ Window::Window(TrashFunction trash)
     reload_->setObjectName(QStringLiteral("reloadFromDisk"));
     keepMine_ = new QPushButton(QStringLiteral("Keep mine"));
     keepMine_->setObjectName(QStringLiteral("keepMine"));
+    merge_ = new QPushButton(QStringLiteral("Merge outside changes"));
+    merge_->setObjectName(QStringLiteral("mergeOutsideChanges"));
+    saveAsNew_ = new QPushButton(QStringLiteral("Save as new note"));
+    saveAsNew_->setObjectName(QStringLiteral("saveAsNewNote"));
     discard_ = new QPushButton(QStringLiteral("Discard edits"));
     discard_->setObjectName(QStringLiteral("discardEdits"));
     conflictLayout->addWidget(conflictLabel_, 1);
     conflictLayout->addWidget(reload_);
     conflictLayout->addWidget(keepMine_);
+    conflictLayout->addWidget(merge_);
+    conflictLayout->addWidget(saveAsNew_);
     conflictLayout->addWidget(discard_);
     conflictBar_->hide();
     rightLayout->addWidget(conflictBar_);
@@ -128,6 +134,8 @@ Window::Window(TrashFunction trash)
     connect(save_, &QPushButton::clicked, this, [this] { saveNote(); });
     connect(reload_, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
     connect(keepMine_, &QPushButton::clicked, this, [this] { keepMine(); });
+    connect(merge_, &QPushButton::clicked, this, [this] { mergeOutsideChanges(); });
+    connect(saveAsNew_, &QPushButton::clicked, this, [this] { saveAsNewNote(); });
     connect(discard_, &QPushButton::clicked, this, [this] { discardEdits(); });
     connect(create_, &QPushButton::clicked, this, [this] { createNote(); });
     connect(newPath_, &QLineEdit::returnPressed, this, [this] { createNote(); });
@@ -310,6 +318,8 @@ void Window::showConflictBar(DiskChange change)
                       "had unsaved edits."));
     reload_->setHidden(missing);
     keepMine_->setHidden(missing);
+    merge_->setHidden(missing);
+    saveAsNew_->setHidden(!missing);
     discard_->setHidden(!missing);
     conflictBar_->show();
 }
@@ -342,6 +352,32 @@ void Window::keepMine()
     }
     status_->setText(QStringLiteral("Saved your version"));
     refresh();
+}
+
+void Window::mergeOutsideChanges()
+{
+    QString error;
+    if (!session_.mergeOutsideChanges(&error)) {
+        syncWithDisk(); // Refresh the conflict if the outside note changed again.
+        status_->setText(QStringLiteral("Error: ") + error);
+        return;
+    }
+    conflictBar_->hide();
+    replaceEditor(session_.content());
+    status_->setText(QStringLiteral("Merged outside changes; review and Save."));
+}
+
+void Window::saveAsNewNote()
+{
+    QString error;
+    if (!session_.saveAsNewNote(&error)) {
+        status_->setText(QStringLiteral("Error: ") + error);
+        return;
+    }
+    showNotes();
+    watchNote();
+    refresh();
+    status_->setText(QStringLiteral("Saved as new note"));
 }
 
 void Window::discardEdits()

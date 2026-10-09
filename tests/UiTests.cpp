@@ -96,6 +96,8 @@ int main(int argc, char **argv)
         auto *keepMine = window.findChild<QPushButton *>(QStringLiteral("keepMine"));
         auto *reload = window.findChild<QPushButton *>(QStringLiteral("reloadFromDisk"));
         auto *discard = window.findChild<QPushButton *>(QStringLiteral("discardEdits"));
+        auto *merge = window.findChild<QPushButton *>(QStringLiteral("mergeOutsideChanges"));
+        auto *saveAsNew = window.findChild<QPushButton *>(QStringLiteral("saveAsNewNote"));
         auto *newPath = window.findChild<QLineEdit *>(QStringLiteral("newNotePath"));
         auto *create = window.findChild<QPushButton *>(QStringLiteral("createNote"));
         auto *remove = window.findChild<QPushButton *>(QStringLiteral("deleteNote"));
@@ -104,8 +106,8 @@ int main(int argc, char **argv)
         auto *cancelDelete = window.findChild<QPushButton *>(QStringLiteral("cancelDelete"));
         CHECK(
             folder && open && notes && editor && save && status && conflictBar && keepMine &&
-            reload && discard && newPath && create && remove && deleteBar && confirmDelete &&
-            cancelDelete);
+            reload && discard && merge && saveAsNew && newPath && create && remove && deleteBar &&
+            confirmDelete && cancelDelete);
         CHECK(!create->isEnabled()); // No vault yet.
         CHECK(!remove->isEnabled());
         CHECK(conflictBar->isHidden());
@@ -227,8 +229,21 @@ int main(int argc, char **argv)
         CHECK(save->isEnabled());
         CHECK(!conflictBar->isHidden());
 
-        keepMine->click();
+        CHECK(!merge->isHidden());
+        CHECK(saveAsNew->isHidden());
+        merge->click();
+        CHECK(editor->toPlainText().contains(QStringLiteral("<<<<<<< mine")));
+        CHECK(readFile(note) == "external edit");
+        CHECK(conflictBar->isHidden());
+        editor->setPlainText(QStringLiteral("local edit"));
+        save->click();
         CHECK(readFile(note) == "local edit");
+
+        editor->setPlainText(QStringLiteral("another local"));
+        writeFile(note, "another outside");
+        save->click();
+        keepMine->click();
+        CHECK(readFile(note) == "another local");
         CHECK(conflictBar->isHidden());
         CHECK(!save->isEnabled());
 
@@ -264,7 +279,23 @@ int main(int argc, char **argv)
         CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
         CHECK(!discard->isHidden());
         CHECK(keepMine->isHidden());
+        CHECK(merge->isHidden());
+        CHECK(!saveAsNew->isHidden());
         CHECK(reload->isHidden());
+        writeFile(note, "collision");
+        saveAsNew->click();
+        CHECK(status->text().startsWith(QStringLiteral("Error")));
+        CHECK(editor->toPlainText() == QStringLiteral("orphaned"));
+        CHECK(readFile(note) == "collision");
+        CHECK(QFile::remove(note));
+        saveAsNew->click();
+        CHECK(readFile(note) == "orphaned");
+        CHECK(conflictBar->isHidden());
+        CHECK(!save->isEnabled());
+        editor->setPlainText(QStringLiteral("orphaned again"));
+        CHECK(QFile::remove(note));
+        syncWithoutWatcher();
+        CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
         discard->click();
         CHECK(conflictBar->isHidden());
         CHECK(!save->isEnabled());

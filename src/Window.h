@@ -34,6 +34,8 @@ private:
     void showConflictBar(DiskChange change);
     void reloadFromDisk();
     void keepMine();
+    void mergeOutsideChanges();
+    void saveAsNewNote();
     void discardEdits();
     void showNotes();
     void createNote();
@@ -56,6 +58,8 @@ private:
     QLabel *conflictLabel_;
     QPushButton *reload_;
     QPushButton *keepMine_;
+    QPushButton *merge_;
+    QPushButton *saveAsNew_;
     QPushButton *discard_;
     QLabel *filename_;
     QLabel *status_;

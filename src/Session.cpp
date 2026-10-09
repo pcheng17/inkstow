@@ -1,7 +1,143 @@
 #include "Session.h"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QStringDecoder>
+
+#include <algorithm>
+#include <vector>
+
+namespace
+{
+struct Change
+{
+    int start;
+    int end;
+    QStringList lines;
+};
+
+QStringList linesOf(const QString &text)
+{
+    return text.split(u'\n', Qt::KeepEmptyParts);
+}
+
+std::vector<Change> changes(const QStringList &base, const QStringList &other)
+{
+    const int n = base.size(), m = other.size();
+    std::vector<std::vector<int>> lcs(n + 1, std::vector<int>(m + 1));
+    for (int i = n - 1; i >= 0; --i)
+        for (int j = m - 1; j >= 0; --j)
+            lcs[i][j] = base[i] == other[j] ? 1 + lcs[i + 1][j + 1]
+                                            : std::max(lcs[i + 1][j], lcs[i][j + 1]);
+    std::vector<Change> result;
+    int i = 0, j = 0;
+    while (i < n || j < m) {
+        if (i < n && j < m && base[i] == other[j]) {
+            ++i;
+            ++j;
+            continue;
+        }
+        const int start = i;
+        QStringList replacement;
+        while (i < n || j < m) {
+            if (i < n && j < m && base[i] == other[j]) break;
+            if (j < m && (i == n || lcs[i][j + 1] >= lcs[i + 1][j]))
+                replacement.append(other[j++]);
+            else
+                ++i;
+        }
+        result.push_back({start, i, replacement});
+    }
+    return result;
+}
+
+bool overlaps(const Change &a, const Change &b)
+{
+    if (a.start == a.end && b.start == b.end) return a.start == b.start;
+    if (a.start == a.end) return b.start <= a.start && a.start < b.end;
+    if (b.start == b.end) return a.start <= b.start && b.start < a.end;
+    return a.start < b.end && b.start < a.end;
+}
+
+QStringList apply(const QStringList &base, int start, int end, const std::vector<Change> &hunks)
+{
+    QStringList result;
+    int pos = start;
+    for (const Change &hunk : hunks) {
+        for (; pos < hunk.start; ++pos)
+            result.append(base[pos]);
+        result.append(hunk.lines);
+        pos = hunk.end;
+    }
+    for (; pos < end; ++pos)
+        result.append(base[pos]);
+    return result;
+}
+
+QString threeWayMerge(const QString &baseText, const QString &mineText, const QString &outsideText)
+{
+    const QStringList base = linesOf(baseText);
+    const auto mine = changes(base, linesOf(mineText));
+    const auto outside = changes(base, linesOf(outsideText));
+    QStringList result;
+    size_t a = 0, b = 0;
+    int pos = 0;
+    while (a < mine.size() || b < outside.size()) {
+        const int start = std::min(
+            a < mine.size() ? mine[a].start : base.size(),
+            b < outside.size() ? outside[b].start : base.size());
+        for (; pos < start; ++pos)
+            result.append(base[pos]);
+        std::vector<Change> left, right;
+        if (a < mine.size() && (b == outside.size() || mine[a].start <= outside[b].start))
+            left.push_back(mine[a++]);
+        else
+            right.push_back(outside[b++]);
+        bool expanded = true;
+        while (expanded) {
+            expanded = false;
+            if (a < mine.size() && std::any_of(
+                                       right.begin(),
+                                       right.end(),
+                                       [&](const Change &c) { return overlaps(mine[a], c); }))
+            {
+                left.push_back(mine[a++]);
+                expanded = true;
+            }
+            if (b < outside.size() && std::any_of(
+                                          left.begin(),
+                                          left.end(),
+                                          [&](const Change &c) { return overlaps(outside[b], c); }))
+            {
+                right.push_back(outside[b++]);
+                expanded = true;
+            }
+        }
+        int end = start;
+        for (const Change &c : left)
+            end = std::max(end, c.end);
+        for (const Change &c : right)
+            end = std::max(end, c.end);
+        const QStringList l = apply(base, start, end, left);
+        const QStringList r = apply(base, start, end, right);
+        if (left.empty())
+            result.append(r);
+        else if (right.empty() || l == r)
+            result.append(l);
+        else {
+            result.append(QStringLiteral("<<<<<<< mine"));
+            result.append(l);
+            result.append(QStringLiteral("======="));
+            result.append(r);
+            result.append(QStringLiteral(">>>>>>> outside"));
+        }
+        pos = end;
+    }
+    for (; pos < base.size(); ++pos)
+        result.append(base[pos]);
+    return result.join(u'\n');
+}
+} // namespace
 
 bool Session::openVault(const QString &folder, QString *error)
 {
@@ -95,6 +231,60 @@ bool Session::overwriteDisk(QString *error)
         return false;
     }
     return write(*conflictBytes_, error);
+}
+
+bool Session::mergeOutsideChanges(QString *error)
+{
+    const Vault *vault = requireNote(error);
+    if (!vault) return false;
+    if (!conflictBytes_ || !dirty()) {
+        *error = QStringLiteral("No unsaved edits and reported outside change to merge.");
+        return false;
+    }
+    QByteArray current;
+    QString outside;
+    if (!vault->readNote(path_, &current, error) || !decode(current, &outside, error)) return false;
+    if (current != *conflictBytes_) {
+        *error = QStringLiteral("Outside note changed again; refresh before merging.");
+        return false;
+    }
+    const qsizetype baseLines = linesOf(savedContent_).size();
+    const qsizetype mineLines = linesOf(content_).size();
+    const qsizetype outsideLines = linesOf(outside).size();
+    // The line diff uses a quadratic LCS table for each side. Refuse a merge
+    // too large to compute interactively rather than exhausting memory.
+    constexpr qsizetype maxCells = 2000000;
+    if (baseLines > maxCells / mineLines || baseLines > maxCells / outsideLines) {
+        *error = QStringLiteral("Note is too large for the line merge; edits are unchanged.");
+        return false;
+    }
+    const QString merged = threeWayMerge(savedContent_, content_, outside);
+    savedBytes_ = current;
+    savedContent_ = outside;
+    hasBom_ = current.startsWith("\xEF\xBB\xBF");
+    content_ = merged;
+    conflictBytes_.reset();
+    return true;
+}
+
+bool Session::saveAsNewNote(QString *error)
+{
+    const Vault *vault = requireNote(error);
+    if (!vault) return false;
+    const QFileInfo target(notePath());
+    if (target.exists() || target.isSymLink()) {
+        *error = QStringLiteral("Note still exists; Save as new note cannot replace it.");
+        return false;
+    }
+    const QByteArray bytes =
+        (hasBom_ ? QByteArray::fromHex("efbbbf") : QByteArray()) + content_.toUtf8();
+    if (!vault->createNoteWithContent(path_, bytes, error)) return false;
+    savedContent_ = content_;
+    savedBytes_ = bytes;
+    conflictBytes_.reset();
+    QString listError;
+    reloadNotes(&listError);
+    return true;
 }
 
 bool Session::createNote(const QString &input, QString *error)

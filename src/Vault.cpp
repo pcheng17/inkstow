@@ -169,6 +169,12 @@ bool Vault::saveNote(
 
 bool Vault::createNote(const QString &relative, QString *error) const
 {
+    return createNoteWithContent(relative, QByteArray(), error);
+}
+
+bool Vault::createNoteWithContent(
+    const QString &relative, const QByteArray &content, QString *error) const
+{
     if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
         !relative.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
     {
@@ -207,6 +213,13 @@ bool Vault::createNote(const QString &relative, QString *error) const
         return fail(
             QFileInfo::exists(walked) ? QStringLiteral("A file already exists at %1.").arg(relative)
                                       : file.errorString());
+    }
+    if (file.write(content) != content.size() || !file.flush()) {
+        // Leave a partial note in place. Removing it by path after close could
+        // delete another program's replacement; the editor still holds the text.
+        return fail(
+            QStringLiteral("Could not finish writing new note (a partial file may remain): %1")
+                .arg(file.errorString()));
     }
     return true;
 }

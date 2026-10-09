@@ -35,6 +35,9 @@ public:
     // Creates an empty note and any missing folders. Refuses existing files,
     // links, and dot-prefixed names, which discovery would hide.
     bool createNote(const QString &relative, QString *error) const;
+    // Creates a new note with bytes in one non-overwriting operation.
+    bool createNoteWithContent(
+        const QString &relative, const QByteArray &content, QString *error) const;
     bool trashNote(const QString &relative, const TrashFunction &trash, QString *error) const;
 
 private:
