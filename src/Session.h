@@ -39,6 +39,11 @@ public:
     // overwriteDisk only replaces the version syncWithDisk last reported.
     bool reloadFromDisk(QString *error);
     bool overwriteDisk(QString *error);
+    // Merges the last saved text, editor edits and the reported disk version.
+    // Conflict markers remain editable; no disk write happens until Save.
+    bool mergeOutsideChanges(QString *error);
+    // Recreates a missing selected note without replacing any existing path.
+    bool saveAsNewNote(QString *error);
     // Drops unsaved edits, e.g. after the note was deleted outside Inkstow.
     void discardEdits() { content_ = savedContent_; }
     void setContent(const QString &content) { content_ = content; }
