@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+export PATH="$HOME/.cargo/bin:$PATH"
+
+npm run check
+cargo fmt --all -- --check
+cargo clippy -p vault-core --all-targets -- -D warnings
+cargo test -p vault-core
+cargo run --quiet -p vault-core --bin vault-inspect -- tests/fixtures/sample
+
+if [[ "${1:-}" == "--native" ]]; then
+  # Homebrew's pkg-config can shadow the system one and omit apt's .pc directory.
+  if [[ -z "${PKG_CONFIG:-}" ]] && ! pkg-config --exists gdk-3.0 && \
+     [[ -x /usr/bin/pkg-config ]] && /usr/bin/pkg-config --exists gdk-3.0; then
+    export PKG_CONFIG=/usr/bin/pkg-config
+  fi
+  cargo check -p inkstow
+fi

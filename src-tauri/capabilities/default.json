@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Core commands only; no direct filesystem access from web content.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

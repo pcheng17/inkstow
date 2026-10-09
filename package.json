@@ -1,0 +1,27 @@
+{
+  "name": "inkstow",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "check": "npm run test && npm run build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/lang-markdown": "^6.4.0",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.39.0",
+    "@tauri-apps/api": "^2.0.0",
+    "codemirror": "^6.0.2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.0",
+    "vitest": "^4.1.11"
+  }
+}
