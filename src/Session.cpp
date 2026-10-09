@@ -11,8 +11,8 @@ namespace
 {
 struct Change
 {
-    int start;
-    int end;
+    qsizetype start;
+    qsizetype end;
     QStringList lines;
 };
 
@@ -23,21 +23,23 @@ QStringList linesOf(const QString &text)
 
 std::vector<Change> changes(const QStringList &base, const QStringList &other)
 {
-    const int n = base.size(), m = other.size();
+    const qsizetype n = base.size();
+    const qsizetype m = other.size();
     std::vector<std::vector<int>> lcs(n + 1, std::vector<int>(m + 1));
-    for (int i = n - 1; i >= 0; --i)
-        for (int j = m - 1; j >= 0; --j)
+    for (qsizetype i = n - 1; i >= 0; --i)
+        for (qsizetype j = m - 1; j >= 0; --j)
             lcs[i][j] = base[i] == other[j] ? 1 + lcs[i + 1][j + 1]
                                             : std::max(lcs[i + 1][j], lcs[i][j + 1]);
     std::vector<Change> result;
-    int i = 0, j = 0;
+    qsizetype i = 0;
+    qsizetype j = 0;
     while (i < n || j < m) {
         if (i < n && j < m && base[i] == other[j]) {
             ++i;
             ++j;
             continue;
         }
-        const int start = i;
+        const qsizetype start = i;
         QStringList replacement;
         while (i < n || j < m) {
             if (i < n && j < m && base[i] == other[j]) break;
@@ -59,10 +61,11 @@ bool overlaps(const Change &a, const Change &b)
     return a.start < b.end && b.start < a.end;
 }
 
-QStringList apply(const QStringList &base, int start, int end, const std::vector<Change> &hunks)
+QStringList apply(
+    const QStringList &base, qsizetype start, qsizetype end, const std::vector<Change> &hunks)
 {
     QStringList result;
-    int pos = start;
+    qsizetype pos = start;
     for (const Change &hunk : hunks) {
         for (; pos < hunk.start; ++pos)
             result.append(base[pos]);
@@ -80,15 +83,17 @@ QString threeWayMerge(const QString &baseText, const QString &mineText, const QS
     const auto mine = changes(base, linesOf(mineText));
     const auto outside = changes(base, linesOf(outsideText));
     QStringList result;
-    size_t a = 0, b = 0;
-    int pos = 0;
+    size_t a = 0;
+    size_t b = 0;
+    qsizetype pos = 0;
     while (a < mine.size() || b < outside.size()) {
-        const int start = std::min(
+        const qsizetype start = std::min(
             a < mine.size() ? mine[a].start : base.size(),
             b < outside.size() ? outside[b].start : base.size());
         for (; pos < start; ++pos)
             result.append(base[pos]);
-        std::vector<Change> left, right;
+        std::vector<Change> left;
+        std::vector<Change> right;
         if (a < mine.size() && (b == outside.size() || mine[a].start <= outside[b].start))
             left.push_back(mine[a++]);
         else
@@ -113,7 +118,7 @@ QString threeWayMerge(const QString &baseText, const QString &mineText, const QS
                 expanded = true;
             }
         }
-        int end = start;
+        qsizetype end = start;
         for (const Change &c : left)
             end = std::max(end, c.end);
         for (const Change &c : right)

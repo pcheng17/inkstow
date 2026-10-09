@@ -2,7 +2,7 @@
 
 Make each change on a new branch in its own git worktree, and merge it through a pull request. Never commit or push to `main`.
 
-For changes to the vault core or UI, run the CMake build and CTest commands in README's "Install and run" section before reporting success. These build the C++/Qt app and run core and offscreen UI tests against disposable fixtures. Format C++ changes with `clang-format -i` (configured by `.clang-format`), and keep the build free of compiler warnings.
+For changes to the vault core or UI, run the CMake build and CTest commands in README's "Install and run" section before reporting success. These build the C++/Qt app and run core and offscreen UI tests against disposable fixtures. For any C++ change, format with `clang-format -i` (configured by `.clang-format`), keep the build free of compiler warnings, and after `cmake --preset debug` run `clang-tidy -p build/debug src/*.cpp tests/*.cpp` from the repo root (configured by `.clang-tidy`). Resolve clang-tidy findings before reporting success; if the check cannot run or fails, report that explicitly.
 
 Use `tests/fixtures/sample` or a throwaway vault for verification, not a personal vault. Add small regression fixtures for newly discovered Obsidian behaviors. The current core treats note content as opaque Markdown; link resolution and live preview are not implemented, and save conflict detection has an external-write race. Keep vault operations in `src/Vault.*` and UI-independent state in `src/Session.*`, testable without a display.
 
