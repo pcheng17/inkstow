@@ -16,7 +16,7 @@ class QFileSystemWatcher;
 class Window : public QMainWindow
 {
 public:
-    Window();
+    explicit Window(TrashFunction trash = moveToSystemTrash);
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -34,6 +34,9 @@ private:
     void reloadFromDisk();
     void keepMine();
     void discardEdits();
+    void showNotes();
+    void createNote();
+    void trashNote();
 
     Session session_;
     QFileSystemWatcher *watcher_;
@@ -42,6 +45,12 @@ private:
     QListWidget *notes_;
     QPlainTextEdit *editor_;
     QPushButton *save_;
+    QPushButton *delete_;
+    QLineEdit *newPath_;
+    QPushButton *create_;
+    QWidget *deleteBar_;
+    QLabel *deleteLabel_;
+    QString deletePath_; // The note the delete confirmation was shown for.
     QWidget *conflictBar_;
     QLabel *conflictLabel_;
     QPushButton *reload_;

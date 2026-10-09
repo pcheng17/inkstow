@@ -19,7 +19,8 @@
 
 #include <algorithm>
 
-Window::Window()
+Window::Window(TrashFunction trash)
+    : session_(std::move(trash))
 {
     setWindowTitle(QStringLiteral("Inkstow"));
     resize(1100, 750);
@@ -55,7 +56,10 @@ Window::Window()
     filename_ = new QLabel(QStringLiteral("Select a note"));
     save_ = new QPushButton(QStringLiteral("Save"));
     save_->setObjectName(QStringLiteral("saveNote"));
+    delete_ = new QPushButton(QStringLiteral("Delete"));
+    delete_->setObjectName(QStringLiteral("deleteNote"));
     toolbar->addWidget(filename_, 1);
+    toolbar->addWidget(delete_);
     toolbar->addWidget(save_);
     rightLayout->addLayout(toolbar);
     conflictBar_ = new QWidget;
@@ -75,8 +79,35 @@ Window::Window()
     conflictLayout->addWidget(discard_);
     conflictBar_->hide();
     rightLayout->addWidget(conflictBar_);
+    deleteBar_ = new QWidget;
+    deleteBar_->setObjectName(QStringLiteral("deleteBar"));
+    auto *deleteLayout = new QHBoxLayout(deleteBar_);
+    deleteLayout->setContentsMargins(0, 0, 0, 0);
+    deleteLabel_ = new QLabel;
+    auto *confirmDelete = new QPushButton(QStringLiteral("Move to trash"));
+    confirmDelete->setObjectName(QStringLiteral("confirmDelete"));
+    auto *cancelDelete = new QPushButton(QStringLiteral("Cancel"));
+    cancelDelete->setObjectName(QStringLiteral("cancelDelete"));
+    deleteLayout->addWidget(deleteLabel_, 1);
+    deleteLayout->addWidget(confirmDelete);
+    deleteLayout->addWidget(cancelDelete);
+    deleteBar_->hide();
+    rightLayout->addWidget(deleteBar_);
     rightLayout->addWidget(editor_, 1);
-    splitter->addWidget(notes_);
+    auto *left = new QWidget;
+    auto *leftLayout = new QVBoxLayout(left);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    auto *newNote = new QHBoxLayout;
+    newPath_ = new QLineEdit;
+    newPath_->setObjectName(QStringLiteral("newNotePath"));
+    newPath_->setPlaceholderText(QStringLiteral("Folder/New note"));
+    create_ = new QPushButton(QStringLiteral("Create"));
+    create_->setObjectName(QStringLiteral("createNote"));
+    newNote->addWidget(newPath_, 1);
+    newNote->addWidget(create_);
+    leftLayout->addWidget(notes_, 1);
+    leftLayout->addLayout(newNote);
+    splitter->addWidget(left);
     splitter->addWidget(right);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({240, 860});
@@ -98,6 +129,15 @@ Window::Window()
     connect(reload_, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
     connect(keepMine_, &QPushButton::clicked, this, [this] { keepMine(); });
     connect(discard_, &QPushButton::clicked, this, [this] { discardEdits(); });
+    connect(create_, &QPushButton::clicked, this, [this] { createNote(); });
+    connect(newPath_, &QLineEdit::returnPressed, this, [this] { createNote(); });
+    connect(delete_, &QPushButton::clicked, this, [this] {
+        deletePath_ = session_.path();
+        deleteLabel_->setText(QStringLiteral("Move %1 to the trash?").arg(deletePath_));
+        deleteBar_->show();
+    });
+    connect(confirmDelete, &QPushButton::clicked, this, [this] { trashNote(); });
+    connect(cancelDelete, &QPushButton::clicked, deleteBar_, &QWidget::hide);
     connect(editor_, &QPlainTextEdit::textChanged, this, [this] {
         session_.setContent(editor_->toPlainText());
         refresh();
@@ -124,6 +164,9 @@ void Window::refresh()
                  : QStringLiteral("Select a note"));
     save_->setEnabled(selected && session_.dirty());
     if (!session_.dirty()) conflictBar_->hide();
+    if (session_.path() != deletePath_) deleteBar_->hide();
+    delete_->setEnabled(selected && !session_.dirty());
+    create_->setEnabled(session_.hasVault() && !session_.dirty());
     editor_->setEnabled(selected);
 }
 
@@ -141,11 +184,7 @@ void Window::openVault()
         status_->setText(QStringLiteral("Error: ") + error);
         return;
     }
-    {
-        const QSignalBlocker block(notes_);
-        notes_->clear();
-        notes_->addItems(session_.notes());
-    }
+    showNotes();
     replaceEditor(QString());
     watchNote();
     status_->setText(QStringLiteral("Found %1 notes").arg(session_.notes().size()));
@@ -281,6 +320,50 @@ void Window::discardEdits()
     session_.discardEdits();
     replaceEditor(session_.content());
     status_->setText(QStringLiteral("Discarded unsaved edits"));
+}
+
+void Window::showNotes()
+{
+    const QSignalBlocker block(notes_);
+    notes_->clear();
+    notes_->addItems(session_.notes());
+    const auto matches = notes_->findItems(session_.path(), Qt::MatchExactly);
+    notes_->setCurrentItem(matches.isEmpty() ? nullptr : matches.first());
+}
+
+void Window::createNote()
+{
+    QString error;
+    if (!session_.createNote(newPath_->text(), &error)) {
+        showNotes(); // The note may exist even if selecting it failed.
+        status_->setText(QStringLiteral("Error: ") + error);
+        return;
+    }
+    newPath_->clear();
+    showNotes();
+    replaceEditor(session_.content());
+    watchNote();
+    editor_->setFocus();
+    status_->setText(QStringLiteral("Created ") + session_.path());
+}
+
+void Window::trashNote()
+{
+    const QString path = session_.path();
+    QString error;
+    deleteBar_->hide();
+    if (path != deletePath_) {
+        status_->setText(QStringLiteral("Error: the selected note changed; press Delete again."));
+        return;
+    }
+    if (!session_.trashNote(&error)) {
+        status_->setText(QStringLiteral("Error: ") + error);
+        return;
+    }
+    showNotes();
+    replaceEditor(QString());
+    watchNote();
+    status_->setText(QStringLiteral("Moved %1 to the trash").arg(path));
 }
 
 void Window::changeEvent(QEvent *event)

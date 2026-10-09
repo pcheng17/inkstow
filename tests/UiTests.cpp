@@ -2,6 +2,8 @@
 #include "Window.h"
 
 #include <QApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QDeadlineTimer>
 #include <QFile>
 #include <QLabel>
@@ -60,7 +62,11 @@ int main(int argc, char **argv)
         writeFile(dir.filePath(QStringLiteral("other.md")), "other");
         writeFile(dir.filePath(QStringLiteral(".hidden.md")), "hidden");
 
-        Window window;
+        QTemporaryDir trash;
+        CHECK(trash.isValid());
+        Window window([&](const QString &path, QString *) {
+            return QFile::rename(path, QDir(trash.path()).filePath(QFileInfo(path).fileName()));
+        });
         auto *folder = window.findChild<QLineEdit *>(QStringLiteral("vaultFolder"));
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
@@ -71,9 +77,17 @@ int main(int argc, char **argv)
         auto *keepMine = window.findChild<QPushButton *>(QStringLiteral("keepMine"));
         auto *reload = window.findChild<QPushButton *>(QStringLiteral("reloadFromDisk"));
         auto *discard = window.findChild<QPushButton *>(QStringLiteral("discardEdits"));
+        auto *newPath = window.findChild<QLineEdit *>(QStringLiteral("newNotePath"));
+        auto *create = window.findChild<QPushButton *>(QStringLiteral("createNote"));
+        auto *remove = window.findChild<QPushButton *>(QStringLiteral("deleteNote"));
+        auto *deleteBar = window.findChild<QWidget *>(QStringLiteral("deleteBar"));
+        auto *confirmDelete = window.findChild<QPushButton *>(QStringLiteral("confirmDelete"));
+        auto *cancelDelete = window.findChild<QPushButton *>(QStringLiteral("cancelDelete"));
         CHECK(
             folder && open && notes && editor && save && status && conflictBar && keepMine &&
-            reload && discard);
+            reload && discard && newPath && create && remove && deleteBar && confirmDelete &&
+            cancelDelete);
+        CHECK(!create->isEnabled() && !remove->isEnabled()); // No vault yet.
         CHECK(conflictBar->isHidden());
         folder->setText(dir.path());
         open->click();
@@ -153,6 +167,49 @@ int main(int argc, char **argv)
         CHECK(!save->isEnabled());
         notes->setCurrentRow(1);
         CHECK(notes->currentRow() == 1);
+
+        // Creating a note adds it to the list and opens it.
+        newPath->setText(QStringLiteral("Ideas"));
+        create->click();
+        CHECK(QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
+        CHECK(notes->currentItem() && notes->currentItem()->text() == QStringLiteral("Ideas.md"));
+        CHECK(notes->findItems(QStringLiteral("note.md"), Qt::MatchExactly).isEmpty());
+        CHECK(editor->isEnabled() && editor->toPlainText().isEmpty());
+        CHECK(newPath->text().isEmpty());
+        newPath->setText(QStringLiteral("../escape"));
+        create->click();
+        CHECK(status->text().startsWith(QStringLiteral("Error")));
+        CHECK(newPath->text() == QStringLiteral("../escape"));
+
+        // Unsaved edits disable both, and a confirmation never outlives its note.
+        editor->setPlainText(QStringLiteral("draft"));
+        CHECK(!create->isEnabled() && !remove->isEnabled());
+        editor->setPlainText(QString());
+        CHECK(create->isEnabled() && remove->isEnabled());
+        remove->click();
+        CHECK(!deleteBar->isHidden());
+        notes->setCurrentItem(
+            notes->findItems(QStringLiteral("other.md"), Qt::MatchExactly).first());
+        CHECK(deleteBar->isHidden());
+        CHECK(QFile::exists(dir.filePath(QStringLiteral("other.md"))));
+        notes->setCurrentItem(
+            notes->findItems(QStringLiteral("Ideas.md"), Qt::MatchExactly).first());
+        CHECK(deleteBar->isHidden());
+
+        // Deleting asks first, and Cancel leaves the note alone.
+        CHECK(remove->isEnabled() && deleteBar->isHidden());
+        remove->click();
+        CHECK(!deleteBar->isHidden());
+        cancelDelete->click();
+        CHECK(deleteBar->isHidden());
+        CHECK(QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
+        remove->click();
+        confirmDelete->click();
+        CHECK(deleteBar->isHidden());
+        CHECK(!QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
+        CHECK(QFile::exists(QDir(trash.path()).filePath(QStringLiteral("Ideas.md"))));
+        CHECK(notes->findItems(QStringLiteral("Ideas.md"), Qt::MatchExactly).isEmpty());
+        CHECK(!editor->isEnabled() && !remove->isEnabled());
     } catch (const std::exception &error) {
         qCritical("%s", error.what());
         return 1;

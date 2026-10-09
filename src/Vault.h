@@ -4,8 +4,14 @@
 #include <QString>
 #include <QStringList>
 
+#include <functional>
 #include <optional>
 #include <utility>
+
+// Moves the file at an absolute path to a trash; on failure, sets error and
+// leaves the file in place.
+using TrashFunction = std::function<bool(const QString &path, QString *error)>;
+bool moveToSystemTrash(const QString &path, QString *error);
 
 // Filesystem-only vault operations. Paths are relative to the vault and use
 // '/'.
@@ -25,6 +31,10 @@ public:
         const QByteArray &expected,
         const QByteArray &content,
         QString *error) const;
+    // Creates an empty note and any missing folders. Refuses existing files,
+    // links, and dot-prefixed names, which discovery would hide.
+    bool createNote(const QString &relative, QString *error) const;
+    bool trashNote(const QString &relative, const TrashFunction &trash, QString *error) const;
 
 private:
     explicit Vault(QString root)

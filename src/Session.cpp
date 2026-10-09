@@ -15,11 +15,7 @@ bool Session::openVault(const QString &folder, QString *error)
     if (!next->listNotes(&notes, error)) return false;
     vault_ = std::move(next);
     notes_ = notes;
-    path_.clear();
-    content_.clear();
-    savedContent_.clear();
-    savedBytes_.clear();
-    hasBom_ = false;
+    clearNote();
     return true;
 }
 
@@ -95,6 +91,65 @@ bool Session::overwriteDisk(QString *error)
         return false;
     }
     return write(*conflictBytes_, error);
+}
+
+bool Session::createNote(const QString &input, QString *error)
+{
+    if (!requireClean(error)) return false;
+    if (!vault_) {
+        *error = QStringLiteral("Open a vault first.");
+        return false;
+    }
+    // macOS lists names composed, so decomposed input would not match the list.
+    QString path = input.trimmed().normalized(QString::NormalizationForm_C);
+    if (!path.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)) path += QStringLiteral(".md");
+    if (!vault_->createNote(path, error) || !reloadNotes(error)) return false;
+    // A case-insensitive file system may have kept an existing folder's spelling.
+    if (!notes_.contains(path)) {
+        for (const QString &note : notes_) {
+            if (note.compare(path, Qt::CaseInsensitive) == 0) {
+                path = note;
+                break;
+            }
+        }
+    }
+    return selectNote(path, error);
+}
+
+bool Session::trashNote(QString *error)
+{
+    if (!requireNote(error) || !requireClean(error) || !vault_->trashNote(path_, trash_, error))
+        return false;
+    // The note is gone either way; a failed relist only drops it from the list.
+    QString ignored;
+    if (!reloadNotes(&ignored)) notes_.removeAll(path_);
+    clearNote();
+    return true;
+}
+
+bool Session::reloadNotes(QString *error)
+{
+    QStringList notes;
+    if (!vault_->listNotes(&notes, error)) return false;
+    notes_ = notes;
+    return true;
+}
+
+void Session::clearNote()
+{
+    path_.clear();
+    content_.clear();
+    savedContent_.clear();
+    savedBytes_.clear();
+    conflictBytes_.reset();
+    hasBom_ = false;
+}
+
+bool Session::requireClean(QString *error) const
+{
+    if (!dirty()) return true;
+    *error = QStringLiteral("Save or discard your edits first.");
+    return false;
 }
 
 bool Session::requireNote(QString *error) const

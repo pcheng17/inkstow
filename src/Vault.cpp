@@ -30,6 +30,13 @@ bool readBytes(const QString &path, QByteArray *content, QString *error)
 }
 } // namespace
 
+bool moveToSystemTrash(const QString &path, QString *error)
+{
+    if (QFile::moveToTrash(path)) return true;
+    *error = QStringLiteral("Could not move the note to the trash, so it was not deleted.");
+    return false;
+}
+
 std::optional<Vault> Vault::open(const QString &folder, QString *error)
 {
     QFileInfo info(folder);
@@ -155,4 +162,54 @@ bool Vault::saveNote(
         return false;
     }
     return true;
+}
+
+bool Vault::createNote(const QString &relative, QString *error) const
+{
+    if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
+        !relative.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
+    {
+        *error = QStringLiteral("Expected a relative Markdown path.");
+        return false;
+    }
+    const QStringList segments = relative.split(u'/');
+    // Checked up front so a rejected path creates no folders. Covers "." and "..".
+    for (const QString &segment : segments) {
+        if (segment.isEmpty() || segment.startsWith(u'.')) {
+            *error = QStringLiteral("Note and folder names can't be empty or start with '.'.");
+            return false;
+        }
+    }
+    QString walked = root_;
+    QStringList created;
+    const auto fail = [&created, error](const QString &message) {
+        for (auto folder = created.crbegin(); folder != created.crend(); ++folder)
+            QDir().rmdir(*folder);
+        *error = message;
+        return false;
+    };
+    for (qsizetype i = 0; i < segments.size(); ++i) {
+        walked = QDir(walked).filePath(segments[i]);
+        const QFileInfo info(walked);
+        if (info.isSymLink())
+            return fail(QStringLiteral("Cannot create a note through a link: %1").arg(relative));
+        if (i + 1 == segments.size() || (info.exists() && info.isDir())) continue;
+        if (info.exists() || !QDir().mkdir(walked))
+            return fail(QStringLiteral("Cannot create folder: %1").arg(walked));
+        created.append(walked);
+    }
+    // NewOnly fails instead of replacing a file created since the checks above.
+    QFile file(walked);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+        return fail(
+            QFileInfo::exists(walked) ? QStringLiteral("A file already exists at %1.").arg(relative)
+                                      : file.errorString());
+    }
+    return true;
+}
+
+bool Vault::trashNote(const QString &relative, const TrashFunction &trash, QString *error) const
+{
+    const auto path = notePath(relative, error);
+    return path && trash(*path, error);
 }
