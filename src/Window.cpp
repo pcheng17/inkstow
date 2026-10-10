@@ -20,17 +20,17 @@
 #include <algorithm>
 
 Window::Window(TrashFunction trash)
-    : session_(std::move(trash))
-    , watcher_(new QFileSystemWatcher(this))
-    , syncTimer_(new QTimer(this))
-    , folder_(new QLineEdit)
-    , notes_(new QListWidget)
-    , editor_(new QPlainTextEdit)
-    , newPath_(new QLineEdit)
-    , deleteBar_(new QWidget)
-    , deleteLabel_(new QLabel)
-    , conflictBar_(new QWidget)
-    , conflictLabel_(new QLabel)
+    : mSession(std::move(trash))
+    , mWatcher(new QFileSystemWatcher(this))
+    , mSyncTimer(new QTimer(this))
+    , mFolder(new QLineEdit)
+    , mNotes(new QListWidget)
+    , mEditor(new QPlainTextEdit)
+    , mNewPath(new QLineEdit)
+    , mDeleteBar(new QWidget)
+    , mDeleteLabel(new QLabel)
+    , mConflictBar(new QWidget)
+    , mConflictLabel(new QLabel)
 {
     setWindowTitle(QStringLiteral("Inkstow"));
     resize(1100, 750);
@@ -42,201 +42,201 @@ Window::Window(TrashFunction trash)
     titleFont.setBold(true);
     titleFont.setPointSize(14);
     title->setFont(titleFont);
-    folder_->setObjectName(QStringLiteral("vaultFolder"));
-    folder_->setPlaceholderText(QStringLiteral("/path/to/vault"));
+    mFolder->setObjectName(QStringLiteral("vaultFolder"));
+    mFolder->setPlaceholderText(QStringLiteral("/path/to/vault"));
     auto *open = new QPushButton(QStringLiteral("Open"));
     open->setObjectName(QStringLiteral("openVault"));
     header->addWidget(title);
     header->addSpacing(16);
     header->addWidget(new QLabel(QStringLiteral("Vault folder")));
-    header->addWidget(folder_, 1);
+    header->addWidget(mFolder, 1);
     header->addWidget(open);
     page->addLayout(header);
 
     auto *splitter = new QSplitter;
-    notes_->setObjectName(QStringLiteral("notes"));
-    editor_->setObjectName(QStringLiteral("editor"));
-    editor_->setPlaceholderText(QStringLiteral("Select a note"));
+    mNotes->setObjectName(QStringLiteral("notes"));
+    mEditor->setObjectName(QStringLiteral("editor"));
+    mEditor->setPlaceholderText(QStringLiteral("Select a note"));
     auto *right = new QWidget;
     auto *rightLayout = new QVBoxLayout(right);
     auto *toolbar = new QHBoxLayout;
-    filename_ = new QLabel(QStringLiteral("Select a note"));
-    save_ = new QPushButton(QStringLiteral("Save"));
-    save_->setObjectName(QStringLiteral("saveNote"));
-    delete_ = new QPushButton(QStringLiteral("Delete"));
-    delete_->setObjectName(QStringLiteral("deleteNote"));
-    toolbar->addWidget(filename_, 1);
-    toolbar->addWidget(delete_);
-    toolbar->addWidget(save_);
+    mFilename = new QLabel(QStringLiteral("Select a note"));
+    mSave = new QPushButton(QStringLiteral("Save"));
+    mSave->setObjectName(QStringLiteral("saveNote"));
+    mDelete = new QPushButton(QStringLiteral("Delete"));
+    mDelete->setObjectName(QStringLiteral("deleteNote"));
+    toolbar->addWidget(mFilename, 1);
+    toolbar->addWidget(mDelete);
+    toolbar->addWidget(mSave);
     rightLayout->addLayout(toolbar);
-    conflictBar_->setObjectName(QStringLiteral("conflictBar"));
-    auto *conflictLayout = new QHBoxLayout(conflictBar_);
+    mConflictBar->setObjectName(QStringLiteral("conflictBar"));
+    auto *conflictLayout = new QHBoxLayout(mConflictBar);
     conflictLayout->setContentsMargins(0, 0, 0, 0);
-    reload_ = new QPushButton(QStringLiteral("Reload from disk"));
-    reload_->setObjectName(QStringLiteral("reloadFromDisk"));
-    keepMine_ = new QPushButton(QStringLiteral("Keep mine"));
-    keepMine_->setObjectName(QStringLiteral("keepMine"));
-    merge_ = new QPushButton(QStringLiteral("Merge outside changes"));
-    merge_->setObjectName(QStringLiteral("mergeOutsideChanges"));
-    saveAsNew_ = new QPushButton(QStringLiteral("Save as new note"));
-    saveAsNew_->setObjectName(QStringLiteral("saveAsNewNote"));
-    discard_ = new QPushButton(QStringLiteral("Discard edits"));
-    discard_->setObjectName(QStringLiteral("discardEdits"));
-    conflictLayout->addWidget(conflictLabel_, 1);
-    conflictLayout->addWidget(reload_);
-    conflictLayout->addWidget(keepMine_);
-    conflictLayout->addWidget(merge_);
-    conflictLayout->addWidget(saveAsNew_);
-    conflictLayout->addWidget(discard_);
-    conflictBar_->hide();
-    rightLayout->addWidget(conflictBar_);
-    deleteBar_->setObjectName(QStringLiteral("deleteBar"));
-    auto *deleteLayout = new QHBoxLayout(deleteBar_);
+    mReload = new QPushButton(QStringLiteral("Reload from disk"));
+    mReload->setObjectName(QStringLiteral("reloadFromDisk"));
+    mKeepMine = new QPushButton(QStringLiteral("Keep mine"));
+    mKeepMine->setObjectName(QStringLiteral("keepMine"));
+    mMerge = new QPushButton(QStringLiteral("Merge outside changes"));
+    mMerge->setObjectName(QStringLiteral("mergeOutsideChanges"));
+    mSaveAsNew = new QPushButton(QStringLiteral("Save as new note"));
+    mSaveAsNew->setObjectName(QStringLiteral("saveAsNewNote"));
+    mDiscard = new QPushButton(QStringLiteral("Discard edits"));
+    mDiscard->setObjectName(QStringLiteral("discardEdits"));
+    conflictLayout->addWidget(mConflictLabel, 1);
+    conflictLayout->addWidget(mReload);
+    conflictLayout->addWidget(mKeepMine);
+    conflictLayout->addWidget(mMerge);
+    conflictLayout->addWidget(mSaveAsNew);
+    conflictLayout->addWidget(mDiscard);
+    mConflictBar->hide();
+    rightLayout->addWidget(mConflictBar);
+    mDeleteBar->setObjectName(QStringLiteral("deleteBar"));
+    auto *deleteLayout = new QHBoxLayout(mDeleteBar);
     deleteLayout->setContentsMargins(0, 0, 0, 0);
     auto *confirmDelete = new QPushButton(QStringLiteral("Move to trash"));
     confirmDelete->setObjectName(QStringLiteral("confirmDelete"));
     auto *cancelDelete = new QPushButton(QStringLiteral("Cancel"));
     cancelDelete->setObjectName(QStringLiteral("cancelDelete"));
-    deleteLayout->addWidget(deleteLabel_, 1);
+    deleteLayout->addWidget(mDeleteLabel, 1);
     deleteLayout->addWidget(confirmDelete);
     deleteLayout->addWidget(cancelDelete);
-    deleteBar_->hide();
-    rightLayout->addWidget(deleteBar_);
-    rightLayout->addWidget(editor_, 1);
+    mDeleteBar->hide();
+    rightLayout->addWidget(mDeleteBar);
+    rightLayout->addWidget(mEditor, 1);
     auto *left = new QWidget;
     auto *leftLayout = new QVBoxLayout(left);
     leftLayout->setContentsMargins(0, 0, 0, 0);
     auto *newNote = new QHBoxLayout;
-    newPath_->setObjectName(QStringLiteral("newNotePath"));
-    newPath_->setPlaceholderText(QStringLiteral("Folder/New note"));
-    create_ = new QPushButton(QStringLiteral("Create"));
-    create_->setObjectName(QStringLiteral("createNote"));
-    newNote->addWidget(newPath_, 1);
-    newNote->addWidget(create_);
-    leftLayout->addWidget(notes_, 1);
+    mNewPath->setObjectName(QStringLiteral("newNotePath"));
+    mNewPath->setPlaceholderText(QStringLiteral("Folder/New note"));
+    mCreate = new QPushButton(QStringLiteral("Create"));
+    mCreate->setObjectName(QStringLiteral("createNote"));
+    newNote->addWidget(mNewPath, 1);
+    newNote->addWidget(mCreate);
+    leftLayout->addWidget(mNotes, 1);
     leftLayout->addLayout(newNote);
     splitter->addWidget(left);
     splitter->addWidget(right);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({240, 860});
     page->addWidget(splitter, 1);
-    status_ = new QLabel(QStringLiteral("Open a vault folder to begin."));
-    status_->setObjectName(QStringLiteral("status"));
-    page->addWidget(status_);
+    mStatus = new QLabel(QStringLiteral("Open a vault folder to begin."));
+    mStatus->setObjectName(QStringLiteral("status"));
+    page->addWidget(mStatus);
     setCentralWidget(central);
     // Waits for a burst of writes to settle so a half-written note is not loaded.
-    syncTimer_->setSingleShot(true);
-    syncTimer_->setInterval(150);
-    refresh();
+    mSyncTimer->setSingleShot(true);
+    mSyncTimer->setInterval(150);
+    Refresh();
 
-    connect(open, &QPushButton::clicked, this, [this] { openVault(); });
-    connect(folder_, &QLineEdit::returnPressed, this, [this] { openVault(); });
-    connect(save_, &QPushButton::clicked, this, [this] { saveNote(); });
-    connect(reload_, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
-    connect(keepMine_, &QPushButton::clicked, this, [this] { keepMine(); });
-    connect(merge_, &QPushButton::clicked, this, [this] { mergeOutsideChanges(); });
-    connect(saveAsNew_, &QPushButton::clicked, this, [this] { saveAsNewNote(); });
-    connect(discard_, &QPushButton::clicked, this, [this] { discardEdits(); });
-    connect(create_, &QPushButton::clicked, this, [this] { createNote(); });
-    connect(newPath_, &QLineEdit::returnPressed, this, [this] { createNote(); });
-    connect(delete_, &QPushButton::clicked, this, [this] {
-        deletePath_ = session_.path();
-        deleteLabel_->setText(QStringLiteral("Move %1 to the trash?").arg(deletePath_));
-        deleteBar_->show();
+    connect(open, &QPushButton::clicked, this, [this] { OpenVault(); });
+    connect(mFolder, &QLineEdit::returnPressed, this, [this] { OpenVault(); });
+    connect(mSave, &QPushButton::clicked, this, [this] { SaveNote(); });
+    connect(mReload, &QPushButton::clicked, this, [this] { ReloadFromDisk(); });
+    connect(mKeepMine, &QPushButton::clicked, this, [this] { KeepMine(); });
+    connect(mMerge, &QPushButton::clicked, this, [this] { MergeOutsideChanges(); });
+    connect(mSaveAsNew, &QPushButton::clicked, this, [this] { SaveAsNewNote(); });
+    connect(mDiscard, &QPushButton::clicked, this, [this] { DiscardEdits(); });
+    connect(mCreate, &QPushButton::clicked, this, [this] { CreateNote(); });
+    connect(mNewPath, &QLineEdit::returnPressed, this, [this] { CreateNote(); });
+    connect(mDelete, &QPushButton::clicked, this, [this] {
+        mDeletePath = mSession.Path();
+        mDeleteLabel->setText(QStringLiteral("Move %1 to the trash?").arg(mDeletePath));
+        mDeleteBar->show();
     });
-    connect(confirmDelete, &QPushButton::clicked, this, [this] { trashNote(); });
-    connect(cancelDelete, &QPushButton::clicked, deleteBar_, &QWidget::hide);
-    connect(editor_, &QPlainTextEdit::textChanged, this, [this] {
-        session_.setContent(editor_->toPlainText());
-        refresh();
+    connect(confirmDelete, &QPushButton::clicked, this, [this] { TrashNote(); });
+    connect(cancelDelete, &QPushButton::clicked, mDeleteBar, &QWidget::hide);
+    connect(mEditor, &QPlainTextEdit::textChanged, this, [this] {
+        mSession.SetContent(mEditor->toPlainText());
+        Refresh();
     });
     // Watch vault folders for list changes and atomic replacements, which can
     // drop the selected file from the watcher.
-    connect(watcher_, &QFileSystemWatcher::fileChanged, syncTimer_, qOverload<>(&QTimer::start));
+    connect(mWatcher, &QFileSystemWatcher::fileChanged, mSyncTimer, qOverload<>(&QTimer::start));
     connect(
-        watcher_,
+        mWatcher,
         &QFileSystemWatcher::directoryChanged,
-        syncTimer_,
+        mSyncTimer,
         qOverload<>(&QTimer::start));
-    connect(syncTimer_, &QTimer::timeout, this, [this] { syncWithDisk(); });
-    connect(notes_, &QListWidget::currentTextChanged, this, [this](const QString &path) {
-        if (!path.isEmpty() && path != session_.path()) selectNote(path);
+    connect(mSyncTimer, &QTimer::timeout, this, [this] { SyncWithDisk(); });
+    connect(mNotes, &QListWidget::currentTextChanged, this, [this](const QString &path) {
+        if (!path.isEmpty() && path != mSession.Path()) SelectNote(path);
     });
 }
 
-void Window::refresh()
+void Window::Refresh()
 {
-    const bool selected = !session_.path().isEmpty();
-    filename_->setText(
-        selected ? session_.path() + (session_.dirty() ? QStringLiteral(" *") : QString())
+    const bool selected = !mSession.Path().isEmpty();
+    mFilename->setText(
+        selected ? mSession.Path() + (mSession.Dirty() ? QStringLiteral(" *") : QString())
                  : QStringLiteral("Select a note"));
-    save_->setEnabled(selected && session_.dirty());
-    if (!session_.dirty()) conflictBar_->hide();
-    if (session_.path() != deletePath_) deleteBar_->hide();
-    delete_->setEnabled(selected && !session_.dirty());
-    create_->setEnabled(session_.hasVault() && !session_.dirty());
-    editor_->setEnabled(selected);
+    mSave->setEnabled(selected && mSession.Dirty());
+    if (!mSession.Dirty()) mConflictBar->hide();
+    if (mSession.Path() != mDeletePath) mDeleteBar->hide();
+    mDelete->setEnabled(selected && !mSession.Dirty());
+    mCreate->setEnabled(mSession.HasVault() && !mSession.Dirty());
+    mEditor->setEnabled(selected);
 }
 
-void Window::replaceEditor(const QString &text)
+void Window::ReplaceEditor(const QString &text)
 {
-    const QSignalBlocker block(editor_);
-    editor_->setPlainText(text);
-    refresh();
+    const QSignalBlocker block(mEditor);
+    mEditor->setPlainText(text);
+    Refresh();
 }
 
-void Window::openVault()
+void Window::OpenVault()
 {
     QString error;
-    if (!session_.openVault(folder_->text().trimmed(), &error)) {
-        status_->setText(QStringLiteral("Error: ") + error);
+    if (!mSession.OpenVault(mFolder->text().trimmed(), &error)) {
+        mStatus->setText(QStringLiteral("Error: ") + error);
         return;
     }
-    showNotes();
-    replaceEditor(QString());
-    watchNote();
-    status_->setText(QStringLiteral("Found %1 notes").arg(session_.notes().size()));
+    ShowNotes();
+    ReplaceEditor(QString());
+    WatchNote();
+    mStatus->setText(QStringLiteral("Found %1 notes").arg(mSession.Notes().size()));
 }
 
-void Window::selectNote(const QString &path)
+void Window::SelectNote(const QString &path)
 {
     QString error;
-    if (!session_.selectNote(path, &error)) {
-        status_->setText(QStringLiteral("Error: ") + error);
-        const QSignalBlocker block(notes_);
-        const auto matches = notes_->findItems(session_.path(), Qt::MatchExactly);
-        notes_->setCurrentItem(matches.isEmpty() ? nullptr : matches.first());
+    if (!mSession.SelectNote(path, &error)) {
+        mStatus->setText(QStringLiteral("Error: ") + error);
+        const QSignalBlocker block(mNotes);
+        const auto matches = mNotes->findItems(mSession.Path(), Qt::MatchExactly);
+        mNotes->setCurrentItem(matches.isEmpty() ? nullptr : matches.first());
         return;
     }
-    replaceEditor(session_.content());
-    watchNote();
-    editor_->setFocus();
-    status_->setText(QStringLiteral("Opened ") + path);
+    ReplaceEditor(mSession.Content());
+    WatchNote();
+    mEditor->setFocus();
+    mStatus->setText(QStringLiteral("Opened ") + path);
 }
 
-void Window::saveNote()
+void Window::SaveNote()
 {
     QString error;
-    if (!session_.save(&error)) {
-        status_->setText(QStringLiteral("Error: ") + error);
+    if (!mSession.Save(&error)) {
+        mStatus->setText(QStringLiteral("Error: ") + error);
         QString ignored;
-        showConflictBar(session_.syncWithDisk(&ignored));
+        ShowConflictBar(mSession.SyncWithDisk(&ignored));
     } else {
-        status_->setText(QStringLiteral("Saved"));
+        mStatus->setText(QStringLiteral("Saved"));
     }
-    refresh();
+    Refresh();
 }
 
-void Window::watchNote()
+void Window::WatchNote()
 {
-    syncTimer_->stop();
-    updateWatches();
+    mSyncTimer->stop();
+    UpdateWatches();
 }
 
-void Window::updateWatches()
+void Window::UpdateWatches()
 {
-    QStringList folders = session_.folders();
-    const QString path = session_.notePath();
+    QStringList folders = mSession.Folders();
+    const QString path = mSession.NotePath();
     if (!path.isEmpty()) {
         QString folder = QFileInfo(path).absolutePath();
         // If the note's folder disappeared, an existing ancestor can report
@@ -248,199 +248,199 @@ void Window::updateWatches()
             !folders.contains(folder))
             folders.append(folder);
     }
-    for (const QString &watched : watcher_->directories()) {
-        if (!folders.contains(watched)) watcher_->removePath(watched);
+    for (const QString &watched : mWatcher->directories()) {
+        if (!folders.contains(watched)) mWatcher->removePath(watched);
     }
     for (const QString &folder : folders) {
         if (QFileInfo(folder).isDir() && !QFileInfo(folder).isSymLink() &&
-            !watcher_->directories().contains(folder))
-            watcher_->addPath(folder);
+            !mWatcher->directories().contains(folder))
+            mWatcher->addPath(folder);
     }
-    for (const QString &watched : watcher_->files()) {
-        if (watched != path) watcher_->removePath(watched);
+    for (const QString &watched : mWatcher->files()) {
+        if (watched != path) mWatcher->removePath(watched);
     }
     if (!path.isEmpty() && QFileInfo(path).isFile() && !QFileInfo(path).isSymLink() &&
-        !watcher_->files().contains(path))
-        watcher_->addPath(path);
+        !mWatcher->files().contains(path))
+        mWatcher->addPath(path);
 }
 
-void Window::syncWithDisk()
+void Window::SyncWithDisk()
 {
     QString error;
-    const int position = editor_->textCursor().position();
-    const int scroll = editor_->verticalScrollBar()->value();
-    const DiskChange change = session_.syncWithDisk(&error);
+    const int position = mEditor->textCursor().position();
+    const int scroll = mEditor->verticalScrollBar()->value();
+    const DiskChange change = mSession.SyncWithDisk(&error);
     switch (change) {
     case DiskChange::None:
-        conflictBar_->hide(); // An outside change may have been reverted.
+        mConflictBar->hide(); // An outside change may have been reverted.
         break;
     case DiskChange::Reloaded: {
-        replaceEditor(session_.content());
-        QTextCursor cursor = editor_->textCursor();
-        cursor.setPosition(std::min(position, editor_->document()->characterCount() - 1));
-        editor_->setTextCursor(cursor);
-        editor_->verticalScrollBar()->setValue(scroll);
-        status_->setText(
-            QStringLiteral("Reloaded %1 after an outside change").arg(session_.path()));
+        ReplaceEditor(mSession.Content());
+        QTextCursor cursor = mEditor->textCursor();
+        cursor.setPosition(std::min(position, mEditor->document()->characterCount() - 1));
+        mEditor->setTextCursor(cursor);
+        mEditor->verticalScrollBar()->setValue(scroll);
+        mStatus->setText(
+            QStringLiteral("Reloaded %1 after an outside change").arg(mSession.Path()));
         break;
     }
     case DiskChange::Conflict:
     case DiskChange::Missing:
-        status_->setText(QStringLiteral("Warning: ") + error);
-        showConflictBar(change);
+        mStatus->setText(QStringLiteral("Warning: ") + error);
+        ShowConflictBar(change);
         break;
     }
-    if (session_.hasVault()) {
-        const QStringList previous = session_.notes();
+    if (mSession.HasVault()) {
+        const QStringList previous = mSession.Notes();
         QString listError;
-        if (session_.reloadNotes(&listError) && previous != session_.notes()) showNotes();
+        if (mSession.ReloadNotes(&listError) && previous != mSession.Notes()) ShowNotes();
     }
     // File replacements and directory removal drop watches; reconcile after
     // every rescan, including when the note itself has disappeared.
-    updateWatches();
+    UpdateWatches();
 }
 
 // Only unsaved edits can be in conflict; a deleted note can only be let go.
-void Window::showConflictBar(DiskChange change)
+void Window::ShowConflictBar(DiskChange change)
 {
     const bool conflict = change == DiskChange::Conflict;
     const bool missing = change == DiskChange::Missing;
-    if (!session_.dirty() || !(conflict || missing)) {
-        conflictBar_->hide();
+    if (!mSession.Dirty() || !(conflict || missing)) {
+        mConflictBar->hide();
         return;
     }
-    conflictLabel_->setText(
+    mConflictLabel->setText(
         missing ? QStringLiteral(
                       "This note was deleted or moved outside "
                       "Inkstow. Copy any text you want to keep.")
                 : QStringLiteral(
                       "This note changed outside Inkstow while you "
                       "had unsaved edits."));
-    reload_->setHidden(missing);
-    keepMine_->setHidden(missing);
-    merge_->setHidden(missing);
-    saveAsNew_->setHidden(!missing);
-    discard_->setHidden(!missing);
-    conflictBar_->show();
+    mReload->setHidden(missing);
+    mKeepMine->setHidden(missing);
+    mMerge->setHidden(missing);
+    mSaveAsNew->setHidden(!missing);
+    mDiscard->setHidden(!missing);
+    mConflictBar->show();
 }
 
-void Window::reloadFromDisk()
+void Window::ReloadFromDisk()
 {
     QString error;
-    if (!session_.reloadFromDisk(&error)) {
-        status_->setText(QStringLiteral("Error: ") + error);
+    if (!mSession.ReloadFromDisk(&error)) {
+        mStatus->setText(QStringLiteral("Error: ") + error);
         return;
     }
     {
         // Replaced through a cursor, not setPlainText, so Undo restores the edits.
-        const QSignalBlocker block(editor_);
-        QTextCursor cursor(editor_->document());
+        const QSignalBlocker block(mEditor);
+        QTextCursor cursor(mEditor->document());
         cursor.select(QTextCursor::Document);
-        cursor.insertText(session_.content());
+        cursor.insertText(mSession.Content());
     }
-    status_->setText(QStringLiteral("Reloaded from disk"));
-    refresh();
+    mStatus->setText(QStringLiteral("Reloaded from disk"));
+    Refresh();
 }
 
-void Window::keepMine()
+void Window::KeepMine()
 {
     QString error;
-    if (!session_.overwriteDisk(&error)) {
-        status_->setText(QStringLiteral("Error: ") + error);
-        syncWithDisk(); // Report whatever is on disk now.
+    if (!mSession.OverwriteDisk(&error)) {
+        mStatus->setText(QStringLiteral("Error: ") + error);
+        SyncWithDisk(); // Report whatever is on disk now.
         return;
     }
-    status_->setText(QStringLiteral("Saved your version"));
-    refresh();
+    mStatus->setText(QStringLiteral("Saved your version"));
+    Refresh();
 }
 
-void Window::mergeOutsideChanges()
+void Window::MergeOutsideChanges()
 {
     QString error;
-    if (!session_.mergeOutsideChanges(&error)) {
-        syncWithDisk(); // Refresh the conflict if the outside note changed again.
-        status_->setText(QStringLiteral("Error: ") + error);
+    if (!mSession.MergeOutsideChanges(&error)) {
+        SyncWithDisk(); // Refresh the conflict if the outside note changed again.
+        mStatus->setText(QStringLiteral("Error: ") + error);
         return;
     }
-    conflictBar_->hide();
-    replaceEditor(session_.content());
-    status_->setText(QStringLiteral("Merged outside changes; review and Save."));
+    mConflictBar->hide();
+    ReplaceEditor(mSession.Content());
+    mStatus->setText(QStringLiteral("Merged outside changes; review and Save."));
 }
 
-void Window::saveAsNewNote()
+void Window::SaveAsNewNote()
 {
     QString error;
-    if (!session_.saveAsNewNote(&error)) {
-        status_->setText(QStringLiteral("Error: ") + error);
+    if (!mSession.SaveAsNewNote(&error)) {
+        mStatus->setText(QStringLiteral("Error: ") + error);
         return;
     }
-    showNotes();
-    watchNote();
-    refresh();
-    status_->setText(QStringLiteral("Saved as new note"));
+    ShowNotes();
+    WatchNote();
+    Refresh();
+    mStatus->setText(QStringLiteral("Saved as new note"));
 }
 
-void Window::discardEdits()
+void Window::DiscardEdits()
 {
-    session_.discardEdits();
-    replaceEditor(session_.content());
-    status_->setText(QStringLiteral("Discarded unsaved edits"));
+    mSession.DiscardEdits();
+    ReplaceEditor(mSession.Content());
+    mStatus->setText(QStringLiteral("Discarded unsaved edits"));
 }
 
-void Window::showNotes()
+void Window::ShowNotes()
 {
-    const QSignalBlocker block(notes_);
-    notes_->clear();
-    notes_->addItems(session_.notes());
-    const auto matches = notes_->findItems(session_.path(), Qt::MatchExactly);
-    notes_->setCurrentItem(matches.isEmpty() ? nullptr : matches.first());
+    const QSignalBlocker block(mNotes);
+    mNotes->clear();
+    mNotes->addItems(mSession.Notes());
+    const auto matches = mNotes->findItems(mSession.Path(), Qt::MatchExactly);
+    mNotes->setCurrentItem(matches.isEmpty() ? nullptr : matches.first());
 }
 
-void Window::createNote()
+void Window::CreateNote()
 {
     QString error;
-    if (!session_.createNote(newPath_->text(), &error)) {
-        showNotes(); // The note may exist even if selecting it failed.
-        status_->setText(QStringLiteral("Error: ") + error);
+    if (!mSession.CreateNote(mNewPath->text(), &error)) {
+        ShowNotes(); // The note may exist even if selecting it failed.
+        mStatus->setText(QStringLiteral("Error: ") + error);
         return;
     }
-    newPath_->clear();
-    showNotes();
-    replaceEditor(session_.content());
-    watchNote();
-    editor_->setFocus();
-    status_->setText(QStringLiteral("Created ") + session_.path());
+    mNewPath->clear();
+    ShowNotes();
+    ReplaceEditor(mSession.Content());
+    WatchNote();
+    mEditor->setFocus();
+    mStatus->setText(QStringLiteral("Created ") + mSession.Path());
 }
 
-void Window::trashNote()
+void Window::TrashNote()
 {
-    const QString path = session_.path();
+    const QString path = mSession.Path();
     QString error;
-    deleteBar_->hide();
-    if (path != deletePath_) {
-        status_->setText(QStringLiteral("Error: the selected note changed; press Delete again."));
+    mDeleteBar->hide();
+    if (path != mDeletePath) {
+        mStatus->setText(QStringLiteral("Error: the selected note changed; press Delete again."));
         return;
     }
-    if (!session_.trashNote(&error)) {
-        status_->setText(QStringLiteral("Error: ") + error);
+    if (!mSession.TrashNote(&error)) {
+        mStatus->setText(QStringLiteral("Error: ") + error);
         return;
     }
-    showNotes();
-    replaceEditor(QString());
-    watchNote();
-    status_->setText(QStringLiteral("Moved %1 to the trash").arg(path));
+    ShowNotes();
+    ReplaceEditor(QString());
+    WatchNote();
+    mStatus->setText(QStringLiteral("Moved %1 to the trash").arg(path));
 }
 
 void Window::changeEvent(QEvent *event)
 {
     // Catches changes the watcher missed while the app was in the background.
-    if (event->type() == QEvent::ActivationChange && isActiveWindow()) syncWithDisk();
+    if (event->type() == QEvent::ActivationChange && isActiveWindow()) SyncWithDisk();
     QMainWindow::changeEvent(event);
 }
 
 void Window::closeEvent(QCloseEvent *event)
 {
-    if (session_.dirty()) {
+    if (mSession.Dirty()) {
         QMessageBox::warning(
             this,
             QStringLiteral("Unsaved changes"),

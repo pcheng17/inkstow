@@ -7,14 +7,14 @@
 
 namespace
 {
-void conflict(QString *error)
+void Conflict(QString *error)
 {
     *error = QStringLiteral(
         "Save conflict: note changed on disk. Your edits remain "
         "in the editor.");
 }
 
-bool readBytes(const QString &path, QByteArray *content, QString *error)
+bool ReadBytes(const QString &path, QByteArray *content, QString *error)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -30,14 +30,14 @@ bool readBytes(const QString &path, QByteArray *content, QString *error)
 }
 } // namespace
 
-bool moveToSystemTrash(const QString &path, QString *error)
+bool MoveToSystemTrash(const QString &path, QString *error)
 {
     if (QFile::moveToTrash(path)) return true;
     *error = QStringLiteral("Could not move the note to the trash, so it was not deleted.");
     return false;
 }
 
-std::optional<Vault> Vault::open(const QString &folder, QString *error)
+std::optional<Vault> Vault::Open(const QString &folder, QString *error)
 {
     QFileInfo info(folder);
     if (!info.isDir()) {
@@ -52,11 +52,11 @@ std::optional<Vault> Vault::open(const QString &folder, QString *error)
     return Vault(root);
 }
 
-bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) const
+bool Vault::ListNotes(QStringList *notes, QString *error, QStringList *folders) const
 {
     QStringList found;
     QStringList discoveredFolders;
-    QStringList pending{root_};
+    QStringList pending{mRoot};
     while (!pending.isEmpty()) {
         QDir dir(pending.takeLast());
         if (!dir.exists() || !QFileInfo(dir.path()).isReadable()) {
@@ -74,7 +74,7 @@ bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) 
                 entry.isFile() &&
                 entry.suffix().compare(QStringLiteral("md"), Qt::CaseInsensitive) == 0)
             {
-                found.append(QDir(root_).relativeFilePath(entry.filePath()).replace(u'\\', u'/'));
+                found.append(QDir(mRoot).relativeFilePath(entry.filePath()).replace(u'\\', u'/'));
             }
         }
     }
@@ -84,7 +84,7 @@ bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) 
     return true;
 }
 
-std::optional<QString> Vault::notePath(const QString &relative, QString *error) const
+std::optional<QString> Vault::NotePath(const QString &relative, QString *error) const
 {
     if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
         !relative.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
@@ -92,7 +92,7 @@ std::optional<QString> Vault::notePath(const QString &relative, QString *error) 
         *error = QStringLiteral("Expected a relative Markdown path.");
         return std::nullopt;
     }
-    QString walked = root_;
+    QString walked = mRoot;
     for (const QString &segment : relative.split(u'/')) {
         if (segment.isEmpty() || segment == QStringLiteral(".") || segment == QStringLiteral(".."))
         {
@@ -106,9 +106,9 @@ std::optional<QString> Vault::notePath(const QString &relative, QString *error) 
             return std::nullopt;
         }
     }
-    QFileInfo info(QDir(root_).filePath(relative));
+    QFileInfo info(QDir(mRoot).filePath(relative));
     QString resolved = info.canonicalFilePath();
-    const QString prefix = root_.endsWith(u'/') ? root_ : root_ + u'/';
+    const QString prefix = mRoot.endsWith(u'/') ? mRoot : mRoot + u'/';
     if (!info.isFile() || !resolved.startsWith(prefix) ||
         resolved.startsWith(prefix + QStringLiteral(".obsidian/")))
     {
@@ -118,24 +118,24 @@ std::optional<QString> Vault::notePath(const QString &relative, QString *error) 
     return resolved;
 }
 
-bool Vault::readNote(const QString &relative, QByteArray *content, QString *error) const
+bool Vault::ReadNote(const QString &relative, QByteArray *content, QString *error) const
 {
-    const auto path = notePath(relative, error);
-    return path && readBytes(*path, content, error);
+    const auto path = NotePath(relative, error);
+    return path && ReadBytes(*path, content, error);
 }
 
-bool Vault::saveNote(
+bool Vault::SaveNote(
     const QString &relative,
     const QByteArray &expected,
     const QByteArray &content,
     QString *error) const
 {
-    const auto path = notePath(relative, error);
+    const auto path = NotePath(relative, error);
     if (!path) return false;
     QByteArray current;
-    if (!readBytes(*path, &current, error)) return false;
+    if (!ReadBytes(*path, &current, error)) return false;
     if (current != expected) {
-        conflict(error);
+        Conflict(error);
         return false;
     }
 
@@ -152,11 +152,11 @@ bool Vault::saveNote(
         replacement.cancelWriting();
         return false;
     }
-    const auto stillThere = notePath(relative, error);
-    if (!stillThere || *stillThere != *path || !readBytes(*path, &current, error) ||
+    const auto stillThere = NotePath(relative, error);
+    if (!stillThere || *stillThere != *path || !ReadBytes(*path, &current, error) ||
         current != expected)
     {
-        conflict(error);
+        Conflict(error);
         replacement.cancelWriting();
         return false;
     }
@@ -167,12 +167,12 @@ bool Vault::saveNote(
     return true;
 }
 
-bool Vault::createNote(const QString &relative, QString *error) const
+bool Vault::CreateNote(const QString &relative, QString *error) const
 {
-    return createNoteWithContent(relative, QByteArray(), error);
+    return CreateNoteWithContent(relative, QByteArray(), error);
 }
 
-bool Vault::createNoteWithContent(
+bool Vault::CreateNoteWithContent(
     const QString &relative, const QByteArray &content, QString *error) const
 {
     if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
@@ -189,7 +189,7 @@ bool Vault::createNoteWithContent(
             return false;
         }
     }
-    QString walked = root_;
+    QString walked = mRoot;
     QStringList created;
     const auto fail = [&created, error](const QString &message) {
         for (auto folder = created.crbegin(); folder != created.crend(); ++folder)
@@ -224,8 +224,8 @@ bool Vault::createNoteWithContent(
     return true;
 }
 
-bool Vault::trashNote(const QString &relative, const TrashFunction &trash, QString *error) const
+bool Vault::TrashNote(const QString &relative, const TrashFunction &trash, QString *error) const
 {
-    const auto path = notePath(relative, error);
+    const auto path = NotePath(relative, error);
     return path && trash(*path, error);
 }

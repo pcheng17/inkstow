@@ -25,14 +25,14 @@
             throw std::runtime_error("Failed: " #value " at line " + std::to_string(__LINE__));    \
     } while (false)
 
-static void writeFile(const QString &path, const QByteArray &bytes)
+static void WriteFile(const QString &path, const QByteArray &bytes)
 {
     QFile file(path);
     CHECK(file.open(QIODevice::WriteOnly));
     CHECK(file.write(bytes) == bytes.size());
 }
 
-static QByteArray readFile(const QString &path)
+static QByteArray ReadFile(const QString &path)
 {
     QFile file(path);
     CHECK(file.open(QIODevice::ReadOnly));
@@ -41,7 +41,7 @@ static QByteArray readFile(const QString &path)
 
 // Lets the file watcher deliver its notifications.
 template<typename Done>
-static bool waitFor(Done done)
+static bool WaitFor(Done done)
 {
     QDeadlineTimer deadline(5000);
     while (!done() && !deadline.hasExpired()) {
@@ -55,7 +55,7 @@ int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
     try {
-        configureLightTheme(app);
+        ConfigureLightTheme(app);
         CHECK(app.palette().color(QPalette::Window) == QColor(QStringLiteral("#faf9fc")));
         QTemporaryDir probeDir;
         CHECK(probeDir.isValid());
@@ -65,8 +65,8 @@ int main(int argc, char **argv)
         QObject::connect(&probe, &QFileSystemWatcher::directoryChanged, &app, [&] {
             notified = true;
         });
-        writeFile(probeDir.filePath(QStringLiteral("probe.md")), "probe");
-        const bool watcherWorks = waitFor([&] { return notified; }) &&
+        WriteFile(probeDir.filePath(QStringLiteral("probe.md")), "probe");
+        const bool watcherWorks = WaitFor([&] { return notified; }) &&
                                   !qEnvironmentVariableIsSet("INKSTOW_TEST_NO_EVENTS");
         if (!watcherWorks)
             qInfo(
@@ -77,9 +77,9 @@ int main(int argc, char **argv)
         QTemporaryDir dir;
         CHECK(dir.isValid());
         const QString note = dir.filePath(QStringLiteral("note.md"));
-        writeFile(note, "original");
-        writeFile(dir.filePath(QStringLiteral("other.md")), "other");
-        writeFile(dir.filePath(QStringLiteral(".hidden.md")), "hidden");
+        WriteFile(note, "original");
+        WriteFile(dir.filePath(QStringLiteral("other.md")), "other");
+        WriteFile(dir.filePath(QStringLiteral(".hidden.md")), "hidden");
 
         QTemporaryDir trash;
         CHECK(trash.isValid());
@@ -130,23 +130,23 @@ int main(int argc, char **argv)
         notes->setCurrentRow(1);
         CHECK(notes->currentRow() == 0); // Unsaved note cannot be switched away.
         save->click();
-        CHECK(readFile(note) == "first edit");
+        CHECK(ReadFile(note) == "first edit");
         CHECK(!save->isEnabled());
 
         // External additions, renames and deletions refresh the list without
         // replacing the open note or exposing hidden entries.
         const QString nested = dir.filePath(QStringLiteral("nested"));
         CHECK(QDir().mkdir(nested));
-        writeFile(QDir(nested).filePath(QStringLiteral("new.md")), "new");
+        WriteFile(QDir(nested).filePath(QStringLiteral("new.md")), "new");
         syncWithoutWatcher();
-        CHECK(waitFor([&] {
+        CHECK(WaitFor([&] {
             return notes->findItems(QStringLiteral("nested/new.md"), Qt::MatchExactly).size() == 1;
         }));
         CHECK(notes->currentItem()->text() == QStringLiteral("note.md"));
         CHECK(editor->toPlainText() == QStringLiteral("first edit"));
-        writeFile(QDir(nested).filePath(QStringLiteral("later.md")), "later");
+        WriteFile(QDir(nested).filePath(QStringLiteral("later.md")), "later");
         syncWithoutWatcher();
-        CHECK(waitFor([&] {
+        CHECK(WaitFor([&] {
             return notes->findItems(QStringLiteral("nested/later.md"), Qt::MatchExactly).size() ==
                    1;
         }));
@@ -155,7 +155,7 @@ int main(int argc, char **argv)
                 QDir(nested).filePath(QStringLiteral("new.md")),
                 QDir(nested).filePath(QStringLiteral("renamed.md"))));
         syncWithoutWatcher();
-        CHECK(waitFor([&] {
+        CHECK(WaitFor([&] {
             return notes->findItems(QStringLiteral("nested/renamed.md"), Qt::MatchExactly).size() ==
                        1 &&
                    notes->findItems(QStringLiteral("nested/new.md"), Qt::MatchExactly).isEmpty();
@@ -164,7 +164,7 @@ int main(int argc, char **argv)
         CHECK(QFile::remove(QDir(nested).filePath(QStringLiteral("later.md"))));
         CHECK(QDir().rmdir(nested));
         syncWithoutWatcher();
-        CHECK(waitFor([&] {
+        CHECK(WaitFor([&] {
             return notes->findItems(QStringLiteral("nested/later.md"), Qt::MatchExactly).isEmpty();
         }));
 
@@ -173,8 +173,8 @@ int main(int argc, char **argv)
         if (watcherWorks) {
             CHECK(QDir().mkdir(nested));
             const QString subnote = QDir(nested).filePath(QStringLiteral("note.md"));
-            writeFile(subnote, "sub original");
-            CHECK(waitFor([&] {
+            WriteFile(subnote, "sub original");
+            CHECK(WaitFor([&] {
                 return !notes->findItems(QStringLiteral("nested/note.md"), Qt::MatchExactly)
                             .isEmpty();
             }));
@@ -183,24 +183,24 @@ int main(int argc, char **argv)
             CHECK(editor->toPlainText() == QStringLiteral("sub original"));
             CHECK(QFile::remove(subnote));
             CHECK(QDir().rmdir(nested));
-            CHECK(waitFor([&] {
+            CHECK(WaitFor([&] {
                 return notes->findItems(QStringLiteral("nested/note.md"), Qt::MatchExactly)
                     .isEmpty();
             }));
             CHECK(QDir().mkdir(nested));
-            writeFile(subnote, "sub recreated");
+            WriteFile(subnote, "sub recreated");
             CHECK(
-                waitFor([&] { return editor->toPlainText() == QStringLiteral("sub recreated"); }));
-            writeFile(subnote, "sub changed again");
-            CHECK(waitFor(
+                WaitFor([&] { return editor->toPlainText() == QStringLiteral("sub recreated"); }));
+            WriteFile(subnote, "sub changed again");
+            CHECK(WaitFor(
                 [&] { return editor->toPlainText() == QStringLiteral("sub changed again"); }));
             notes->setCurrentItem(
                 notes->findItems(QStringLiteral("note.md"), Qt::MatchExactly).first());
         }
 
-        writeFile(note, "outside edit");
+        WriteFile(note, "outside edit");
         syncWithoutWatcher();
-        CHECK(waitFor([&] { return editor->toPlainText() == QStringLiteral("outside edit"); }));
+        CHECK(WaitFor([&] { return editor->toPlainText() == QStringLiteral("outside edit"); }));
         CHECK(!save->isEnabled());
         CHECK(status->text().contains(QStringLiteral("Reloaded")));
 
@@ -214,18 +214,18 @@ int main(int argc, char **argv)
                 CHECK(replacement.open(QIODevice::WriteOnly));
                 CHECK(replacement.write(bytes) == bytes.size());
                 CHECK(replacement.commit());
-                CHECK(waitFor([&] { return editor->toPlainText() == QString::fromUtf8(bytes); }));
+                CHECK(WaitFor([&] { return editor->toPlainText() == QString::fromUtf8(bytes); }));
             }
 
         editor->setPlainText(QStringLiteral("local edit"));
-        writeFile(note, "external edit");
+        WriteFile(note, "external edit");
         syncWithoutWatcher();
-        CHECK(waitFor([&] { return status->text().contains(QStringLiteral("changed on disk")); }));
+        CHECK(WaitFor([&] { return status->text().contains(QStringLiteral("changed on disk")); }));
         CHECK(editor->toPlainText() == QStringLiteral("local edit"));
         save->click();
         CHECK(status->text().contains(QStringLiteral("Save conflict")));
         CHECK(editor->toPlainText() == QStringLiteral("local edit"));
-        CHECK(readFile(note) == "external edit");
+        CHECK(ReadFile(note) == "external edit");
         CHECK(save->isEnabled());
         CHECK(!conflictBar->isHidden());
 
@@ -233,24 +233,24 @@ int main(int argc, char **argv)
         CHECK(saveAsNew->isHidden());
         merge->click();
         CHECK(editor->toPlainText().contains(QStringLiteral("<<<<<<< mine")));
-        CHECK(readFile(note) == "external edit");
+        CHECK(ReadFile(note) == "external edit");
         CHECK(conflictBar->isHidden());
         editor->setPlainText(QStringLiteral("local edit"));
         save->click();
-        CHECK(readFile(note) == "local edit");
+        CHECK(ReadFile(note) == "local edit");
 
         editor->setPlainText(QStringLiteral("another local"));
-        writeFile(note, "another outside");
+        WriteFile(note, "another outside");
         save->click();
         keepMine->click();
-        CHECK(readFile(note) == "another local");
+        CHECK(ReadFile(note) == "another local");
         CHECK(conflictBar->isHidden());
         CHECK(!save->isEnabled());
 
         editor->setPlainText(QStringLiteral("mine again"));
-        writeFile(note, "theirs");
+        WriteFile(note, "theirs");
         syncWithoutWatcher();
-        CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
+        CHECK(WaitFor([&] { return !conflictBar->isHidden(); }));
         reload->click();
         CHECK(editor->toPlainText() == QStringLiteral("theirs"));
         CHECK(conflictBar->isHidden());
@@ -260,11 +260,11 @@ int main(int argc, char **argv)
         CHECK(save->isEnabled());
         CHECK(conflictBar->isHidden()); // The outside version has been seen.
         save->click();
-        CHECK(readFile(note) == "mine again");
+        CHECK(ReadFile(note) == "mine again");
 
         // Save alone, before the watcher reports anything, also shows the bar.
         editor->setPlainText(QStringLiteral("mine 3"));
-        writeFile(note, "theirs 3");
+        WriteFile(note, "theirs 3");
         save->click();
         CHECK(!conflictBar->isHidden());
         CHECK(!keepMine->isHidden());
@@ -276,26 +276,26 @@ int main(int argc, char **argv)
         editor->setPlainText(QStringLiteral("orphaned"));
         CHECK(QFile::remove(note));
         syncWithoutWatcher();
-        CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
+        CHECK(WaitFor([&] { return !conflictBar->isHidden(); }));
         CHECK(!discard->isHidden());
         CHECK(keepMine->isHidden());
         CHECK(merge->isHidden());
         CHECK(!saveAsNew->isHidden());
         CHECK(reload->isHidden());
-        writeFile(note, "collision");
+        WriteFile(note, "collision");
         saveAsNew->click();
         CHECK(status->text().startsWith(QStringLiteral("Error")));
         CHECK(editor->toPlainText() == QStringLiteral("orphaned"));
-        CHECK(readFile(note) == "collision");
+        CHECK(ReadFile(note) == "collision");
         CHECK(QFile::remove(note));
         saveAsNew->click();
-        CHECK(readFile(note) == "orphaned");
+        CHECK(ReadFile(note) == "orphaned");
         CHECK(conflictBar->isHidden());
         CHECK(!save->isEnabled());
         editor->setPlainText(QStringLiteral("orphaned again"));
         CHECK(QFile::remove(note));
         syncWithoutWatcher();
-        CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
+        CHECK(WaitFor([&] { return !conflictBar->isHidden(); }));
         discard->click();
         CHECK(conflictBar->isHidden());
         CHECK(!save->isEnabled());

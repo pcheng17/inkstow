@@ -16,51 +16,51 @@ class QFileSystemWatcher;
 class Window : public QMainWindow
 {
 public:
-    explicit Window(TrashFunction trash = moveToSystemTrash);
+    explicit Window(TrashFunction trash = MoveToSystemTrash);
 
 protected:
     void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 
 private:
-    void openVault();
-    void selectNote(const QString &path);
-    void saveNote();
-    void refresh();
-    void replaceEditor(const QString &text);
-    void watchNote();
-    void updateWatches();
-    void syncWithDisk();
-    void showConflictBar(DiskChange change);
-    void reloadFromDisk();
-    void keepMine();
-    void mergeOutsideChanges();
-    void saveAsNewNote();
-    void discardEdits();
-    void showNotes();
-    void createNote();
-    void trashNote();
+    void OpenVault();
+    void SelectNote(const QString &path);
+    void SaveNote();
+    void Refresh();
+    void ReplaceEditor(const QString &text);
+    void WatchNote();
+    void UpdateWatches();
+    void SyncWithDisk();
+    void ShowConflictBar(DiskChange change);
+    void ReloadFromDisk();
+    void KeepMine();
+    void MergeOutsideChanges();
+    void SaveAsNewNote();
+    void DiscardEdits();
+    void ShowNotes();
+    void CreateNote();
+    void TrashNote();
 
-    Session session_;
-    QFileSystemWatcher *watcher_;
-    QTimer *syncTimer_;
-    QLineEdit *folder_;
-    QListWidget *notes_;
-    QPlainTextEdit *editor_;
-    QPushButton *save_;
-    QPushButton *delete_;
-    QLineEdit *newPath_;
-    QPushButton *create_;
-    QWidget *deleteBar_;
-    QLabel *deleteLabel_;
-    QString deletePath_; // The note the delete confirmation was shown for.
-    QWidget *conflictBar_;
-    QLabel *conflictLabel_;
-    QPushButton *reload_;
-    QPushButton *keepMine_;
-    QPushButton *merge_;
-    QPushButton *saveAsNew_;
-    QPushButton *discard_;
-    QLabel *filename_;
-    QLabel *status_;
+    Session mSession;
+    QFileSystemWatcher *mWatcher;
+    QTimer *mSyncTimer;
+    QLineEdit *mFolder;
+    QListWidget *mNotes;
+    QPlainTextEdit *mEditor;
+    QPushButton *mSave;
+    QPushButton *mDelete;
+    QLineEdit *mNewPath;
+    QPushButton *mCreate;
+    QWidget *mDeleteBar;
+    QLabel *mDeleteLabel;
+    QString mDeletePath; // The note the delete confirmation was shown for.
+    QWidget *mConflictBar;
+    QLabel *mConflictLabel;
+    QPushButton *mReload;
+    QPushButton *mKeepMine;
+    QPushButton *mMerge;
+    QPushButton *mSaveAsNew;
+    QPushButton *mDiscard;
+    QLabel *mFilename;
+    QLabel *mStatus;
 };

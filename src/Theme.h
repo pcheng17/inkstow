@@ -2,4 +2,4 @@
 
 class QApplication;
 
-void configureLightTheme(QApplication &app);
+void ConfigureLightTheme(QApplication &app);
