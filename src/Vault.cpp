@@ -5,6 +5,8 @@
 #include <QFileInfo>
 #include <QSaveFile>
 
+#include <algorithm>
+
 namespace
 {
 void conflict(QString *error)
@@ -116,6 +118,103 @@ std::optional<QString> Vault::notePath(const QString &relative, QString *error) 
         return std::nullopt;
     }
     return resolved;
+}
+
+std::optional<QString> Vault::resolveWikilink(const QString &link, const QString &source) const
+{
+    QString error;
+    if (!notePath(source, &error)) return std::nullopt;
+    QString path = link.section(u'|', 0, 0).section(u'#', 0, 0);
+    const bool rootOnly = path.startsWith(u'/');
+    if (rootOnly) path.remove(0, 1);
+    if (path.isEmpty() || path.contains(u'\\')) return std::nullopt;
+    for (const QString &part : path.split(u'/')) {
+        if (part.isEmpty() || part.startsWith(u'.') || part == QStringLiteral(".."))
+            return std::nullopt;
+    }
+
+    // Discover only ordinary visible files. Never traverse symlinked folders or
+    // return linked files, even if they point back into this vault.
+    QStringList files;
+    QStringList pending{mRoot};
+    while (!pending.isEmpty()) {
+        QDir dir(pending.takeLast());
+        const QFileInfoList entries = dir.entryInfoList(
+            QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+        for (const QFileInfo &entry : entries) {
+            if (entry.fileName().startsWith(u'.') || entry.isSymLink()) continue;
+            if (entry.isDir())
+                pending.append(entry.filePath());
+            else if (entry.isFile())
+                files.append(QDir(mRoot).relativeFilePath(entry.filePath()).replace(u'\\', u'/'));
+        }
+    }
+    const QStringList spellings = path.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)
+                                      ? QStringList{path}
+                                      : QStringList{path, path + QStringLiteral(".md")};
+    const QString sourceFolder =
+        source.contains(u'/') ? source.left(source.lastIndexOf(u'/')) + u'/' : QString();
+    for (const QString &spelling : spellings) {
+        if (!rootOnly && files.contains(sourceFolder + spelling)) return sourceFolder + spelling;
+        if (files.contains(spelling)) return spelling;
+    }
+    // A qualified path must match in full: never send a miss in one folder
+    // to an unrelated file with the same basename elsewhere.
+    if (path.contains(u'/')) {
+        for (const QString &spelling : spellings) {
+            if (!rootOnly) {
+                for (const QString &file : files)
+                    if (file.compare(sourceFolder + spelling, Qt::CaseInsensitive) == 0)
+                        return file;
+            }
+            for (const QString &file : files)
+                if (file.compare(spelling, Qt::CaseInsensitive) == 0) return file;
+        }
+        return std::nullopt;
+    }
+    if (rootOnly) return std::nullopt;
+
+    // Basename lookup is case-insensitive. Prefer nearby files, then shorter
+    // paths, then a stable lexical order for equally ranked duplicates.
+    for (const QString &spelling : spellings) {
+        const QString name = spelling.section(u'/', -1);
+        QStringList matches;
+        for (const QString &file : files) {
+            if (file.section(u'/', -1).compare(name, Qt::CaseInsensitive) == 0)
+                matches.append(file);
+        }
+        if (matches.isEmpty()) continue;
+        std::sort(
+            matches.begin(),
+            matches.end(),
+            [&sourceFolder](const QString &a, const QString &b) {
+                const bool aNear = a.startsWith(sourceFolder);
+                const bool bNear = b.startsWith(sourceFolder);
+                if (aNear != bNear) return aNear;
+                if (a.size() != b.size()) return a.size() < b.size();
+                return a < b;
+            });
+        return matches.first();
+    }
+    return std::nullopt;
+}
+
+std::optional<QString> Vault::attachmentPath(const QString &relative) const
+{
+    if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
+        relative.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
+        return std::nullopt;
+    QString walked = mRoot;
+    for (const QString &segment : relative.split(u'/')) {
+        if (segment.isEmpty() || segment.startsWith(u'.')) return std::nullopt;
+        walked = QDir(walked).filePath(segment);
+        if (QFileInfo(walked).isSymLink()) return std::nullopt;
+    }
+    const QFileInfo info(walked);
+    const QString prefix = mRoot.endsWith(u'/') ? mRoot : mRoot + u'/';
+    QString canonical = info.canonicalFilePath();
+    if (!info.isFile() || !canonical.startsWith(prefix)) return std::nullopt;
+    return canonical;
 }
 
 bool Vault::readNote(const QString &relative, QByteArray *content, QString *error) const

@@ -56,6 +56,62 @@ static void fixtureDiscovery()
     CHECK(!vault->readNote(QStringLiteral(".obsidian/app.json"), &hidden, &error));
 }
 
+static void resolvesFixtureLinks()
+{
+    QString error;
+    const auto vault = Vault::open(QString::fromUtf8(LINKS_VAULT), &error);
+    CHECK(vault.has_value());
+    const QString source = QStringLiteral("A/Source.md");
+    const auto check = [&](const QString &link, const QString &expected) {
+        CHECK(vault->resolveWikilink(link, source) == std::optional<QString>(expected));
+    };
+    check(QStringLiteral("Twin"), QStringLiteral("A/Twin.md"));
+    check(QStringLiteral("B/Twin"), QStringLiteral("B/Twin.md"));
+    check(QStringLiteral("b/twin"), QStringLiteral("B/Twin.md"));
+    check(QStringLiteral("/b/twin"), QStringLiteral("B/Twin.md"));
+    check(QStringLiteral("/B/Twin"), QStringLiteral("B/Twin.md"));
+    check(QStringLiteral("/Twin"), QStringLiteral("Twin.md"));
+    check(QStringLiteral("tWiN"), QStringLiteral("A/Twin.md"));
+    check(QStringLiteral("Twin.md"), QStringLiteral("A/Twin.md"));
+    check(QStringLiteral("Twin#Section|Display"), QStringLiteral("A/Twin.md"));
+    check(QStringLiteral("photo.png"), QStringLiteral("assets/photo.png"));
+    check(QStringLiteral("LOWER"), QStringLiteral("Sub/lower.md"));
+    CHECK(!vault->resolveWikilink(QStringLiteral("Absent"), source));
+    CHECK(!vault->resolveWikilink(QStringLiteral("/Absent"), source));
+    CHECK(!vault->resolveWikilink(QStringLiteral("Wrong/Twin"), source));
+    CHECK(!vault->resolveWikilink(QStringLiteral("wrong/twin"), source));
+    check(QStringLiteral("/a/twin"), QStringLiteral("A/Twin.md"));
+    CHECK(!vault->resolveWikilink(QStringLiteral("../Twin"), source));
+    CHECK(!vault->resolveWikilink(QStringLiteral(".obsidian/private"), source));
+    CHECK(!vault->resolveWikilink(QStringLiteral("Twin"), QStringLiteral("missing.md")));
+    CHECK(
+        vault->attachmentPath(QStringLiteral("assets/photo.png")) ==
+        QFileInfo(QString::fromUtf8(LINKS_VAULT) + QStringLiteral("/assets/photo.png"))
+            .canonicalFilePath());
+    CHECK(!vault->attachmentPath(QStringLiteral("../photo.png")));
+    CHECK(!vault->attachmentPath(QStringLiteral("A/Twin.md")));
+
+#ifdef Q_OS_UNIX
+    QTemporaryDir outside;
+    CHECK(outside.isValid());
+    writeFile(outside.filePath(QStringLiteral("secret.md")), "outside");
+    QTemporaryDir safe;
+    CHECK(safe.isValid());
+    writeFile(safe.filePath(QStringLiteral("source.md")), "links");
+    CHECK(QFile::link(outside.path(), safe.filePath(QStringLiteral("linked"))));
+    CHECK(
+        QFile::link(
+            outside.filePath(QStringLiteral("secret.md")),
+            safe.filePath(QStringLiteral("shortcut.md"))));
+    const auto isolated = Vault::open(safe.path(), &error);
+    CHECK(isolated.has_value());
+    CHECK(!isolated->resolveWikilink(QStringLiteral("secret"), QStringLiteral("source.md")));
+    CHECK(!isolated->resolveWikilink(QStringLiteral("shortcut"), QStringLiteral("source.md")));
+    CHECK(!isolated->attachmentPath(QStringLiteral("linked/secret.md")));
+    CHECK(!isolated->attachmentPath(QStringLiteral("shortcut.md")));
+#endif
+}
+
 static void savesAndRejectsConflicts()
 {
     QTemporaryDir dir;
@@ -634,6 +690,7 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     try {
         fixtureDiscovery();
+        resolvesFixtureLinks();
         savesAndRejectsConflicts();
         rejectsEscapesAndSymlinks();
         preservesUtf8BomWhenEditing();
