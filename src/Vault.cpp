@@ -7,14 +7,14 @@
 
 namespace
 {
-void Conflict(QString *error)
+void conflict(QString *error)
 {
     *error = QStringLiteral(
         "Save conflict: note changed on disk. Your edits remain "
         "in the editor.");
 }
 
-bool ReadBytes(const QString &path, QByteArray *content, QString *error)
+bool readBytes(const QString &path, QByteArray *content, QString *error)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -30,14 +30,14 @@ bool ReadBytes(const QString &path, QByteArray *content, QString *error)
 }
 } // namespace
 
-bool MoveToSystemTrash(const QString &path, QString *error)
+bool moveToSystemTrash(const QString &path, QString *error)
 {
     if (QFile::moveToTrash(path)) return true;
     *error = QStringLiteral("Could not move the note to the trash, so it was not deleted.");
     return false;
 }
 
-std::optional<Vault> Vault::Open(const QString &folder, QString *error)
+std::optional<Vault> Vault::open(const QString &folder, QString *error)
 {
     QFileInfo info(folder);
     if (!info.isDir()) {
@@ -52,7 +52,7 @@ std::optional<Vault> Vault::Open(const QString &folder, QString *error)
     return Vault(root);
 }
 
-bool Vault::ListNotes(QStringList *notes, QString *error, QStringList *folders) const
+bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) const
 {
     QStringList found;
     QStringList discoveredFolders;
@@ -84,7 +84,7 @@ bool Vault::ListNotes(QStringList *notes, QString *error, QStringList *folders) 
     return true;
 }
 
-std::optional<QString> Vault::NotePath(const QString &relative, QString *error) const
+std::optional<QString> Vault::notePath(const QString &relative, QString *error) const
 {
     if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
         !relative.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
@@ -118,24 +118,24 @@ std::optional<QString> Vault::NotePath(const QString &relative, QString *error) 
     return resolved;
 }
 
-bool Vault::ReadNote(const QString &relative, QByteArray *content, QString *error) const
+bool Vault::readNote(const QString &relative, QByteArray *content, QString *error) const
 {
-    const auto path = NotePath(relative, error);
-    return path && ReadBytes(*path, content, error);
+    const auto path = notePath(relative, error);
+    return path && readBytes(*path, content, error);
 }
 
-bool Vault::SaveNote(
+bool Vault::saveNote(
     const QString &relative,
     const QByteArray &expected,
     const QByteArray &content,
     QString *error) const
 {
-    const auto path = NotePath(relative, error);
+    const auto path = notePath(relative, error);
     if (!path) return false;
     QByteArray current;
-    if (!ReadBytes(*path, &current, error)) return false;
+    if (!readBytes(*path, &current, error)) return false;
     if (current != expected) {
-        Conflict(error);
+        conflict(error);
         return false;
     }
 
@@ -152,11 +152,11 @@ bool Vault::SaveNote(
         replacement.cancelWriting();
         return false;
     }
-    const auto stillThere = NotePath(relative, error);
-    if (!stillThere || *stillThere != *path || !ReadBytes(*path, &current, error) ||
+    const auto stillThere = notePath(relative, error);
+    if (!stillThere || *stillThere != *path || !readBytes(*path, &current, error) ||
         current != expected)
     {
-        Conflict(error);
+        conflict(error);
         replacement.cancelWriting();
         return false;
     }
@@ -167,12 +167,12 @@ bool Vault::SaveNote(
     return true;
 }
 
-bool Vault::CreateNote(const QString &relative, QString *error) const
+bool Vault::createNote(const QString &relative, QString *error) const
 {
-    return CreateNoteWithContent(relative, QByteArray(), error);
+    return createNoteWithContent(relative, QByteArray(), error);
 }
 
-bool Vault::CreateNoteWithContent(
+bool Vault::createNoteWithContent(
     const QString &relative, const QByteArray &content, QString *error) const
 {
     if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
@@ -224,8 +224,8 @@ bool Vault::CreateNoteWithContent(
     return true;
 }
 
-bool Vault::TrashNote(const QString &relative, const TrashFunction &trash, QString *error) const
+bool Vault::trashNote(const QString &relative, const TrashFunction &trash, QString *error) const
 {
-    const auto path = NotePath(relative, error);
+    const auto path = notePath(relative, error);
     return path && trash(*path, error);
 }

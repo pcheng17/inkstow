@@ -13,9 +13,9 @@ int main(int argc, char **argv)
         return 1;
     }
     QString error;
-    const auto vault = Vault::Open(QCoreApplication::arguments().at(1), &error);
+    const auto vault = Vault::open(QCoreApplication::arguments().at(1), &error);
     QStringList notes;
-    if (!vault || !vault->ListNotes(&notes, &error)) {
+    if (!vault || !vault->listNotes(&notes, &error)) {
         err << "Vault error: " << error << '\n';
         return 1;
     }
