@@ -16,12 +16,12 @@ struct Change
     QStringList mLines;
 };
 
-QStringList LinesOf(const QString &text)
+QStringList linesOf(const QString &text)
 {
     return text.split(u'\n', Qt::KeepEmptyParts);
 }
 
-std::vector<Change> Changes(const QStringList &base, const QStringList &other)
+std::vector<Change> changes(const QStringList &base, const QStringList &other)
 {
     const qsizetype n = base.size();
     const qsizetype m = other.size();
@@ -53,7 +53,7 @@ std::vector<Change> Changes(const QStringList &base, const QStringList &other)
     return result;
 }
 
-bool Overlaps(const Change &a, const Change &b)
+bool overlaps(const Change &a, const Change &b)
 {
     if (a.mStart == a.mEnd && b.mStart == b.mEnd) return a.mStart == b.mStart;
     if (a.mStart == a.mEnd) return b.mStart <= a.mStart && a.mStart < b.mEnd;
@@ -61,7 +61,7 @@ bool Overlaps(const Change &a, const Change &b)
     return a.mStart < b.mEnd && b.mStart < a.mEnd;
 }
 
-QStringList Apply(
+QStringList apply(
     const QStringList &base, qsizetype start, qsizetype end, const std::vector<Change> &hunks)
 {
     QStringList result;
@@ -77,11 +77,11 @@ QStringList Apply(
     return result;
 }
 
-QString ThreeWayMerge(const QString &baseText, const QString &mineText, const QString &outsideText)
+QString threeWayMerge(const QString &baseText, const QString &mineText, const QString &outsideText)
 {
-    const QStringList base = LinesOf(baseText);
-    const auto mine = Changes(base, LinesOf(mineText));
-    const auto outside = Changes(base, LinesOf(outsideText));
+    const QStringList base = linesOf(baseText);
+    const auto mine = changes(base, linesOf(mineText));
+    const auto outside = changes(base, linesOf(outsideText));
     QStringList result;
     size_t a = 0;
     size_t b = 0;
@@ -104,7 +104,7 @@ QString ThreeWayMerge(const QString &baseText, const QString &mineText, const QS
             if (a < mine.size() && std::any_of(
                                        right.begin(),
                                        right.end(),
-                                       [&](const Change &c) { return Overlaps(mine[a], c); }))
+                                       [&](const Change &c) { return overlaps(mine[a], c); }))
             {
                 left.push_back(mine[a++]);
                 expanded = true;
@@ -112,7 +112,7 @@ QString ThreeWayMerge(const QString &baseText, const QString &mineText, const QS
             if (b < outside.size() && std::any_of(
                                           left.begin(),
                                           left.end(),
-                                          [&](const Change &c) { return Overlaps(outside[b], c); }))
+                                          [&](const Change &c) { return overlaps(outside[b], c); }))
             {
                 right.push_back(outside[b++]);
                 expanded = true;
@@ -123,8 +123,8 @@ QString ThreeWayMerge(const QString &baseText, const QString &mineText, const QS
             end = std::max(end, c.mEnd);
         for (const Change &c : right)
             end = std::max(end, c.mEnd);
-        const QStringList l = Apply(base, start, end, left);
-        const QStringList r = Apply(base, start, end, right);
+        const QStringList l = apply(base, start, end, left);
+        const QStringList r = apply(base, start, end, right);
         if (left.empty())
             result.append(r);
         else if (right.empty() || l == r)
@@ -144,27 +144,27 @@ QString ThreeWayMerge(const QString &baseText, const QString &mineText, const QS
 }
 } // namespace
 
-bool Session::OpenVault(const QString &folder, QString *error)
+bool Session::openVault(const QString &folder, QString *error)
 {
-    if (Dirty()) {
+    if (dirty()) {
         *error = QStringLiteral("Save the current note before opening another vault.");
         return false;
     }
-    auto next = Vault::Open(folder, error);
+    auto next = Vault::open(folder, error);
     if (!next) return false;
     QStringList notes;
     QStringList folders;
-    if (!next->ListNotes(&notes, error, &folders)) return false;
+    if (!next->listNotes(&notes, error, &folders)) return false;
     mVault = std::move(next);
     mNotes = notes;
     mFolders = folders;
-    ClearNote();
+    clearNote();
     return true;
 }
 
-bool Session::SelectNote(const QString &path, QString *error)
+bool Session::selectNote(const QString &path, QString *error)
 {
-    if (Dirty()) {
+    if (dirty()) {
         *error = QStringLiteral("Save the current note before switching.");
         return false;
     }
@@ -173,89 +173,89 @@ bool Session::SelectNote(const QString &path, QString *error)
         return false;
     }
     QByteArray bytes;
-    if (!mVault->ReadNote(path, &bytes, error)) return false;
+    if (!mVault->readNote(path, &bytes, error)) return false;
     QString text;
-    if (!Decode(bytes, &text, error)) return false;
-    Load(path, bytes, text);
+    if (!decode(bytes, &text, error)) return false;
+    load(path, bytes, text);
     return true;
 }
 
-bool Session::Save(QString *error)
+bool Session::save(QString *error)
 {
-    return Write(mSavedBytes, error);
+    return write(mSavedBytes, error);
 }
 
-bool Session::Write(const QByteArray &expected, QString *error)
+bool Session::write(const QByteArray &expected, QString *error)
 {
-    const Vault *vault = RequireNote(error);
+    const Vault *vault = requireNote(error);
     if (!vault) return false;
     const QByteArray bytes =
         (mHasBom ? QByteArray::fromHex("efbbbf") : QByteArray()) + mContent.toUtf8();
-    if (!vault->SaveNote(mPath, expected, bytes, error)) return false;
+    if (!vault->saveNote(mPath, expected, bytes, error)) return false;
     mSavedContent = mContent;
     mSavedBytes = bytes;
     mConflictBytes.reset();
     return true;
 }
 
-DiskChange Session::SyncWithDisk(QString *error)
+DiskChange Session::syncWithDisk(QString *error)
 {
     if (!mVault || mPath.isEmpty()) return DiskChange::None;
     QByteArray bytes;
-    if (!mVault->ReadNote(mPath, &bytes, error)) return DiskChange::Missing;
+    if (!mVault->readNote(mPath, &bytes, error)) return DiskChange::Missing;
     if (bytes == mSavedBytes) return DiskChange::None;
     mConflictBytes = bytes;
-    if (Dirty()) {
+    if (dirty()) {
         *error = QStringLiteral(
             "Note changed on disk while you have unsaved edits; "
             "reload from disk or keep your version.");
         return DiskChange::Conflict;
     }
     QString text;
-    if (!Decode(bytes, &text, error)) return DiskChange::Conflict;
-    Load(mPath, bytes, text);
+    if (!decode(bytes, &text, error)) return DiskChange::Conflict;
+    load(mPath, bytes, text);
     return DiskChange::Reloaded;
 }
 
-bool Session::ReloadFromDisk(QString *error)
+bool Session::reloadFromDisk(QString *error)
 {
-    const Vault *vault = RequireNote(error);
+    const Vault *vault = requireNote(error);
     if (!vault) return false;
     QByteArray bytes;
     QString text;
-    if (!vault->ReadNote(mPath, &bytes, error) || !Decode(bytes, &text, error)) return false;
-    Load(mPath, bytes, text);
+    if (!vault->readNote(mPath, &bytes, error) || !decode(bytes, &text, error)) return false;
+    load(mPath, bytes, text);
     return true;
 }
 
-bool Session::OverwriteDisk(QString *error)
+bool Session::overwriteDisk(QString *error)
 {
-    if (!RequireNote(error)) return false;
+    if (!requireNote(error)) return false;
     if (!mConflictBytes) {
         *error = QStringLiteral("No outside change to replace.");
         return false;
     }
-    return Write(*mConflictBytes, error);
+    return write(*mConflictBytes, error);
 }
 
-bool Session::MergeOutsideChanges(QString *error)
+bool Session::mergeOutsideChanges(QString *error)
 {
-    const Vault *vault = RequireNote(error);
+    const Vault *vault = requireNote(error);
     if (!vault) return false;
-    if (!mConflictBytes || !Dirty()) {
+    if (!mConflictBytes || !dirty()) {
         *error = QStringLiteral("No unsaved edits and reported outside change to merge.");
         return false;
     }
     QByteArray current;
     QString outside;
-    if (!vault->ReadNote(mPath, &current, error) || !Decode(current, &outside, error)) return false;
+    if (!vault->readNote(mPath, &current, error) || !decode(current, &outside, error)) return false;
     if (current != *mConflictBytes) {
         *error = QStringLiteral("Outside note changed again; refresh before merging.");
         return false;
     }
-    const qsizetype baseLines = LinesOf(mSavedContent).size();
-    const qsizetype mineLines = LinesOf(mContent).size();
-    const qsizetype outsideLines = LinesOf(outside).size();
+    const qsizetype baseLines = linesOf(mSavedContent).size();
+    const qsizetype mineLines = linesOf(mContent).size();
+    const qsizetype outsideLines = linesOf(outside).size();
     // The line diff uses a quadratic LCS table for each side. Refuse a merge
     // too large to compute interactively rather than exhausting memory.
     constexpr qsizetype kMaxCells = 2000000;
@@ -263,7 +263,7 @@ bool Session::MergeOutsideChanges(QString *error)
         *error = QStringLiteral("Note is too large for the line merge; edits are unchanged.");
         return false;
     }
-    const QString merged = ThreeWayMerge(mSavedContent, mContent, outside);
+    const QString merged = threeWayMerge(mSavedContent, mContent, outside);
     mSavedBytes = current;
     mSavedContent = outside;
     mHasBom = current.startsWith("\xEF\xBB\xBF");
@@ -272,29 +272,29 @@ bool Session::MergeOutsideChanges(QString *error)
     return true;
 }
 
-bool Session::SaveAsNewNote(QString *error)
+bool Session::saveAsNewNote(QString *error)
 {
-    const Vault *vault = RequireNote(error);
+    const Vault *vault = requireNote(error);
     if (!vault) return false;
-    const QFileInfo target(NotePath());
+    const QFileInfo target(notePath());
     if (target.exists() || target.isSymLink()) {
         *error = QStringLiteral("Note still exists; Save as new note cannot replace it.");
         return false;
     }
     const QByteArray bytes =
         (mHasBom ? QByteArray::fromHex("efbbbf") : QByteArray()) + mContent.toUtf8();
-    if (!vault->CreateNoteWithContent(mPath, bytes, error)) return false;
+    if (!vault->createNoteWithContent(mPath, bytes, error)) return false;
     mSavedContent = mContent;
     mSavedBytes = bytes;
     mConflictBytes.reset();
     QString listError;
-    ReloadNotes(&listError);
+    reloadNotes(&listError);
     return true;
 }
 
-bool Session::CreateNote(const QString &input, QString *error)
+bool Session::createNote(const QString &input, QString *error)
 {
-    if (!RequireClean(error)) return false;
+    if (!requireClean(error)) return false;
     if (!mVault) {
         *error = QStringLiteral("Open a vault first.");
         return false;
@@ -302,7 +302,7 @@ bool Session::CreateNote(const QString &input, QString *error)
     // macOS lists names composed, so decomposed input would not match the list.
     QString path = input.trimmed().normalized(QString::NormalizationForm_C);
     if (!path.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)) path += QStringLiteral(".md");
-    if (!mVault->CreateNote(path, error) || !ReloadNotes(error)) return false;
+    if (!mVault->createNote(path, error) || !reloadNotes(error)) return false;
     // A case-insensitive file system may have kept an existing folder's spelling.
     if (!mNotes.contains(path)) {
         for (const QString &note : mNotes) {
@@ -312,32 +312,32 @@ bool Session::CreateNote(const QString &input, QString *error)
             }
         }
     }
-    return SelectNote(path, error);
+    return selectNote(path, error);
 }
 
-bool Session::TrashNote(QString *error)
+bool Session::trashNote(QString *error)
 {
-    const Vault *vault = RequireNote(error);
-    if (!vault || !RequireClean(error) || !vault->TrashNote(mPath, mTrash, error)) return false;
+    const Vault *vault = requireNote(error);
+    if (!vault || !requireClean(error) || !vault->trashNote(mPath, mTrash, error)) return false;
     // The note is gone either way; a failed relist only drops it from the list.
     QString ignored;
-    if (!ReloadNotes(&ignored)) mNotes.removeAll(mPath);
-    ClearNote();
+    if (!reloadNotes(&ignored)) mNotes.removeAll(mPath);
+    clearNote();
     return true;
 }
 
-bool Session::ReloadNotes(QString *error)
+bool Session::reloadNotes(QString *error)
 {
     if (!mVault) return false;
     QStringList notes;
     QStringList folders;
-    if (!mVault->ListNotes(&notes, error, &folders)) return false;
+    if (!mVault->listNotes(&notes, error, &folders)) return false;
     mNotes = notes;
     mFolders = folders;
     return true;
 }
 
-void Session::ClearNote()
+void Session::clearNote()
 {
     mPath.clear();
     mContent.clear();
@@ -347,27 +347,27 @@ void Session::ClearNote()
     mHasBom = false;
 }
 
-bool Session::RequireClean(QString *error) const
+bool Session::requireClean(QString *error) const
 {
-    if (!Dirty()) return true;
+    if (!dirty()) return true;
     *error = QStringLiteral("Save or discard your edits first.");
     return false;
 }
 
-const Vault *Session::RequireNote(QString *error) const
+const Vault *Session::requireNote(QString *error) const
 {
     if (mVault && !mPath.isEmpty()) return &*mVault;
     *error = QStringLiteral("Select a note first.");
     return nullptr;
 }
 
-QString Session::NotePath() const
+QString Session::notePath() const
 {
     if (!mVault || mPath.isEmpty()) return QString();
-    return QDir(mVault->Root()).filePath(mPath);
+    return QDir(mVault->root()).filePath(mPath);
 }
 
-bool Session::Decode(const QByteArray &bytes, QString *text, QString *error)
+bool Session::decode(const QByteArray &bytes, QString *text, QString *error)
 {
     QStringDecoder decoder(QStringDecoder::Utf8);
     *text = decoder.decode(bytes);
@@ -378,7 +378,7 @@ bool Session::Decode(const QByteArray &bytes, QString *text, QString *error)
     return true;
 }
 
-void Session::Load(const QString &path, const QByteArray &bytes, const QString &text)
+void Session::load(const QString &path, const QByteArray &bytes, const QString &text)
 {
     mPath = path;
     mHasBom = bytes.startsWith("\xEF\xBB\xBF");

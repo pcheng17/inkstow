@@ -6,7 +6,7 @@
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    ConfigureLightTheme(app);
+    configureLightTheme(app);
     Window window;
     window.show();
     return QApplication::exec();

@@ -16,30 +16,30 @@ class QFileSystemWatcher;
 class Window : public QMainWindow
 {
 public:
-    explicit Window(TrashFunction trash = MoveToSystemTrash);
+    explicit Window(TrashFunction trash = moveToSystemTrash);
 
 protected:
     void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 
 private:
-    void OpenVault();
-    void SelectNote(const QString &path);
-    void SaveNote();
-    void Refresh();
-    void ReplaceEditor(const QString &text);
-    void WatchNote();
-    void UpdateWatches();
-    void SyncWithDisk();
-    void ShowConflictBar(DiskChange change);
-    void ReloadFromDisk();
-    void KeepMine();
-    void MergeOutsideChanges();
-    void SaveAsNewNote();
-    void DiscardEdits();
-    void ShowNotes();
-    void CreateNote();
-    void TrashNote();
+    void openVault();
+    void selectNote(const QString &path);
+    void saveNote();
+    void refresh();
+    void replaceEditor(const QString &text);
+    void watchNote();
+    void updateWatches();
+    void syncWithDisk();
+    void showConflictBar(DiskChange change);
+    void reloadFromDisk();
+    void keepMine();
+    void mergeOutsideChanges();
+    void saveAsNewNote();
+    void discardEdits();
+    void showNotes();
+    void createNote();
+    void trashNote();
 
     Session mSession;
     QFileSystemWatcher *mWatcher;
