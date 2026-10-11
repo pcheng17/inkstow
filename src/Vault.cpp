@@ -379,8 +379,11 @@ bool Vault::moveNote(
             return !path.contains(u'#') && !path.contains(u'|') && !path.contains(u'[') &&
                    !path.contains(u']') && !path.contains(u'\n') && !path.contains(u'\r');
         };
-        if (!safeLinkPath(to)) {
-            *error = QStringLiteral("Destination cannot be represented by a simple wikilink.");
+        if (!safeLinkPath(to) ||
+            to.left(to.size() - 3).endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
+        {
+            *error =
+                QStringLiteral("Destination cannot be represented by an extensionless wikilink.");
             return false;
         }
         QStringList notes;
@@ -439,9 +442,31 @@ bool Vault::moveNote(
                         QStringLiteral("Link target cannot be safely serialized in %1.").arg(note);
                     return false;
                 }
-                // The explicit extension avoids an extensionless attachment
-                // shadowing the note, and works for names ending in .md.md.
-                output += QStringLiteral("[[/") + mapped + QStringLiteral("]]");
+                const QString linkPath = mapped.left(mapped.size() - 3);
+                const QFileInfo shadow(QDir(mRoot).filePath(linkPath));
+                // The resolver also falls back to a case-insensitive exact
+                // spelling before it considers adding .md.
+                bool shadowed = shadow.isFile() || shadow.isSymLink();
+                const QFileInfoList siblings =
+                    QDir(shadow.absolutePath())
+                        .entryInfoList(
+                            QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+                for (const QFileInfo &sibling : siblings) {
+                    if (sibling.fileName().compare(shadow.fileName(), Qt::CaseInsensitive) == 0 &&
+                        (sibling.isFile() || sibling.isSymLink()))
+                    {
+                        shadowed = true;
+                        break;
+                    }
+                }
+                if (linkPath.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive) || shadowed) {
+
+                    *error = QStringLiteral(
+                                 "Cannot write an unambiguous extensionless link to %1 in %2.")
+                                 .arg(mapped, note);
+                    return false;
+                }
+                output += QStringLiteral("[[/") + linkPath + QStringLiteral("]]");
                 offset = match.capturedEnd();
             }
             if (linkCount != text.count(QStringLiteral("[["))) {

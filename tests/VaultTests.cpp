@@ -697,13 +697,19 @@ static void renamesUniqueAndQualifiedLinks()
     Session session;
     CHECK(session.openVault(temp.path(), &error));
     CHECK(session.selectNote(QStringLiteral("sub/Target.md"), &error));
+    writeFile(dir.filePath(QStringLiteral("sub/New")), "attachment");
+    CHECK(!session.moveNote(QStringLiteral("sub/New"), true, &error));
+    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[Target]] [[sub/Target]]\n");
+    CHECK(QFile::exists(dir.filePath(QStringLiteral("sub/Target.md"))));
+    CHECK(QFile::remove(dir.filePath(QStringLiteral("sub/New"))));
+    writeFile(dir.filePath(QStringLiteral("sub/NEW")), "case-folded attachment");
+    CHECK(!session.moveNote(QStringLiteral("sub/New"), true, &error));
+    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[Target]] [[sub/Target]]\n");
+    CHECK(QFile::remove(dir.filePath(QStringLiteral("sub/NEW"))));
     CHECK(session.moveNote(QStringLiteral("sub/New"), true, &error));
-    CHECK(
-        readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[/sub/New.md]] [[/sub/New.md]]\n");
+    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[/sub/New]] [[/sub/New]]\n");
     CHECK(session.moveNote(QStringLiteral("sub/Again"), true, &error));
-    CHECK(
-        readFile(dir.filePath(QStringLiteral("Source.md"))) ==
-        "[[/sub/Again.md]] [[/sub/Again.md]]\n");
+    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[/sub/Again]] [[/sub/Again]]\n");
 }
 
 static void movesNotesAndGuardsLinks()
@@ -735,12 +741,9 @@ static void movesNotesAndGuardsLinks()
     CHECK(session.moveNote(QStringLiteral("C/Target"), true, &error));
     CHECK(session.path() == QStringLiteral("C/Target.md"));
     CHECK(!session.dirty());
-    CHECK(
-        readFile(dir.filePath(QStringLiteral("C/Target.md"))) == "\xef\xbb\xbf[[/C/Target.md]]\n");
-    CHECK(
-        readFile(dir.filePath(QStringLiteral("A/Source.md"))) ==
-        "[[/C/Target.md]] [[/B/Target.md]]");
-    CHECK(readFile(dir.filePath(QStringLiteral("B/Source.md"))) == "[[/B/Target.md]]");
+    CHECK(readFile(dir.filePath(QStringLiteral("C/Target.md"))) == "\xef\xbb\xbf[[/C/Target]]\n");
+    CHECK(readFile(dir.filePath(QStringLiteral("A/Source.md"))) == "[[/C/Target]] [[/B/Target]]");
+    CHECK(readFile(dir.filePath(QStringLiteral("B/Source.md"))) == "[[/B/Target]]");
     CHECK(!QFile::exists(dir.filePath(QStringLiteral("A/Target.md"))));
     CHECK(session.save(&error));
     CHECK(readFile(dir.filePath(QStringLiteral("C/Target.md"))).startsWith("\xef\xbb\xbf"));
@@ -767,19 +770,28 @@ static void renameLinksRemainResolvable()
     CHECK(!session.moveNote(QStringLiteral("New#Part"), true, &error));
     CHECK(!session.moveNote(QStringLiteral("New|Alias"), true, &error));
     CHECK(!session.moveNote(QStringLiteral("New[Part]"), true, &error));
-    CHECK(session.moveNote(QStringLiteral("New.md.md"), true, &error));
+    CHECK(!session.moveNote(QStringLiteral("New.md.md"), true, &error));
+    CHECK(!session.moveNote(QStringLiteral("New.md"), true, &error));
+    CHECK(QFile::exists(dir.filePath(QStringLiteral("Old.md"))));
+    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[Old]]");
+    CHECK(QFile::remove(dir.filePath(QStringLiteral("New"))));
+    CHECK(session.moveNote(QStringLiteral("New.md"), true, &error));
     auto vault = Vault::open(temp.path(), &error);
     CHECK(vault.has_value());
-    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[/New.md.md]]");
+    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[/New]]");
     CHECK(
-        vault->resolveWikilink(QStringLiteral("/New.md.md"), QStringLiteral("Source.md")) ==
-        QStringLiteral("New.md.md"));
-    CHECK(session.moveNote(QStringLiteral("New.md"), true, &error));
-    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[/New.md]]");
-    CHECK(
-        vault->resolveWikilink(QStringLiteral("/New.md"), QStringLiteral("Source.md")) ==
+        vault->resolveWikilink(QStringLiteral("/New"), QStringLiteral("Source.md")) ==
         QStringLiteral("New.md"));
     CHECK(!QFile::exists(dir.filePath(QStringLiteral("Old.md"))));
+
+    // A destination ending in .md.md cannot be serialized without an explicit
+    // extension, even when there are no backlinks to rewrite yet.
+    writeFile(dir.filePath(QStringLiteral("Unlinked.md")), "standalone");
+    CHECK(session.reloadNotes(&error));
+    CHECK(session.selectNote(QStringLiteral("Unlinked.md"), &error));
+    CHECK(!session.moveNote(QStringLiteral("Double.md.md"), true, &error));
+    CHECK(QFile::exists(dir.filePath(QStringLiteral("Unlinked.md"))));
+    CHECK(!QFile::exists(dir.filePath(QStringLiteral("Double.md.md"))));
 }
 
 int main(int argc, char **argv)
