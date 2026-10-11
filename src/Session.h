@@ -54,6 +54,14 @@ public:
     const QStringList &folders() const { return mFolders; }
     const QString &path() const { return mPath; }
     const QString &content() const { return mContent; }
+    std::optional<QString> resolveWikilink(const QString &link) const
+    {
+        return mVault && !mPath.isEmpty() ? mVault->resolveWikilink(link, mPath) : std::nullopt;
+    }
+    std::optional<QString> attachmentPath(const QString &relative) const
+    {
+        return mVault ? mVault->attachmentPath(relative) : std::nullopt;
+    }
     // Absolute path of the selected note, or empty when none is selected.
     QString notePath() const;
 

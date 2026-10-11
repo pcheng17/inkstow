@@ -3,6 +3,9 @@
 #include "Session.h"
 
 #include <QMainWindow>
+#include <QUrl>
+
+#include <functional>
 
 class QLabel;
 class QLineEdit;
@@ -16,7 +19,9 @@ class QFileSystemWatcher;
 class Window : public QMainWindow
 {
 public:
-    explicit Window(TrashFunction trash = moveToSystemTrash);
+    explicit Window(
+        TrashFunction trash = moveToSystemTrash,
+        std::function<bool(const QUrl &)> openAttachment = {});
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -26,6 +31,7 @@ private:
     void openVault();
     void selectNote(const QString &path);
     void saveNote();
+    void followLink();
     void refresh();
     void replaceEditor(const QString &text);
     void watchNote();
@@ -42,12 +48,14 @@ private:
     void trashNote();
 
     Session mSession;
+    std::function<bool(const QUrl &)> mOpenAttachment;
     QFileSystemWatcher *mWatcher;
     QTimer *mSyncTimer;
     QLineEdit *mFolder;
     QListWidget *mNotes;
     QPlainTextEdit *mEditor;
     QPushButton *mSave;
+    QPushButton *mFollow;
     QPushButton *mDelete;
     QLineEdit *mNewPath;
     QPushButton *mCreate;

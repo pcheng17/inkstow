@@ -1,7 +1,8 @@
 add_executable(vault-tests VaultTests.cpp)
 target_link_libraries(vault-tests PRIVATE vault-core inkstow-warnings)
 target_compile_definitions(vault-tests
-                           PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
+                           PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample"
+                                   LINKS_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/links")
 add_test(NAME vault-core COMMAND vault-tests)
 
 add_executable(ui-tests UiTests.cpp ${PROJECT_SOURCE_DIR}/src/Theme.cpp

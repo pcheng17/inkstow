@@ -1,6 +1,7 @@
 #include "Window.h"
 
 #include <QCloseEvent>
+#include <QDesktopServices>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QHBoxLayout>
@@ -11,6 +12,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QTextCursor>
@@ -19,8 +21,9 @@
 
 #include <algorithm>
 
-Window::Window(TrashFunction trash)
+Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttachment)
     : mSession(std::move(trash))
+    , mOpenAttachment(openAttachment ? std::move(openAttachment) : QDesktopServices::openUrl)
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
     , mFolder(new QLineEdit)
@@ -61,11 +64,14 @@ Window::Window(TrashFunction trash)
     auto *rightLayout = new QVBoxLayout(right);
     auto *toolbar = new QHBoxLayout;
     mFilename = new QLabel(QStringLiteral("Select a note"));
+    mFollow = new QPushButton(QStringLiteral("Follow link"));
+    mFollow->setObjectName(QStringLiteral("followLink"));
     mSave = new QPushButton(QStringLiteral("Save"));
     mSave->setObjectName(QStringLiteral("saveNote"));
     mDelete = new QPushButton(QStringLiteral("Delete"));
     mDelete->setObjectName(QStringLiteral("deleteNote"));
     toolbar->addWidget(mFilename, 1);
+    toolbar->addWidget(mFollow);
     toolbar->addWidget(mDelete);
     toolbar->addWidget(mSave);
     rightLayout->addLayout(toolbar);
@@ -132,6 +138,7 @@ Window::Window(TrashFunction trash)
     connect(open, &QPushButton::clicked, this, [this] { openVault(); });
     connect(mFolder, &QLineEdit::returnPressed, this, [this] { openVault(); });
     connect(mSave, &QPushButton::clicked, this, [this] { saveNote(); });
+    connect(mFollow, &QPushButton::clicked, this, [this] { followLink(); });
     connect(mReload, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
     connect(mKeepMine, &QPushButton::clicked, this, [this] { keepMine(); });
     connect(mMerge, &QPushButton::clicked, this, [this] { mergeOutsideChanges(); });
@@ -171,6 +178,7 @@ void Window::refresh()
         selected ? mSession.path() + (mSession.dirty() ? QStringLiteral(" *") : QString())
                  : QStringLiteral("Select a note"));
     mSave->setEnabled(selected && mSession.dirty());
+    mFollow->setEnabled(selected);
     if (!mSession.dirty()) mConflictBar->hide();
     if (mSession.path() != mDeletePath) mDeleteBar->hide();
     mDelete->setEnabled(selected && !mSession.dirty());
@@ -212,6 +220,43 @@ void Window::selectNote(const QString &path)
     watchNote();
     mEditor->setFocus();
     mStatus->setText(QStringLiteral("Opened ") + path);
+}
+
+void Window::followLink()
+{
+    if (mSession.path().isEmpty()) return;
+    const int position = mEditor->textCursor().position();
+    const QString text = mEditor->toPlainText();
+    const QRegularExpression links(QStringLiteral(R"(\[\[([^\[\]\n]+)\]\])"));
+    auto match = links.globalMatch(text);
+    while (match.hasNext()) {
+        const auto current = match.next();
+        if (position < current.capturedStart() || position >= current.capturedEnd()) continue;
+        const auto target = mSession.resolveWikilink(current.captured(1));
+        if (!target) {
+            mStatus->setText(QStringLiteral("Unresolved link"));
+        } else if (!target->endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)) {
+            if (mSession.dirty()) {
+                mStatus->setText(QStringLiteral("Error: Save the current note before switching."));
+                return;
+            }
+            const auto path = mSession.attachmentPath(*target);
+            if (!path || !mOpenAttachment(QUrl::fromLocalFile(*path))) {
+                mStatus->setText(QStringLiteral("Error: Could not open attachment: ") + *target);
+                return;
+            }
+            mStatus->setText(QStringLiteral("Opened attachment: ") + *target);
+        } else {
+            selectNote(*target); // Session refuses to abandon unsaved changes.
+            if (mSession.path() == *target) {
+                const QSignalBlocker block(mNotes);
+                const auto items = mNotes->findItems(*target, Qt::MatchExactly);
+                mNotes->setCurrentItem(items.isEmpty() ? nullptr : items.first());
+            }
+        }
+        return;
+    }
+    mStatus->setText(QStringLiteral("Place the cursor inside a [[link]] to follow it."));
 }
 
 void Window::saveNote()

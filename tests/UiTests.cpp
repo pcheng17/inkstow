@@ -15,6 +15,7 @@
 #include <QPushButton>
 #include <QSaveFile>
 #include <QTemporaryDir>
+#include <QTextCursor>
 #include <QThread>
 
 #include <stdexcept>
@@ -51,6 +52,68 @@ static bool waitFor(Done done)
     return done();
 }
 
+static void testFollowingLinks(
+    Window &window, const QDir &dir, const QStringList &openedAttachments)
+{
+    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+    auto *follow = window.findChild<QPushButton *>(QStringLiteral("followLink"));
+    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    CHECK(notes && editor && follow && status);
+    writeFile(
+        dir.filePath(QStringLiteral("other.md")),
+        "[[note#Part|Alias]] [[missing]] [[asset.png]]");
+    writeFile(dir.filePath(QStringLiteral("asset.png")), "attachment");
+    notes->setCurrentRow(1);
+    const auto cursorAt = [&](const QString &needle) {
+        QTextCursor cursor = editor->textCursor();
+        cursor.setPosition(static_cast<int>(editor->toPlainText().indexOf(needle) + 2));
+        editor->setTextCursor(cursor);
+    };
+    cursorAt(QStringLiteral("[[missing]]"));
+    follow->click();
+    CHECK(status->text() == QStringLiteral("Unresolved link"));
+    cursorAt(QStringLiteral("[[asset.png]]"));
+    follow->click();
+    CHECK(status->text() == QStringLiteral("Opened attachment: asset.png"));
+    CHECK(
+        openedAttachments ==
+        QStringList{QFileInfo(dir.filePath(QStringLiteral("asset.png"))).canonicalFilePath()});
+    CHECK(editor->toPlainText() == QStringLiteral("[[note#Part|Alias]] [[missing]] [[asset.png]]"));
+    CHECK(readFile(dir.filePath(QStringLiteral("asset.png"))) == "attachment");
+    // The cursor at the exclusive end of ]] must not select this link.
+    QTextCursor after = editor->textCursor();
+    after.setPosition(
+        static_cast<int>(
+            editor->toPlainText().indexOf(QStringLiteral("[[asset.png]]")) +
+            QStringLiteral("[[asset.png]]").size()));
+    editor->setTextCursor(after);
+    follow->click();
+    CHECK(status->text().contains(QStringLiteral("cursor inside")));
+    CHECK(openedAttachments.size() == 1);
+    // Make sure unsaved edits cannot be abandoned through Follow link.
+    editor->setPlainText(QStringLiteral("[[note#Part|Alias]] [[asset.png]] draft"));
+    cursorAt(QStringLiteral("[[note#Part|Alias]]"));
+    follow->click();
+    CHECK(notes->currentItem()->text() == QStringLiteral("other.md"));
+    CHECK(status->text().contains(QStringLiteral("Save the current note")));
+    cursorAt(QStringLiteral("[[asset.png]]"));
+    follow->click();
+    CHECK(status->text().contains(QStringLiteral("Save the current note")));
+    CHECK(openedAttachments.size() == 1);
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("other.md"))) ==
+        "[[note#Part|Alias]] [[missing]] [[asset.png]]");
+    editor->setPlainText(QStringLiteral("[[note#Part|Alias]] [[missing]] [[asset.png]]"));
+    cursorAt(QStringLiteral("[[note#Part|Alias]]"));
+    follow->click();
+    CHECK(notes->currentItem()->text() == QStringLiteral("note.md"));
+    CHECK(editor->toPlainText() == QStringLiteral("original"));
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("other.md"))) ==
+        "[[note#Part|Alias]] [[missing]] [[asset.png]]");
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -83,9 +146,16 @@ int main(int argc, char **argv)
 
         QTemporaryDir trash;
         CHECK(trash.isValid());
-        Window window([&](const QString &path, QString *) {
-            return QFile::rename(path, QDir(trash.path()).filePath(QFileInfo(path).fileName()));
-        });
+        QStringList openedAttachments;
+        Window window(
+            [&](const QString &path, QString *) {
+                return QFile::rename(path, QDir(trash.path()).filePath(QFileInfo(path).fileName()));
+            },
+            [&](const QUrl &url) {
+                CHECK(url.isLocalFile());
+                openedAttachments.append(url.toLocalFile());
+                return true;
+            });
         auto *folder = window.findChild<QLineEdit *>(QStringLiteral("vaultFolder"));
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
@@ -123,8 +193,7 @@ int main(int argc, char **argv)
         open->click();
         CHECK(notes->count() == 2);
         CHECK(notes->item(0)->text() == QStringLiteral("note.md"));
-        notes->setCurrentRow(0);
-        CHECK(editor->toPlainText() == QStringLiteral("original"));
+        testFollowingLinks(window, QDir(dir.path()), openedAttachments);
         editor->setPlainText(QStringLiteral("first edit"));
         CHECK(save->isEnabled());
         notes->setCurrentRow(1);
