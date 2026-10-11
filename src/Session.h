@@ -70,6 +70,7 @@ private:
     const Vault *requireNote(QString *error) const;
     bool requireClean(QString *error) const;
     void clearNote();
+    QString discoveredPath(const QString &requested) const;
     bool write(const QByteArray &expected, QString *error);
     static bool decode(const QByteArray &bytes, QString *text, QString *error);
     void load(const QString &path, const QByteArray &bytes, const QString &text);

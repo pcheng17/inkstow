@@ -328,14 +328,7 @@ bool Session::moveNote(const QString &input, bool updateLinks, QString *error)
             QString text;
             if (vault->readNote(path, &partial, error) && decode(partial, &text, error)) {
                 QString ignored;
-                if (reloadNotes(&ignored)) {
-                    for (const QString &note : mNotes) {
-                        if (note.compare(path, Qt::CaseInsensitive) == 0) {
-                            path = note;
-                            break;
-                        }
-                    }
-                }
+                if (reloadNotes(&ignored)) path = discoveredPath(path);
                 load(path, partial, text);
             }
             *error = failure;
@@ -345,14 +338,7 @@ bool Session::moveNote(const QString &input, bool updateLinks, QString *error)
     // The selected note may itself contain rewritten links. Discovery may use
     // the existing folder's spelling on a case-insensitive filesystem.
     QString ignored;
-    if (reloadNotes(&ignored)) {
-        for (const QString &note : mNotes) {
-            if (note.compare(path, Qt::CaseInsensitive) == 0) {
-                path = note;
-                break;
-            }
-        }
-    }
+    if (reloadNotes(&ignored)) path = discoveredPath(path);
     QByteArray bytes;
     QString text;
     if (!vault->readNote(path, &bytes, error) || !decode(bytes, &text, error)) {
@@ -363,6 +349,14 @@ bool Session::moveNote(const QString &input, bool updateLinks, QString *error)
     }
     load(path, bytes, text);
     return true;
+}
+
+QString Session::discoveredPath(const QString &requested) const
+{
+    for (const QString &note : mNotes) {
+        if (note.compare(requested, Qt::CaseInsensitive) == 0) return note;
+    }
+    return requested;
 }
 
 bool Session::trashNote(QString *error)
