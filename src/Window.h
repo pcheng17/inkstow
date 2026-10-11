@@ -46,6 +46,7 @@ private:
     void showNotes();
     void createNote();
     void trashNote();
+    void moveNote();
 
     Session mSession;
     std::function<bool(const QUrl &)> mOpenAttachment;
@@ -57,6 +58,7 @@ private:
     QPushButton *mSave;
     QPushButton *mFollow;
     QPushButton *mDelete;
+    QPushButton *mMove;
     QLineEdit *mNewPath;
     QPushButton *mCreate;
     QWidget *mDeleteBar;

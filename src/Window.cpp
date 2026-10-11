@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -68,10 +69,13 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     mFollow->setObjectName(QStringLiteral("followLink"));
     mSave = new QPushButton(QStringLiteral("Save"));
     mSave->setObjectName(QStringLiteral("saveNote"));
+    mMove = new QPushButton(QStringLiteral("Rename / move"));
+    mMove->setObjectName(QStringLiteral("moveNote"));
     mDelete = new QPushButton(QStringLiteral("Delete"));
     mDelete->setObjectName(QStringLiteral("deleteNote"));
     toolbar->addWidget(mFilename, 1);
     toolbar->addWidget(mFollow);
+    toolbar->addWidget(mMove);
     toolbar->addWidget(mDelete);
     toolbar->addWidget(mSave);
     rightLayout->addLayout(toolbar);
@@ -145,6 +149,7 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     connect(mSaveAsNew, &QPushButton::clicked, this, [this] { saveAsNewNote(); });
     connect(mDiscard, &QPushButton::clicked, this, [this] { discardEdits(); });
     connect(mCreate, &QPushButton::clicked, this, [this] { createNote(); });
+    connect(mMove, &QPushButton::clicked, this, [this] { moveNote(); });
     connect(mNewPath, &QLineEdit::returnPressed, this, [this] { createNote(); });
     connect(mDelete, &QPushButton::clicked, this, [this] {
         mDeletePath = mSession.path();
@@ -182,6 +187,7 @@ void Window::refresh()
     if (!mSession.dirty()) mConflictBar->hide();
     if (mSession.path() != mDeletePath) mDeleteBar->hide();
     mDelete->setEnabled(selected && !mSession.dirty());
+    mMove->setEnabled(selected && !mSession.dirty());
     mCreate->setEnabled(mSession.hasVault() && !mSession.dirty());
     mEditor->setEnabled(selected);
 }
@@ -455,6 +461,50 @@ void Window::createNote()
     watchNote();
     mEditor->setFocus();
     mStatus->setText(QStringLiteral("Created ") + mSession.path());
+}
+
+void Window::moveNote()
+{
+    if (mSession.path().isEmpty() || mSession.dirty()) return;
+    bool accepted = false;
+    const QString path = QInputDialog::getText(
+        this,
+        QStringLiteral("Rename / move note"),
+        QStringLiteral("New vault-relative path (existing folders only):"),
+        QLineEdit::Normal,
+        mSession.path(),
+        &accepted);
+    if (!accepted || path == mSession.path()) return;
+    QMessageBox confirmation(this);
+    confirmation.setWindowTitle(QStringLiteral("Update wikilinks?"));
+    confirmation.setText(QStringLiteral("Update links when moving this note?"));
+    confirmation.setInformativeText(QStringLiteral(
+        "Updating is safest. Don't update can leave links pointing to the old path."));
+    auto *update = confirmation.addButton(QStringLiteral("Update links"), QMessageBox::AcceptRole);
+    confirmation.addButton(
+        QStringLiteral("Don't update (links may break)"),
+        QMessageBox::DestructiveRole);
+    confirmation.addButton(QMessageBox::Cancel);
+    confirmation.setDefaultButton(qobject_cast<QPushButton *>(update));
+    confirmation.exec();
+    if (!confirmation.clickedButton() ||
+        confirmation.clickedButton() == confirmation.button(QMessageBox::Cancel))
+        return;
+    const bool updateLinks = confirmation.clickedButton() == update;
+    QString error;
+    if (!mSession.moveNote(path, updateLinks, &error)) {
+        if (error.startsWith(QStringLiteral("Move partially completed"))) {
+            showNotes();
+            replaceEditor(mSession.content());
+            watchNote();
+        }
+        mStatus->setText(QStringLiteral("Error: ") + error);
+        return;
+    }
+    showNotes();
+    replaceEditor(mSession.content());
+    watchNote();
+    mStatus->setText(QStringLiteral("Moved to ") + mSession.path());
 }
 
 void Window::trashNote()

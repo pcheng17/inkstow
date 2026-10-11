@@ -4,6 +4,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QRegularExpression>
+#include <QStringDecoder>
+
+#include <vector>
 
 #include <algorithm>
 
@@ -321,6 +325,163 @@ bool Vault::createNoteWithContent(
                 .arg(file.errorString()));
     }
     return true;
+}
+
+bool Vault::moveNote(
+    const QString &from,
+    const QString &to,
+    const QByteArray &expected,
+    bool updateLinks,
+    QString *error) const
+{
+    const auto source = notePath(from, error);
+    if (!source) return false;
+    const QStringList parts = to.split(u'/');
+    if (to.isEmpty() || QDir::isAbsolutePath(to) || to.contains(u'\\') ||
+        !to.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive) ||
+        std::any_of(
+            parts.begin(),
+            parts.end(),
+            [](const QString &part) { return part.isEmpty() || part.startsWith(u'.'); }) ||
+        from == to)
+    {
+        *error = QStringLiteral("Expected a different visible relative Markdown path.");
+        return false;
+    }
+    QString parent = mRoot;
+    for (qsizetype i = 0; i + 1 < parts.size(); ++i) {
+        parent = QDir(parent).filePath(parts[i]);
+        if (QFileInfo(parent).isSymLink() || !QFileInfo(parent).isDir()) {
+            *error = QStringLiteral("Destination folder must already exist and not be a link.");
+            return false;
+        }
+    }
+    const QString destination = QDir(parent).filePath(parts.last());
+    if (QFileInfo(destination).exists() || QFileInfo(destination).isSymLink()) {
+        *error = QStringLiteral("Destination already exists.");
+        return false;
+    }
+    QByteArray current;
+    if (!readBytes(*source, &current, error)) return false;
+    if (current != expected) {
+        conflict(error);
+        return false;
+    }
+    struct Rewrite
+    {
+        QString mPath;
+        QByteArray mBefore;
+        QByteArray mAfter;
+    };
+    std::vector<Rewrite> rewrites;
+    if (updateLinks) {
+        const auto safeLinkPath = [](const QString &path) {
+            return !path.contains(u'#') && !path.contains(u'|') && !path.contains(u'[') &&
+                   !path.contains(u']') && !path.contains(u'\n') && !path.contains(u'\r');
+        };
+        if (!safeLinkPath(to)) {
+            *error = QStringLiteral("Destination cannot be represented by a simple wikilink.");
+            return false;
+        }
+        QStringList notes;
+        if (!listNotes(&notes, error)) return false;
+        const QRegularExpression links(QStringLiteral(R"(\[\[([^\[\]\n]+)\]\])"));
+        const QString oldName = QFileInfo(from).completeBaseName();
+        const QString newName = QFileInfo(to).completeBaseName();
+        for (const QString &note : notes) {
+            QByteArray bytes;
+            if (!readNote(note, &bytes, error)) return false;
+            QStringDecoder decoder(QStringDecoder::Utf8);
+            const bool bom = bytes.startsWith("\xEF\xBB\xBF");
+            QString text = decoder.decode(bom ? bytes.mid(3) : bytes);
+            if (decoder.hasError()) {
+                *error = QStringLiteral("Cannot safely update links in invalid UTF-8 note: %1")
+                             .arg(note);
+                return false;
+            }
+            QString output;
+            qsizetype offset = 0;
+            if (text.count(QStringLiteral("[[")) != text.count(QStringLiteral("]]"))) {
+                *error = QStringLiteral("Unsupported wikilink syntax in %1.").arg(note);
+                return false;
+            }
+            auto matches = links.globalMatch(text);
+            qsizetype linkCount = 0;
+            while (matches.hasNext()) {
+                ++linkCount;
+                const auto match = matches.next();
+                const QString link = match.captured(1);
+                const QString bare = link.section(u'/', -1).section(u'#', 0, 0).section(u'|', 0, 0);
+                const bool relevant =
+                    note == from || bare.compare(oldName, Qt::CaseInsensitive) == 0 ||
+                    bare.compare(newName, Qt::CaseInsensitive) == 0 ||
+                    bare.compare(oldName + QStringLiteral(".md"), Qt::CaseInsensitive) == 0 ||
+                    bare.compare(newName + QStringLiteral(".md"), Qt::CaseInsensitive) == 0;
+                if (!relevant) continue;
+                if (link.contains(u'|') || link.contains(u'#') || link.startsWith(u'.') ||
+                    (match.capturedStart() > 0 && text[match.capturedStart() - 1] == u'!'))
+                {
+                    *error = QStringLiteral("Complex wikilink syntax needs manual review in %1.")
+                                 .arg(note);
+                    return false;
+                }
+                const auto target = resolveWikilink(link, note);
+                if (!target || !target->endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)) {
+                    *error =
+                        QStringLiteral("Unsupported or unresolved link needs manual review in %1.")
+                            .arg(note);
+                    return false;
+                }
+                output += text.mid(offset, match.capturedStart() - offset);
+                const QString mapped = *target == from ? to : *target;
+                if (!safeLinkPath(mapped)) {
+                    *error =
+                        QStringLiteral("Link target cannot be safely serialized in %1.").arg(note);
+                    return false;
+                }
+                // The explicit extension avoids an extensionless attachment
+                // shadowing the note, and works for names ending in .md.md.
+                output += QStringLiteral("[[/") + mapped + QStringLiteral("]]");
+                offset = match.capturedEnd();
+            }
+            if (linkCount != text.count(QStringLiteral("[["))) {
+                *error = QStringLiteral("Unsupported wikilink syntax in %1.").arg(note);
+                return false;
+            }
+            output += text.mid(offset);
+            const QByteArray after =
+                (bom ? QByteArray::fromHex("efbbbf") : QByteArray()) + output.toUtf8();
+            if (after != bytes) rewrites.push_back({note, bytes, after});
+        }
+    }
+    // Recheck every file slated for modification before the first mutation.
+    const bool unchanged =
+        std::all_of(rewrites.begin(), rewrites.end(), [&](const Rewrite &rewrite) {
+            QByteArray bytes;
+            return readNote(rewrite.mPath, &bytes, error) && bytes == rewrite.mBefore;
+        });
+    if (!unchanged) {
+        conflict(error);
+        return false;
+    }
+    if (!readNote(from, &current, error) || current != expected) {
+        conflict(error);
+        return false;
+    }
+    if (QFileInfo(destination).exists() || QFileInfo(destination).isSymLink() ||
+        !QFile::rename(*source, destination))
+    {
+        *error = QStringLiteral("Could not move note (destination may have appeared).");
+        return false;
+    }
+    const bool saved = std::all_of(rewrites.begin(), rewrites.end(), [&](const Rewrite &rewrite) {
+        const QString path = rewrite.mPath == from ? to : rewrite.mPath;
+        return saveNote(path, rewrite.mBefore, rewrite.mAfter, error);
+    });
+    if (!saved) {
+        *error = QStringLiteral("Move partially completed; some links may need repair: ") + *error;
+    }
+    return saved;
 }
 
 bool Vault::trashNote(const QString &relative, const TrashFunction &trash, QString *error) const

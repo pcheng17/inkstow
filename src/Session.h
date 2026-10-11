@@ -31,6 +31,7 @@ public:
     // editor has unsaved edits.
     bool createNote(const QString &input, QString *error);
     bool trashNote(QString *error);
+    bool moveNote(const QString &input, bool updateLinks, QString *error);
     bool reloadNotes(QString *error);
     // Reloads a clean note changed by another program. Never discards edits.
     DiskChange syncWithDisk(QString *error);

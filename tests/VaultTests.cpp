@@ -685,6 +685,103 @@ static void sessionCreatesAndTrashesNotes()
 #endif
 }
 
+static void renamesUniqueAndQualifiedLinks()
+{
+    QTemporaryDir temp;
+    CHECK(temp.isValid());
+    QDir dir(temp.path());
+    CHECK(dir.mkdir(QStringLiteral("sub")));
+    writeFile(dir.filePath(QStringLiteral("sub/Target.md")), "content");
+    writeFile(dir.filePath(QStringLiteral("Source.md")), "[[Target]] [[sub/Target]]\n");
+    QString error;
+    Session session;
+    CHECK(session.openVault(temp.path(), &error));
+    CHECK(session.selectNote(QStringLiteral("sub/Target.md"), &error));
+    CHECK(session.moveNote(QStringLiteral("sub/New"), true, &error));
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[/sub/New.md]] [[/sub/New.md]]\n");
+    CHECK(session.moveNote(QStringLiteral("sub/Again"), true, &error));
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("Source.md"))) ==
+        "[[/sub/Again.md]] [[/sub/Again.md]]\n");
+}
+
+static void movesNotesAndGuardsLinks()
+{
+    QTemporaryDir temp;
+    CHECK(temp.isValid());
+    QDir dir(temp.path());
+    CHECK(dir.mkdir(QStringLiteral("A")));
+    CHECK(dir.mkdir(QStringLiteral("B")));
+    CHECK(dir.mkdir(QStringLiteral("C")));
+    writeFile(dir.filePath(QStringLiteral("A/Target.md")), "\xef\xbb\xbf[[Target]]\n");
+    writeFile(dir.filePath(QStringLiteral("B/Target.md")), "other");
+    writeFile(dir.filePath(QStringLiteral("A/Source.md")), "[[Target]] [[B/Target.md]]");
+    writeFile(dir.filePath(QStringLiteral("B/Source.md")), "[[Target]]");
+    QString error;
+    Session session;
+    CHECK(session.openVault(temp.path(), &error));
+    CHECK(session.selectNote(QStringLiteral("A/Target.md"), &error));
+    CHECK(!session.moveNote(QStringLiteral("../escape"), true, &error));
+    CHECK(!session.moveNote(QStringLiteral("B/Target"), true, &error));
+    CHECK(!session.moveNote(QStringLiteral("missing/New"), true, &error));
+    session.setContent(QStringLiteral("unsaved"));
+    CHECK(!session.moveNote(QStringLiteral("C/Target"), true, &error));
+    session.discardEdits();
+    writeFile(dir.filePath(QStringLiteral("A/Target.md")), "external");
+    CHECK(!session.moveNote(QStringLiteral("C/Target"), true, &error));
+    CHECK(readFile(dir.filePath(QStringLiteral("A/Source.md"))) == "[[Target]] [[B/Target.md]]");
+    writeFile(dir.filePath(QStringLiteral("A/Target.md")), "\xef\xbb\xbf[[Target]]\n");
+    CHECK(session.moveNote(QStringLiteral("C/Target"), true, &error));
+    CHECK(session.path() == QStringLiteral("C/Target.md"));
+    CHECK(!session.dirty());
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("C/Target.md"))) == "\xef\xbb\xbf[[/C/Target.md]]\n");
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("A/Source.md"))) ==
+        "[[/C/Target.md]] [[/B/Target.md]]");
+    CHECK(readFile(dir.filePath(QStringLiteral("B/Source.md"))) == "[[/B/Target.md]]");
+    CHECK(!QFile::exists(dir.filePath(QStringLiteral("A/Target.md"))));
+    CHECK(session.save(&error));
+    CHECK(readFile(dir.filePath(QStringLiteral("C/Target.md"))).startsWith("\xef\xbb\xbf"));
+    writeFile(dir.filePath(QStringLiteral("A/Source.md")), "[[C/Target|alias]]");
+    CHECK(!session.moveNote(QStringLiteral("C/New"), true, &error));
+    CHECK(QFile::exists(dir.filePath(QStringLiteral("C/Target.md"))));
+    CHECK(!QFile::exists(dir.filePath(QStringLiteral("C/New.md"))));
+    CHECK(session.moveNote(QStringLiteral("C/New"), false, &error));
+    CHECK(readFile(dir.filePath(QStringLiteral("A/Source.md"))) == "[[C/Target|alias]]");
+}
+
+static void renameLinksRemainResolvable()
+{
+    QTemporaryDir temp;
+    CHECK(temp.isValid());
+    QDir dir(temp.path());
+    writeFile(dir.filePath(QStringLiteral("Old.md")), "target");
+    writeFile(dir.filePath(QStringLiteral("New")), "attachment");
+    writeFile(dir.filePath(QStringLiteral("Source.md")), "[[Old]]");
+    QString error;
+    Session session;
+    CHECK(session.openVault(temp.path(), &error));
+    CHECK(session.selectNote(QStringLiteral("Old.md"), &error));
+    CHECK(!session.moveNote(QStringLiteral("New#Part"), true, &error));
+    CHECK(!session.moveNote(QStringLiteral("New|Alias"), true, &error));
+    CHECK(!session.moveNote(QStringLiteral("New[Part]"), true, &error));
+    CHECK(session.moveNote(QStringLiteral("New.md.md"), true, &error));
+    auto vault = Vault::open(temp.path(), &error);
+    CHECK(vault.has_value());
+    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[/New.md.md]]");
+    CHECK(
+        vault->resolveWikilink(QStringLiteral("/New.md.md"), QStringLiteral("Source.md")) ==
+        QStringLiteral("New.md.md"));
+    CHECK(session.moveNote(QStringLiteral("New.md"), true, &error));
+    CHECK(readFile(dir.filePath(QStringLiteral("Source.md"))) == "[[/New.md]]");
+    CHECK(
+        vault->resolveWikilink(QStringLiteral("/New.md"), QStringLiteral("Source.md")) ==
+        QStringLiteral("New.md"));
+    CHECK(!QFile::exists(dir.filePath(QStringLiteral("Old.md"))));
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -706,6 +803,9 @@ int main(int argc, char **argv)
         saveMissingAsNewNote();
         trashesNotes();
         sessionCreatesAndTrashesNotes();
+        renamesUniqueAndQualifiedLinks();
+        movesNotesAndGuardsLinks();
+        renameLinksRemainResolvable();
     } catch (const std::exception &error) {
         qCritical("%s", error.what());
         return 1;
