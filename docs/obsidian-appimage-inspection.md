@@ -1,5 +1,7 @@
 # Obsidian 1.14.4 AppImage: static inspection
 
+For subsequent live verification of a subset of link and rename behavior, see [runtime observations](obsidian-runtime-observations.md). This file remains a record of static hypotheses; do not infer that untested cases below were verified by those trials.
+
 Source: `../tmp/Obsidian-1.14.4.AppImage` (SHA-256 `6362ddbeeeebb7bbccb48fae009572cf2284ef92f5c919c1332aba48de6ffeaa`). Inspected by listing its SquashFS at offset 188392 and extracting only its two ASAR archives into a temporary directory outside the repo. No Obsidian executable or bundled JavaScript was run; no vault was touched. Offsets below are **Unicode character positions in the extracted ASAR members decoded as UTF-8**, not byte offsets in the AppImage. Search for the method name when navigating the minified file. This is a static reading of bundled code, not a verified behavioral test. Do not commit the extracted proprietary bundles.
 
 ## Where the code lives
