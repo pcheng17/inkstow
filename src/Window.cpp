@@ -492,19 +492,14 @@ void Window::moveNote()
         return;
     const bool updateLinks = confirmation.clickedButton() == update;
     QString error;
-    if (!mSession.moveNote(path, updateLinks, &error)) {
-        if (error.startsWith(QStringLiteral("Move partially completed"))) {
-            showNotes();
-            replaceEditor(mSession.content());
-            watchNote();
-        }
-        mStatus->setText(QStringLiteral("Error: ") + error);
-        return;
+    const bool moved = mSession.moveNote(path, updateLinks, &error);
+    if (moved || error.startsWith(QStringLiteral("Move partially completed"))) {
+        showNotes();
+        replaceEditor(mSession.content());
+        watchNote();
     }
-    showNotes();
-    replaceEditor(mSession.content());
-    watchNote();
-    mStatus->setText(QStringLiteral("Moved to ") + mSession.path());
+    mStatus->setText(
+        moved ? QStringLiteral("Moved to ") + mSession.path() : QStringLiteral("Error: ") + error);
 }
 
 void Window::trashNote()
