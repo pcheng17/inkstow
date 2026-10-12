@@ -353,7 +353,7 @@ int main(int argc, char **argv)
         editor->setPlainText(QStringLiteral("first edit"));
         CHECK(save->isEnabled());
         notes->setCurrentRow(1);
-        CHECK(notes->currentRow() == 0); // Unsaved note cannot be switched away.
+        CHECK(notes->currentRow() == 0);                    // Unsaved note cannot be switched away.
         testVaultSwitchRefusedWhileUnsaved(window, picked); // Nor can its vault.
         save->click();
         CHECK(readFile(note) == "first edit");
