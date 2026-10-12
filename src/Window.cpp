@@ -1,5 +1,7 @@
 #include "Window.h"
 
+#include "Theme.h"
+
 #include <QCloseEvent>
 #include <QDesktopServices>
 #include <QFileInfo>
@@ -37,21 +39,19 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     , mConflictLabel(new QLabel)
 {
     setWindowTitle(QStringLiteral("Inkstow"));
-    resize(1100, 750);
+    resize(theme::kWindowWidth, theme::kWindowHeight);
     auto *central = new QWidget(this);
     auto *page = new QVBoxLayout(central);
     auto *header = new QHBoxLayout;
     auto *title = new QLabel(QStringLiteral("Inkstow"));
-    QFont titleFont = title->font();
-    titleFont.setBold(true);
-    titleFont.setPointSize(14);
-    title->setFont(titleFont);
+    title->setObjectName(QStringLiteral("appTitle"));
+    title->setFont(theme::titleFont(title->font()));
     mFolder->setObjectName(QStringLiteral("vaultFolder"));
     mFolder->setPlaceholderText(QStringLiteral("/path/to/vault"));
     auto *open = new QPushButton(QStringLiteral("Open"));
     open->setObjectName(QStringLiteral("openVault"));
     header->addWidget(title);
-    header->addSpacing(16);
+    header->addSpacing(theme::kHeaderGap);
     header->addWidget(new QLabel(QStringLiteral("Vault folder")));
     header->addWidget(mFolder, 1);
     header->addWidget(open);
@@ -81,7 +81,7 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     rightLayout->addLayout(toolbar);
     mConflictBar->setObjectName(QStringLiteral("conflictBar"));
     auto *conflictLayout = new QHBoxLayout(mConflictBar);
-    conflictLayout->setContentsMargins(0, 0, 0, 0);
+    conflictLayout->setContentsMargins(theme::kFlushMargins);
     mReload = new QPushButton(QStringLiteral("Reload from disk"));
     mReload->setObjectName(QStringLiteral("reloadFromDisk"));
     mKeepMine = new QPushButton(QStringLiteral("Keep mine"));
@@ -102,7 +102,7 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     rightLayout->addWidget(mConflictBar);
     mDeleteBar->setObjectName(QStringLiteral("deleteBar"));
     auto *deleteLayout = new QHBoxLayout(mDeleteBar);
-    deleteLayout->setContentsMargins(0, 0, 0, 0);
+    deleteLayout->setContentsMargins(theme::kFlushMargins);
     auto *confirmDelete = new QPushButton(QStringLiteral("Move to trash"));
     confirmDelete->setObjectName(QStringLiteral("confirmDelete"));
     auto *cancelDelete = new QPushButton(QStringLiteral("Cancel"));
@@ -115,7 +115,7 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     rightLayout->addWidget(mEditor, 1);
     auto *left = new QWidget;
     auto *leftLayout = new QVBoxLayout(left);
-    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setContentsMargins(theme::kFlushMargins);
     auto *newNote = new QHBoxLayout;
     mNewPath->setObjectName(QStringLiteral("newNotePath"));
     mNewPath->setPlaceholderText(QStringLiteral("Folder/New note"));
@@ -128,7 +128,7 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     splitter->addWidget(left);
     splitter->addWidget(right);
     splitter->setStretchFactor(1, 1);
-    splitter->setSizes({240, 860});
+    splitter->setSizes({theme::kSidebarWidth, theme::kEditorWidth});
     page->addWidget(splitter, 1);
     mStatus = new QLabel(QStringLiteral("Open a vault folder to begin."));
     mStatus->setObjectName(QStringLiteral("status"));
