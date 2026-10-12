@@ -20,7 +20,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
-#include <QPlainTextEdit>
+#include <QTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
 #include <QTemporaryDir>
@@ -308,7 +308,7 @@ static void testCancellingOpenVault(Window &window, PickerScript &picker)
 static void testVaultSwitchRefusedWhileUnsaved(Window &window, PickerScript &picker)
 {
     auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(notes && editor && status);
     QTemporaryDir otherVault;
@@ -327,7 +327,7 @@ static void testFollowingLinks(
     Window &window, const QDir &dir, const QStringList &openedAttachments)
 {
     auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
     auto *follow = window.findChild<QPushButton *>(QStringLiteral("followLink"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(notes && editor && follow && status);
@@ -423,7 +423,7 @@ static void testNoteTree()
     window.activateWindow();
     auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
     auto *tree = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(open && tree && editor && status);
     CHECK(!tree->accessibleName().isEmpty());
@@ -561,7 +561,7 @@ int main(int argc, char **argv)
         testNoteTree();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-        auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+        auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
         auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
         auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
         auto *conflictBar = window.findChild<QWidget *>(QStringLiteral("conflictBar"));

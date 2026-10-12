@@ -10,11 +10,11 @@
 #include <memory>
 #include <optional>
 
+class NoteEditor;
 class NoteTree;
 class QAction;
 class QLabel;
 class QLineEdit;
-class QPlainTextEdit;
 class QPushButton;
 class QStackedWidget;
 class QTimer;
@@ -70,7 +70,7 @@ private:
     QFileSystemWatcher *mWatcher;
     QTimer *mSyncTimer;
     NoteTree *mNotes;
-    QPlainTextEdit *mEditor;
+    NoteEditor *mEditor;
     QPushButton *mSave;
     QPushButton *mFollow;
     QPushButton *mDelete;

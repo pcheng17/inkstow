@@ -1,5 +1,6 @@
 #include "Window.h"
 
+#include "NoteEditor.h"
 #include "NoteTree.h"
 #include "Theme.h"
 
@@ -17,7 +18,6 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
-#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QRegularExpression>
@@ -52,7 +52,7 @@ Window::Window(
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
     , mNotes(new NoteTree([this](const QString &path) { openNote(path); }))
-    , mEditor(new QPlainTextEdit)
+    , mEditor(new NoteEditor)
     , mNewPath(new QLineEdit)
     , mDeleteBar(new QWidget)
     , mDeleteLabel(new QLabel)
@@ -179,7 +179,7 @@ Window::Window(
     });
     connect(confirmDelete, &QPushButton::clicked, this, [this] { trashNote(); });
     connect(cancelDelete, &QPushButton::clicked, mDeleteBar, &QWidget::hide);
-    connect(mEditor, &QPlainTextEdit::textChanged, this, [this] {
+    connect(mEditor, &QTextEdit::textChanged, this, [this] {
         mSession.setContent(mEditor->toPlainText());
         refresh();
     });
