@@ -1,5 +1,6 @@
 #include "Window.h"
 
+#include "NoteTree.h"
 #include "Theme.h"
 
 #include <QAction>
@@ -50,10 +51,7 @@ Window::Window(
     , mSettings(settings ? std::move(settings) : std::make_shared<AppSettingsStore>())
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
-    , mNotes(new NoteTree([this](const QString &path) {
-        if (path != mSession.path()) selectNote(path);
-        if (mSession.path() == path) mEditor->setFocus();
-    }))
+    , mNotes(new NoteTree([this](const QString &path) { openNote(path); }))
     , mEditor(new QPlainTextEdit)
     , mNewPath(new QLineEdit)
     , mDeleteBar(new QWidget)
@@ -294,6 +292,14 @@ void Window::selectNote(const QString &path)
     mStatus->setText(QStringLiteral("Opened ") + path);
 }
 
+void Window::openNote(const QString &path)
+{
+    if (path != mSession.path()) selectNote(path); // Session refuses to abandon unsaved changes.
+    if (mSession.path() != path) return;
+    mNotes->revealNote(path);
+    mEditor->setFocus();
+}
+
 void Window::followLink()
 {
     if (mSession.path().isEmpty()) return;
@@ -319,11 +325,7 @@ void Window::followLink()
             }
             mStatus->setText(QStringLiteral("Opened attachment: ") + *target);
         } else {
-            selectNote(*target); // Session refuses to abandon unsaved changes.
-            if (mSession.path() == *target) {
-                mNotes->revealNote(*target);
-                mEditor->setFocus();
-            }
+            openNote(*target);
         }
         return;
     }

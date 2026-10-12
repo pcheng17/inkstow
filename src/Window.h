@@ -1,6 +1,5 @@
 #pragma once
 
-#include "NoteTree.h"
 #include "Session.h"
 #include "SettingsStore.h"
 
@@ -11,6 +10,7 @@
 #include <memory>
 #include <optional>
 
+class NoteTree;
 class QAction;
 class QLabel;
 class QLineEdit;
@@ -42,6 +42,8 @@ private:
     bool openVaultFolder(const QString &folder, QString *error);
     void reopenLastVault();
     void selectNote(const QString &path);
+    // Selects a note, then reveals it and focuses the editor if it opened.
+    void openNote(const QString &path);
     void saveNote();
     void followLink();
     QWidget *createEmptyState();
