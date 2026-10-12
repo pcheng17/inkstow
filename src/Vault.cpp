@@ -153,7 +153,8 @@ bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) 
             *error = QStringLiteral("Cannot list folder: %1").arg(dir.path());
             return false;
         }
-        discoveredFolders.append(dir.path());
+        const QString folder = QDir(mRoot).relativeFilePath(dir.path()).replace(u'\\', u'/');
+        if (folder != u'.') discoveredFolders.append(folder);
         const QFileInfoList entries = dir.entryInfoList(
             QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
         for (const QFileInfo &entry : entries) {
@@ -169,6 +170,7 @@ bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) 
         }
     }
     found.sort();
+    discoveredFolders.sort();
     *notes = found;
     if (folders) *folders = discoveredFolders;
     return true;

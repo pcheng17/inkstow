@@ -354,7 +354,13 @@ void Window::watchNote()
 
 void Window::updateWatches()
 {
-    QStringList folders = mSession.folders();
+    QStringList folders;
+    if (mSession.hasVault()) {
+        const QDir root(mSession.vaultRoot());
+        folders.append(root.path());
+        for (const QString &folder : mSession.folders())
+            folders.append(root.filePath(folder));
+    }
     const QString path = mSession.notePath();
     if (!path.isEmpty()) {
         QString folder = QFileInfo(path).absolutePath();

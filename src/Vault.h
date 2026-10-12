@@ -21,7 +21,8 @@ public:
     static std::optional<Vault> open(const QString &folder, QString *error);
 
     const QString &root() const { return mRoot; }
-    // Optionally returns every discoverable folder, including empty folders and the root.
+    // Optionally returns every discoverable folder below the root, including empty
+    // folders.
     bool listNotes(QStringList *notes, QString *error, QStringList *folders = nullptr) const;
     bool readNote(const QString &relative, QByteArray *content, QString *error) const;
     // Returns a vault-relative file path (including attachments), or no target.
