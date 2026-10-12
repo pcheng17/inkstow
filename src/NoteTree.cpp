@@ -105,8 +105,10 @@ void NoteTree::keyPressEvent(QKeyEvent *event)
 {
     QTreeWidgetItem *item = currentItem();
     if (item && (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)) {
-        if (item->type() == kFolderItem) item->setExpanded(!item->isExpanded());
-        openItem(item);
+        if (item->type() == kFolderItem)
+            item->setExpanded(!item->isExpanded());
+        else
+            openItem(item);
         event->accept();
         return;
     }
