@@ -1,3 +1,4 @@
+#include "NoteTree.h"
 #include "SettingsStore.h"
 #include "Theme.h"
 #include "Window.h"
@@ -12,10 +13,11 @@
 #include <QDeadlineTimer>
 #include <QFile>
 #include <QFileSystemWatcher>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QEvent>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QPlainTextEdit>
@@ -24,6 +26,7 @@
 #include <QTemporaryDir>
 #include <QTextCursor>
 #include <QThread>
+#include <QTreeWidgetItemIterator>
 
 #include <algorithm>
 #include <optional>
@@ -95,6 +98,72 @@ static std::optional<QString> failIfPicked(QWidget * /*parent*/)
     throw std::runtime_error("The folder picker was shown unexpectedly");
 }
 
+// Finds the tree item holding a vault-relative note or folder path.
+static QTreeWidgetItem *treeItem(QTreeWidget *tree, const QString &path)
+{
+    for (QTreeWidgetItemIterator it(tree); *it; ++it) {
+        if ((*it)->data(0, NoteTree::kPathRole).toString() == path) return *it;
+    }
+    return nullptr;
+}
+
+static QString currentPath(const QTreeWidget *tree)
+{
+    const QTreeWidgetItem *item = tree->currentItem();
+    return item ? item->data(0, NoteTree::kPathRole).toString() : QString();
+}
+
+static QStringList notePaths(QTreeWidget *tree)
+{
+    QStringList paths;
+    for (QTreeWidgetItemIterator it(tree); *it; ++it) {
+        if ((*it)->type() == NoteTree::kNoteItem)
+            paths.append((*it)->data(0, NoteTree::kPathRole).toString());
+    }
+    return paths;
+}
+
+static void pressKey(QWidget *widget, int key)
+{
+    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &press);
+    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &release);
+}
+
+static void clickItem(QTreeWidget *tree, QTreeWidgetItem *item)
+{
+    CHECK(item);
+    tree->scrollToItem(item);
+    const QPointF point = tree->visualItemRect(item).center();
+    const QPointF global = tree->viewport()->mapToGlobal(point);
+    QMouseEvent press(
+        QEvent::MouseButtonPress,
+        point,
+        global,
+        Qt::LeftButton,
+        Qt::LeftButton,
+        Qt::NoModifier);
+    QCoreApplication::sendEvent(tree->viewport(), &press);
+    QMouseEvent release(
+        QEvent::MouseButtonRelease,
+        point,
+        global,
+        Qt::LeftButton,
+        Qt::NoButton,
+        Qt::NoModifier);
+    QCoreApplication::sendEvent(tree->viewport(), &release);
+}
+
+// Moves to a note with the keyboard and presses Enter, as a user would.
+static void openNote(QTreeWidget *tree, const QString &path)
+{
+    QTreeWidgetItem *item = treeItem(tree, path);
+    CHECK(item);
+    tree->setCurrentItem(item);
+    pressKey(tree, Qt::Key_Return);
+}
+
 // A last vault that can't be reopened leaves the empty state up with the reason.
 static void checkLastVaultNotReopened(const QString &lastVault)
 {
@@ -103,7 +172,7 @@ static void checkLastVaultNotReopened(const QString &lastVault)
     Window window(refuseTrash, {}, failIfPicked, settings);
     auto *emptyState = window.findChild<QWidget *>(QStringLiteral("emptyState"));
     auto *message = window.findChild<QLabel *>(QStringLiteral("emptyStateMessage"));
-    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
     CHECK(emptyState && message && notes);
     CHECK(emptyState->isVisibleTo(&window));
     CHECK(!notes->isVisibleTo(&window));
@@ -132,11 +201,11 @@ static void testUnrememberedVaultIsReported()
         [&](QWidget *) { return std::optional(dir.path()); },
         std::make_shared<FailingSettings>());
     auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
-    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(open && notes && status);
     open->click();
-    CHECK(notes->count() == 1); // The vault still opens.
+    CHECK(notePaths(notes).size() == 1); // The vault still opens.
     CHECK(status->text().contains(QStringLiteral("Couldn't remember this vault")));
 }
 
@@ -166,10 +235,9 @@ static void testReopeningLastVault()
         CHECK(first.windowTitle() == title);
     }
     Window second(refuseTrash, {}, failIfPicked, settings);
-    auto *notes = second.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *notes = second.findChild<QTreeWidget *>(QStringLiteral("notes"));
     CHECK(notes);
-    CHECK(notes->count() == 1);
-    CHECK(notes->item(0)->text() == QStringLiteral("Welcome.md"));
+    CHECK(notePaths(notes) == QStringList{QStringLiteral("Welcome.md")});
     CHECK(second.windowTitle() == title);
 }
 
@@ -209,14 +277,14 @@ static void openVaultExpectingNoChange(
     Window &window, PickerScript &picker, std::optional<QString> answer)
 {
     auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
-    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
     CHECK(switchVault && notes);
-    const int listed = notes->count();
+    const QStringList listed = notePaths(notes);
     const QString title = window.windowTitle();
     const std::optional<QString> usual = std::exchange(picker.mAnswer, std::move(answer));
     switchVault->trigger();
     picker.mAnswer = usual;
-    CHECK(notes->count() == listed);
+    CHECK(notePaths(notes) == listed);
     CHECK(window.windowTitle() == title);
 }
 
@@ -239,7 +307,7 @@ static void testCancellingOpenVault(Window &window, PickerScript &picker)
 // Unsaved edits block switching vaults, the same way they block switching notes.
 static void testVaultSwitchRefusedWhileUnsaved(Window &window, PickerScript &picker)
 {
-    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
     auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(notes && editor && status);
@@ -251,14 +319,14 @@ static void testVaultSwitchRefusedWhileUnsaved(Window &window, PickerScript &pic
     openVaultExpectingNoChange(window, picker, otherVault.path());
     CHECK(picker.mCalls == callsBefore); // Refused before asking for a folder.
     CHECK(status->text().contains(QStringLiteral("Save the current note")));
-    CHECK(notes->findItems(QStringLiteral("elsewhere.md"), Qt::MatchExactly).isEmpty());
+    CHECK(treeItem(notes, QStringLiteral("elsewhere.md")) == nullptr);
     CHECK(editor->toPlainText() == text);
 }
 
 static void testFollowingLinks(
     Window &window, const QDir &dir, const QStringList &openedAttachments)
 {
-    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
     auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
     auto *follow = window.findChild<QPushButton *>(QStringLiteral("followLink"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
@@ -267,7 +335,7 @@ static void testFollowingLinks(
         dir.filePath(QStringLiteral("other.md")),
         "[[note#Part|Alias]] [[missing]] [[asset.png]]");
     writeFile(dir.filePath(QStringLiteral("asset.png")), "attachment");
-    notes->setCurrentRow(1);
+    openNote(notes, QStringLiteral("other.md"));
     const auto cursorAt = [&](const QString &needle) {
         QTextCursor cursor = editor->textCursor();
         cursor.setPosition(static_cast<int>(editor->toPlainText().indexOf(needle) + 2));
@@ -298,7 +366,7 @@ static void testFollowingLinks(
     editor->setPlainText(QStringLiteral("[[note#Part|Alias]] [[asset.png]] draft"));
     cursorAt(QStringLiteral("[[note#Part|Alias]]"));
     follow->click();
-    CHECK(notes->currentItem()->text() == QStringLiteral("other.md"));
+    CHECK(currentPath(notes) == QStringLiteral("other.md"));
     CHECK(status->text().contains(QStringLiteral("Save the current note")));
     cursorAt(QStringLiteral("[[asset.png]]"));
     follow->click();
@@ -310,11 +378,132 @@ static void testFollowingLinks(
     editor->setPlainText(QStringLiteral("[[note#Part|Alias]] [[missing]] [[asset.png]]"));
     cursorAt(QStringLiteral("[[note#Part|Alias]]"));
     follow->click();
-    CHECK(notes->currentItem()->text() == QStringLiteral("note.md"));
+    CHECK(currentPath(notes) == QStringLiteral("note.md"));
     CHECK(editor->toPlainText() == QStringLiteral("original"));
     CHECK(
         readFile(dir.filePath(QStringLiteral("other.md"))) ==
         "[[note#Part|Alias]] [[missing]] [[asset.png]]");
+}
+
+// Shows the tree's items under parent (the top level when null) as "kind:name".
+static QStringList treeRows(const QTreeWidget *tree, const QTreeWidgetItem *parent = nullptr)
+{
+    QStringList rows;
+    const int count = parent ? parent->childCount() : tree->topLevelItemCount();
+    for (int i = 0; i < count; ++i) {
+        const QTreeWidgetItem *item = parent ? parent->child(i) : tree->topLevelItem(i);
+        const bool folder = item->type() == NoteTree::kFolderItem;
+        rows.append((folder ? QStringLiteral("folder:") : QStringLiteral("note:")) + item->text(0));
+    }
+    return rows;
+}
+
+static void testNoteTree()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    const QDir root(dir.path());
+    CHECK(root.mkpath(QStringLiteral("Zeta")));
+    CHECK(root.mkpath(QStringLiteral("alpha/deep")));
+    CHECK(root.mkpath(QStringLiteral("Beta")));
+    CHECK(root.mkpath(QStringLiteral(".obsidian")));
+    writeFile(root.filePath(QStringLiteral("b.md")), "b");
+    writeFile(root.filePath(QStringLiteral("A note.md")), "[[inner]]");
+    writeFile(root.filePath(QStringLiteral(".dot.md")), "hidden");
+    writeFile(root.filePath(QStringLiteral("alpha/deep/inner.md")), "inner");
+    writeFile(root.filePath(QStringLiteral("alpha/c.md")), "c");
+    writeFile(root.filePath(QStringLiteral("Zeta/z.md")), "z");
+    writeFile(root.filePath(QStringLiteral(".obsidian/app.md")), "config");
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    window.activateWindow();
+    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
+    auto *tree = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
+    auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    CHECK(open && tree && editor && status);
+    CHECK(!tree->accessibleName().isEmpty());
+    CHECK(tree->indentation() == 12);
+    open->click();
+
+    // Folders first, then notes, each by name; no ".md"; empty folders shown; dot entries hidden.
+    CHECK(
+        treeRows(tree) == (QStringList{
+                              QStringLiteral("folder:alpha"),
+                              QStringLiteral("folder:Beta"),
+                              QStringLiteral("folder:Zeta"),
+                              QStringLiteral("note:A note"),
+                              QStringLiteral("note:b")}));
+    QTreeWidgetItem *alpha = treeItem(tree, QStringLiteral("alpha"));
+    CHECK(alpha);
+    CHECK(
+        treeRows(tree, alpha) ==
+        (QStringList{QStringLiteral("folder:deep"), QStringLiteral("note:c")}));
+    CHECK(treeItem(tree, QStringLiteral("alpha/deep/inner.md")));
+    CHECK(!alpha->isExpanded());
+
+    // Arrow keys move without opening; Enter opens the note.
+    tree->setFocus();
+    tree->setCurrentItem(tree->topLevelItem(0));
+    pressKey(tree, Qt::Key_Right); // Expands alpha.
+    CHECK(alpha->isExpanded());
+    pressKey(tree, Qt::Key_Down);
+    pressKey(tree, Qt::Key_Down);
+    CHECK(currentPath(tree) == QStringLiteral("alpha/c.md"));
+    CHECK(editor->toPlainText().isEmpty());
+    pressKey(tree, Qt::Key_Return);
+    CHECK(editor->toPlainText() == QStringLiteral("c"));
+    CHECK(status->text() == QStringLiteral("Opened alpha/c.md"));
+
+    // A mouse click opens a note too.
+    clickItem(tree, treeItem(tree, QStringLiteral("A note.md")));
+    CHECK(editor->toPlainText() == QStringLiteral("[[inner]]"));
+
+    // Following a link selects the target and reveals its folders.
+    alpha->setExpanded(false);
+    QTextCursor cursor = editor->textCursor();
+    cursor.setPosition(3);
+    editor->setTextCursor(cursor);
+    window.findChild<QPushButton *>(QStringLiteral("followLink"))->click();
+    CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
+    CHECK(alpha->isExpanded() && treeItem(tree, QStringLiteral("alpha/deep"))->isExpanded());
+
+    // Unsaved edits refuse another note and keep the selection on the open note.
+    editor->setPlainText(QStringLiteral("draft"));
+    openNote(tree, QStringLiteral("b.md"));
+    CHECK(status->text().contains(QStringLiteral("Save the current note")));
+    CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
+    CHECK(editor->toPlainText() == QStringLiteral("draft"));
+    clickItem(tree, treeItem(tree, QStringLiteral("b.md")));
+    CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
+    CHECK(editor->toPlainText() == QStringLiteral("draft"));
+    editor->setPlainText(QStringLiteral("inner"));
+
+    // A rescan after outside changes keeps expanded folders and the selection,
+    // and shows a new folder even when no note changed.
+    treeItem(tree, QStringLiteral("Zeta"))->setExpanded(true);
+    CHECK(waitFor([&] { return window.isActiveWindow(); }));
+    QEvent activation(QEvent::ActivationChange);
+    CHECK(root.mkpath(QStringLiteral("Zeta/Later")));
+    QCoreApplication::sendEvent(&window, &activation);
+    CHECK(treeItem(tree, QStringLiteral("Zeta/Later")));
+    writeFile(root.filePath(QStringLiteral("alpha/added.md")), "added");
+    QCoreApplication::sendEvent(&window, &activation);
+    CHECK(treeItem(tree, QStringLiteral("alpha/added.md")));
+    CHECK(treeItem(tree, QStringLiteral("alpha"))->isExpanded());
+    CHECK(treeItem(tree, QStringLiteral("alpha/deep"))->isExpanded());
+    CHECK(treeItem(tree, QStringLiteral("Zeta"))->isExpanded());
+    CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
+
+    // Opening a vault starts with folders collapsed and nothing selected.
+    window.findChild<QAction *>(QStringLiteral("openVaultAction"))->trigger();
+    CHECK(!treeItem(tree, QStringLiteral("alpha"))->isExpanded());
+    CHECK(!treeItem(tree, QStringLiteral("Zeta"))->isExpanded());
+    CHECK(currentPath(tree).isEmpty());
 }
 
 int main(int argc, char **argv)
@@ -369,8 +558,9 @@ int main(int argc, char **argv)
         testReopeningLastVault();
         testMissingLastVault();
         testUnrememberedVaultIsReported();
+        testNoteTree();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
-        auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+        auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
         auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
         auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
@@ -402,14 +592,17 @@ int main(int argc, char **argv)
             }
         };
         open->click();
-        CHECK(notes->count() == 2);
-        CHECK(notes->item(0)->text() == QStringLiteral("note.md"));
+        CHECK(
+            notePaths(notes) ==
+            (QStringList{QStringLiteral("note.md"), QStringLiteral("other.md")}));
         testCancellingOpenVault(window, picker);
         testFollowingLinks(window, QDir(dir.path()), openedAttachments);
         editor->setPlainText(QStringLiteral("first edit"));
         CHECK(save->isEnabled());
-        notes->setCurrentRow(1);
-        CHECK(notes->currentRow() == 0);                    // Unsaved note cannot be switched away.
+        openNote(notes, QStringLiteral("other.md"));
+        CHECK(
+            currentPath(notes) ==
+            QStringLiteral("note.md"));                     // Unsaved note cannot be switched away.
         testVaultSwitchRefusedWhileUnsaved(window, picker); // Nor can its vault.
         save->click();
         CHECK(readFile(note) == "first edit");
@@ -421,34 +614,28 @@ int main(int argc, char **argv)
         CHECK(QDir().mkdir(nested));
         writeFile(QDir(nested).filePath(QStringLiteral("new.md")), "new");
         syncWithoutWatcher();
-        CHECK(waitFor([&] {
-            return notes->findItems(QStringLiteral("nested/new.md"), Qt::MatchExactly).size() == 1;
-        }));
-        CHECK(notes->currentItem()->text() == QStringLiteral("note.md"));
+        CHECK(waitFor([&] { return treeItem(notes, QStringLiteral("nested/new.md")) != nullptr; }));
+        CHECK(currentPath(notes) == QStringLiteral("note.md"));
         CHECK(editor->toPlainText() == QStringLiteral("first edit"));
         writeFile(QDir(nested).filePath(QStringLiteral("later.md")), "later");
         syncWithoutWatcher();
-        CHECK(waitFor([&] {
-            return notes->findItems(QStringLiteral("nested/later.md"), Qt::MatchExactly).size() ==
-                   1;
-        }));
+        CHECK(
+            waitFor([&] { return treeItem(notes, QStringLiteral("nested/later.md")) != nullptr; }));
         CHECK(
             QFile::rename(
                 QDir(nested).filePath(QStringLiteral("new.md")),
                 QDir(nested).filePath(QStringLiteral("renamed.md"))));
         syncWithoutWatcher();
         CHECK(waitFor([&] {
-            return notes->findItems(QStringLiteral("nested/renamed.md"), Qt::MatchExactly).size() ==
-                       1 &&
-                   notes->findItems(QStringLiteral("nested/new.md"), Qt::MatchExactly).isEmpty();
+            return treeItem(notes, QStringLiteral("nested/renamed.md")) != nullptr &&
+                   treeItem(notes, QStringLiteral("nested/new.md")) == nullptr;
         }));
         CHECK(QFile::remove(QDir(nested).filePath(QStringLiteral("renamed.md"))));
         CHECK(QFile::remove(QDir(nested).filePath(QStringLiteral("later.md"))));
         CHECK(QDir().rmdir(nested));
         syncWithoutWatcher();
-        CHECK(waitFor([&] {
-            return notes->findItems(QStringLiteral("nested/later.md"), Qt::MatchExactly).isEmpty();
-        }));
+        CHECK(
+            waitFor([&] { return treeItem(notes, QStringLiteral("nested/later.md")) == nullptr; }));
 
         // Losing and recreating the selected note's folder must not strand
         // the watcher: a later write must still reach the editor.
@@ -456,19 +643,14 @@ int main(int argc, char **argv)
             CHECK(QDir().mkdir(nested));
             const QString subnote = QDir(nested).filePath(QStringLiteral("note.md"));
             writeFile(subnote, "sub original");
-            CHECK(waitFor([&] {
-                return !notes->findItems(QStringLiteral("nested/note.md"), Qt::MatchExactly)
-                            .isEmpty();
-            }));
-            notes->setCurrentItem(
-                notes->findItems(QStringLiteral("nested/note.md"), Qt::MatchExactly).first());
+            CHECK(waitFor(
+                [&] { return treeItem(notes, QStringLiteral("nested/note.md")) != nullptr; }));
+            openNote(notes, QStringLiteral("nested/note.md"));
             CHECK(editor->toPlainText() == QStringLiteral("sub original"));
             CHECK(QFile::remove(subnote));
             CHECK(QDir().rmdir(nested));
-            CHECK(waitFor([&] {
-                return notes->findItems(QStringLiteral("nested/note.md"), Qt::MatchExactly)
-                    .isEmpty();
-            }));
+            CHECK(waitFor(
+                [&] { return treeItem(notes, QStringLiteral("nested/note.md")) == nullptr; }));
             CHECK(QDir().mkdir(nested));
             writeFile(subnote, "sub recreated");
             CHECK(
@@ -476,8 +658,7 @@ int main(int argc, char **argv)
             writeFile(subnote, "sub changed again");
             CHECK(waitFor(
                 [&] { return editor->toPlainText() == QStringLiteral("sub changed again"); }));
-            notes->setCurrentItem(
-                notes->findItems(QStringLiteral("note.md"), Qt::MatchExactly).first());
+            openNote(notes, QStringLiteral("note.md"));
         }
 
         writeFile(note, "outside edit");
@@ -581,16 +762,15 @@ int main(int argc, char **argv)
         discard->click();
         CHECK(conflictBar->isHidden());
         CHECK(!save->isEnabled());
-        notes->setCurrentItem(
-            notes->findItems(QStringLiteral("other.md"), Qt::MatchExactly).first());
-        CHECK(notes->currentItem()->text() == QStringLiteral("other.md"));
+        openNote(notes, QStringLiteral("other.md"));
+        CHECK(currentPath(notes) == QStringLiteral("other.md"));
 
         // Creating a note adds it to the list and opens it.
         newPath->setText(QStringLiteral("Ideas"));
         create->click();
         CHECK(QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
-        CHECK(notes->currentItem() && notes->currentItem()->text() == QStringLiteral("Ideas.md"));
-        CHECK(notes->findItems(QStringLiteral("note.md"), Qt::MatchExactly).isEmpty());
+        CHECK(currentPath(notes) == QStringLiteral("Ideas.md"));
+        CHECK(treeItem(notes, QStringLiteral("note.md")) == nullptr);
         CHECK(editor->isEnabled() && editor->toPlainText().isEmpty());
         CHECK(newPath->text().isEmpty());
         newPath->setText(QStringLiteral("../escape"));
@@ -617,7 +797,7 @@ int main(int argc, char **argv)
         });
         move->click();
         CHECK(QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));
-        CHECK(notes->currentItem()->text() == QStringLiteral("Moved.md"));
+        CHECK(currentPath(notes) == QStringLiteral("Moved.md"));
         CHECK(!QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
 
         // Unsaved edits disable both, and a confirmation never outlives its note.
@@ -629,12 +809,10 @@ int main(int argc, char **argv)
         CHECK(create->isEnabled() && remove->isEnabled());
         remove->click();
         CHECK(!deleteBar->isHidden());
-        notes->setCurrentItem(
-            notes->findItems(QStringLiteral("other.md"), Qt::MatchExactly).first());
+        openNote(notes, QStringLiteral("other.md"));
         CHECK(deleteBar->isHidden());
         CHECK(QFile::exists(dir.filePath(QStringLiteral("other.md"))));
-        notes->setCurrentItem(
-            notes->findItems(QStringLiteral("Moved.md"), Qt::MatchExactly).first());
+        openNote(notes, QStringLiteral("Moved.md"));
         CHECK(deleteBar->isHidden());
 
         // Deleting asks first, and Cancel leaves the note alone.
@@ -649,7 +827,7 @@ int main(int argc, char **argv)
         CHECK(deleteBar->isHidden());
         CHECK(!QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));
         CHECK(QFile::exists(QDir(trash.path()).filePath(QStringLiteral("Moved.md"))));
-        CHECK(notes->findItems(QStringLiteral("Moved.md"), Qt::MatchExactly).isEmpty());
+        CHECK(treeItem(notes, QStringLiteral("Moved.md")) == nullptr);
         CHECK(!editor->isEnabled());
         CHECK(!remove->isEnabled());
     } catch (const std::exception &error) {

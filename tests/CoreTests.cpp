@@ -212,6 +212,28 @@ static void rejectsInvalidUtf8AndKeepsPriorVaultOnFailure()
     CHECK(session.content() == QStringLiteral("good"));
 }
 
+// Folders are vault-relative like notes, so a tree can be built from both.
+static void sessionListsVaultRelativeFolders()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    CHECK(QDir(dir.path()).mkpath(QStringLiteral("Projects/Empty")));
+    CHECK(QDir(dir.path()).mkpath(QStringLiteral(".obsidian")));
+    CHECK(QDir(dir.path()).mkpath(QStringLiteral("Archive/.private")));
+    writeFile(dir.filePath(QStringLiteral("Archive/old.md")), "old");
+    QString error;
+    Session session;
+    CHECK(session.openVault(dir.path(), &error));
+    CHECK(
+        session.folders() == (QStringList{
+                                 QStringLiteral("Archive"),
+                                 QStringLiteral("Projects"),
+                                 QStringLiteral("Projects/Empty")}));
+    CHECK(QDir(dir.path()).mkpath(QStringLiteral("Later")));
+    CHECK(session.reloadNotes(&error));
+    CHECK(session.folders().contains(QStringLiteral("Later")));
+}
+
 static void sessionRefusesAnotherVaultWithUnsavedEdits()
 {
     QTemporaryDir dir;
@@ -862,6 +884,7 @@ int main(int argc, char **argv)
         rejectsEscapesAndSymlinks();
         preservesUtf8BomWhenEditing();
         rejectsInvalidUtf8AndKeepsPriorVaultOnFailure();
+        sessionListsVaultRelativeFolders();
         sessionRefusesAnotherVaultWithUnsavedEdits();
         sessionRetainsLocalEditsOnConflict();
         sessionSyncsExternalEdits();

@@ -10,10 +10,10 @@
 #include <memory>
 #include <optional>
 
+class NoteTree;
 class QAction;
 class QLabel;
 class QLineEdit;
-class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
 class QStackedWidget;
@@ -42,6 +42,8 @@ private:
     bool openVaultFolder(const QString &folder, QString *error);
     void reopenLastVault();
     void selectNote(const QString &path);
+    // Selects a note, then reveals it and focuses the editor if it opened.
+    void openNote(const QString &path);
     void saveNote();
     void followLink();
     QWidget *createEmptyState();
@@ -67,7 +69,7 @@ private:
     std::shared_ptr<SettingsStore> mSettings;
     QFileSystemWatcher *mWatcher;
     QTimer *mSyncTimer;
-    QListWidget *mNotes;
+    NoteTree *mNotes;
     QPlainTextEdit *mEditor;
     QPushButton *mSave;
     QPushButton *mFollow;

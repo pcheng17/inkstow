@@ -54,7 +54,10 @@ public:
     bool hasVault() const { return mVault.has_value(); }
     bool dirty() const { return mContent != mSavedContent; }
     const QStringList &notes() const { return mNotes; }
+    // Vault-relative folders below the root, including empty ones.
     const QStringList &folders() const { return mFolders; }
+    // Absolute vault folder, or empty when no vault is open.
+    QString vaultRoot() const { return mVault ? mVault->root() : QString(); }
     const QString &path() const { return mPath; }
     const QString &content() const { return mContent; }
     std::optional<QString> resolveWikilink(const QString &link) const

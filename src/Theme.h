@@ -20,7 +20,8 @@ constexpr QRgb kSelection = qRgb(0xe7, 0xde, 0xf4);
 constexpr int kTitlePointSize = 14;
 
 // Spacing.
-constexpr int kEmptyStateSpacing = 12;
+constexpr int kEmptyStateSpacing = 12; // Between the empty state's heading, message and button.
+constexpr int kTreeIndent = 12;        // Per nesting level in the note tree.
 constexpr QMargins kFlushMargins{};
 
 // Window geometry.
