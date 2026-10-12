@@ -101,7 +101,7 @@ static void testUnrememberedVaultIsReported()
     open->click();
     CHECK(notePaths(notes).size() == 1); // The vault still opens.
     CHECK(status->text().contains(QStringLiteral("Couldn't remember this vault")));
-    CHECK(status->palette().color(QPalette::WindowText) == QColor(theme::kInk));
+    CHECK(status->palette().color(QPalette::WindowText) == QColor(theme::kErrorInk));
 }
 
 static void testReopeningLastVault()

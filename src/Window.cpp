@@ -305,7 +305,8 @@ bool Window::openVaultFolder(const QString &folder, QString *error)
     replaceEditor(QString());
     watchNote();
     QString status = QStringLiteral("Found %1 notes").arg(mSession.notes().size());
-    if (!remembered) status += QStringLiteral(". Couldn't remember this vault for next launch.");
+    if (!remembered)
+        status = QStringLiteral("Error: Couldn't remember this vault for next launch. ") + status;
     mStatus->setText(status);
     return true;
 }
