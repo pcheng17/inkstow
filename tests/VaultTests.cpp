@@ -755,6 +755,45 @@ static void movesNotesAndGuardsLinks()
     CHECK(readFile(dir.filePath(QStringLiteral("A/Source.md"))) == "[[C/Target|alias]]");
 }
 
+static void moveResolvesSharedDiscoveryAcrossSources()
+{
+    QTemporaryDir temp;
+    CHECK(temp.isValid());
+    QDir dir(temp.path());
+    CHECK(dir.mkdir(QStringLiteral("A")));
+    CHECK(dir.mkdir(QStringLiteral("B")));
+    CHECK(dir.mkdir(QStringLiteral("C")));
+    writeFile(dir.filePath(QStringLiteral("A/Old.md")), "target\n");
+    writeFile(
+        dir.filePath(QStringLiteral("A/Source.md")),
+        QByteArray::fromHex("efbbbf") + "near [[Old]] [[old.md]] [[/a/old]]\n");
+    writeFile(dir.filePath(QStringLiteral("B/Old.md")), "other\n");
+    writeFile(dir.filePath(QStringLiteral("Old.md")), "root\n");
+    writeFile(dir.filePath(QStringLiteral("B/Source.md")), "[[Old]] [[A/Old]] [[/A/Old.md]]\n");
+    writeFile(dir.filePath(QStringLiteral("C/Source.md")), "[[Old]] [[a/old]] [[/Old]]\n");
+    QString error;
+    const auto vault = Vault::open(temp.path(), &error);
+    CHECK(vault.has_value());
+    CHECK(vault->moveNote(
+        QStringLiteral("A/Old.md"),
+        QStringLiteral("C/New.md"),
+        "target\n",
+        true,
+        &error));
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("A/Source.md"))) ==
+        QByteArray::fromHex("efbbbf") + "near [[/C/New]] [[/C/New]] [[/C/New]]\n");
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("B/Source.md"))) ==
+        "[[/B/Old]] [[/C/New]] [[/C/New]]\n");
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("C/Source.md"))) == "[[/Old]] [[/C/New]] [[/Old]]\n");
+    CHECK(readFile(dir.filePath(QStringLiteral("C/New.md"))) == "target\n");
+    CHECK(readFile(dir.filePath(QStringLiteral("B/Old.md"))) == "other\n");
+    CHECK(readFile(dir.filePath(QStringLiteral("Old.md"))) == "root\n");
+    CHECK(!QFile::exists(dir.filePath(QStringLiteral("A/Old.md"))));
+}
+
 static void renameLinksRemainResolvable()
 {
     QTemporaryDir temp;
@@ -817,6 +856,7 @@ int main(int argc, char **argv)
         sessionCreatesAndTrashesNotes();
         renamesUniqueAndQualifiedLinks();
         movesNotesAndGuardsLinks();
+        moveResolvesSharedDiscoveryAcrossSources();
         renameLinksRemainResolvable();
     } catch (const std::exception &error) {
         qCritical("%s", error.what());
