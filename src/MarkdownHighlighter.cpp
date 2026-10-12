@@ -211,15 +211,14 @@ void MarkdownHighlighter::highlightBlock(const QString &text)
         return;
     }
     setCurrentBlockState(kNormal);
-    const int length = static_cast<int>(text.size());
     // Frontmatter only opens on the note's very first line.
     if (!currentBlock().previous().isValid() && isFrontmatterDelimiter(text)) {
-        setFormat(0, length, theme::markdownFormat(MarkdownKind::Frontmatter));
+        formatLine(text, theme::markdownFormat(MarkdownKind::Frontmatter));
         setCurrentBlockState(kFrontmatter);
         return;
     }
     if (const std::optional<Fence> fence = openingFence(text)) {
-        setFormat(0, length, theme::markdownFormat(MarkdownKind::CodeBlock));
+        formatLine(text, theme::markdownFormat(MarkdownKind::CodeBlock));
         setCurrentBlockState(fenceState(*fence));
         return;
     }
@@ -228,13 +227,13 @@ void MarkdownHighlighter::highlightBlock(const QString &text)
 
 void MarkdownHighlighter::continueFrontmatter(const QString &text)
 {
-    setFormat(0, static_cast<int>(text.size()), theme::markdownFormat(MarkdownKind::Frontmatter));
+    formatLine(text, theme::markdownFormat(MarkdownKind::Frontmatter));
     setCurrentBlockState(isFrontmatterDelimiter(text) ? kNormal : kFrontmatter);
 }
 
 void MarkdownHighlighter::continueFence(const QString &text, int state)
 {
-    setFormat(0, static_cast<int>(text.size()), theme::markdownFormat(MarkdownKind::CodeBlock));
+    formatLine(text, theme::markdownFormat(MarkdownKind::CodeBlock));
     setCurrentBlockState(closesFence(text, fenceFromState(state)) ? kNormal : state);
 }
 
@@ -247,10 +246,7 @@ void MarkdownHighlighter::highlightInline(const QString &text)
     const QRegularExpressionMatch match = heading.match(text);
     if (match.hasMatch()) {
         const int level = static_cast<int>(match.capturedLength(1));
-        layer(
-            0,
-            static_cast<int>(text.size()),
-            theme::markdownFormat(MarkdownKind::Heading, level));
+        formatLine(text, theme::markdownFormat(MarkdownKind::Heading, level));
     }
     const std::vector<Span> code = codeSpans(text);
     std::vector<bool> inCode(static_cast<std::size_t>(text.size()), false);
@@ -276,6 +272,11 @@ void MarkdownHighlighter::highlightEmphasis(const QString &plain, const std::vec
             if (rule.mItalic) layer(span.mStart, span.mLength, italic, &inCode);
         }
     }
+}
+
+void MarkdownHighlighter::formatLine(const QString &text, const QTextCharFormat &format)
+{
+    setFormat(0, static_cast<int>(text.size()), format);
 }
 
 void MarkdownHighlighter::layer(

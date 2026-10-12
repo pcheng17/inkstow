@@ -22,6 +22,8 @@ private:
     void continueFence(const QString &text, int state);
     void highlightInline(const QString &text);
     void highlightEmphasis(const QString &plain, const std::vector<bool> &inCode);
+    // Replaces the whole line's formatting with format.
+    void formatLine(const QString &text, const QTextCharFormat &format);
     // Adds a format to the existing formatting of length characters from
     // start, skipping characters marked in skip, if given.
     void layer(
