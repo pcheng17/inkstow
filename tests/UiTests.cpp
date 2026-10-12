@@ -55,6 +55,29 @@ static bool waitFor(Done done)
     return done();
 }
 
+// Pins the current light look so moving style values into the theme changes nothing.
+static void testCurrentStyleKept(const Window &window)
+{
+    const QPalette palette = QApplication::palette();
+    const QColor ink(QStringLiteral("#24212b"));
+    const QColor paper(QStringLiteral("#faf9fc"));
+    CHECK(palette.color(QPalette::Window) == paper);
+    CHECK(palette.color(QPalette::WindowText) == ink);
+    CHECK(palette.color(QPalette::Base) == QColor(Qt::white));
+    CHECK(palette.color(QPalette::AlternateBase) == paper);
+    CHECK(palette.color(QPalette::Text) == ink);
+    CHECK(palette.color(QPalette::Button) == QColor(Qt::white));
+    CHECK(palette.color(QPalette::ButtonText) == ink);
+    CHECK(palette.color(QPalette::Highlight) == QColor(QStringLiteral("#e7def4")));
+    CHECK(palette.color(QPalette::HighlightedText) == ink);
+    auto *title = window.findChild<QLabel *>(QStringLiteral("appTitle"));
+    CHECK(title);
+    CHECK(title->text() == QStringLiteral("Inkstow"));
+    CHECK(title->font().bold());
+    CHECK(title->font().pointSize() == 14);
+    CHECK(window.size() == QSize(1100, 750));
+}
+
 static void testFollowingLinks(
     Window &window, const QDir &dir, const QStringList &openedAttachments)
 {
@@ -159,6 +182,7 @@ int main(int argc, char **argv)
                 openedAttachments.append(url.toLocalFile());
                 return true;
             });
+        testCurrentStyleKept(window);
         auto *folder = window.findChild<QLineEdit *>(QStringLiteral("vaultFolder"));
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
