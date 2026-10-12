@@ -88,6 +88,7 @@ private:
     QAction *mOpenVault;
     QStackedWidget *mPages;
     QLabel *mEmptyMessage;
+    QWidget *mEmptyState = nullptr;
     QWidget *mVaultView = nullptr;
     QLabel *mFilename;
     QLabel *mStatus;

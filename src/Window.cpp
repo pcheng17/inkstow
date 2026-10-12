@@ -149,8 +149,9 @@ Window::Window(
     splitter->addWidget(right);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({theme::kSidebarWidth, theme::kEditorWidth});
+    mEmptyState = createEmptyState();
     mVaultView = splitter;
-    mPages->addWidget(createEmptyState());
+    mPages->addWidget(mEmptyState);
     mPages->addWidget(mVaultView);
     page->addWidget(mPages, 1);
     mStatus->setObjectName(QStringLiteral("status"));
@@ -224,7 +225,7 @@ QWidget *Window::createEmptyState()
 
 void Window::refresh()
 {
-    mPages->setCurrentIndex(mSession.hasVault() ? mPages->indexOf(mVaultView) : 0);
+    mPages->setCurrentWidget(mSession.hasVault() ? mVaultView : mEmptyState);
     const bool selected = !mSession.path().isEmpty();
     mFilename->setText(
         selected ? mSession.path() + (mSession.dirty() ? QStringLiteral(" *") : QString())
