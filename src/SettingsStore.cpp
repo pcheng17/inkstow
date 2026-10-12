@@ -12,7 +12,11 @@ QString AppSettingsStore::lastVault() const
     return QSettings().value(kLastVaultKey).toString();
 }
 
-void AppSettingsStore::setLastVault(const QString &path)
+bool AppSettingsStore::setLastVault(const QString &path)
 {
-    QSettings().setValue(kLastVaultKey, path);
+    QSettings settings;
+    settings.setValue(kLastVaultKey, path);
+    // QSettings writes lazily; sync() writes now so a failure can be reported.
+    settings.sync();
+    return settings.status() == QSettings::NoError;
 }

@@ -66,10 +66,22 @@ class MemorySettings : public SettingsStore
 {
 public:
     QString lastVault() const override { return mLastVault; }
-    void setLastVault(const QString &path) override { mLastVault = path; }
+    bool setLastVault(const QString &path) override
+    {
+        mLastVault = path;
+        return true;
+    }
 
 private:
     QString mLastVault;
+};
+
+// Stands in for settings that can't be written, such as a read-only config folder.
+class FailingSettings : public SettingsStore
+{
+public:
+    QString lastVault() const override { return {}; }
+    bool setLastVault(const QString & /*path*/) override { return false; }
 };
 
 static bool refuseTrash(const QString & /*path*/, QString * /*error*/)
@@ -106,6 +118,25 @@ static void testMissingLastVault()
     const QString file = QDir(parent.path()).filePath(QStringLiteral("not-a-folder.md"));
     writeFile(file, "note");
     checkLastVaultNotReopened(file);
+}
+
+static void testUnsavedLastVaultIsReported()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("Welcome.md")), "welcome");
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<FailingSettings>());
+    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
+    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    CHECK(open && notes && status);
+    open->click();
+    CHECK(notes->count() == 1); // The vault still opens.
+    CHECK(status->text().contains(QStringLiteral("Couldn't remember this vault")));
 }
 
 static void testReopeningLastVault()
@@ -331,6 +362,7 @@ int main(int argc, char **argv)
         testCurrentStyleKept(window);
         testReopeningLastVault();
         testMissingLastVault();
+        testUnsavedLastVaultIsReported();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));

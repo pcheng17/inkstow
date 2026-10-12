@@ -260,12 +260,14 @@ void Window::openVault()
 bool Window::openVaultFolder(const QString &folder, QString *error)
 {
     if (!mSession.openVault(folder, error)) return false;
-    mSettings->setLastVault(folder);
+    const bool remembered = mSettings->setLastVault(folder);
     setWindowTitle(QStringLiteral("Inkstow - ") + QDir(folder).dirName());
     showNotes();
     replaceEditor(QString());
     watchNote();
-    mStatus->setText(QStringLiteral("Found %1 notes").arg(mSession.notes().size()));
+    QString status = QStringLiteral("Found %1 notes").arg(mSession.notes().size());
+    if (!remembered) status += QStringLiteral(". Couldn't remember this vault for next launch.");
+    mStatus->setText(status);
     return true;
 }
 
