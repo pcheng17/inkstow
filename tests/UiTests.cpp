@@ -28,6 +28,7 @@
 #include <QTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QScrollBar>
 #include <QTemporaryDir>
 #include <QTextBlock>
 #include <QTextCursor>
@@ -348,6 +349,42 @@ static void testEditorTextWidth()
     CHECK(text.left() >= 24);
     CHECK(text.top() >= 24);
     CHECK(editor->width() - text.right() >= 24);
+}
+
+// Reloading a note changed outside Inkstow keeps the cursor and scroll position.
+static void testReloadKeepsPlace()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    window.activateWindow(); // Activation is how this test asks for a sync.
+    CHECK(waitFor([&] { return window.isActiveWindow(); }));
+    QByteArray text;
+    for (int line = 0; line < 200; ++line)
+        text += "line " + QByteArray::number(line) + '\n';
+    openSingleNote(window, dir, text);
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    CHECK(editor);
+    QScrollBar *scroll = editor->verticalScrollBar();
+    CHECK(scroll->maximum() > 0);
+    QTextCursor cursor = editor->textCursor();
+    cursor.setPosition(static_cast<int>(text.indexOf("line 150")));
+    editor->setTextCursor(cursor);
+    scroll->setValue(scroll->maximum() / 2);
+    const int position = editor->textCursor().position();
+    const int scrolled = scroll->value();
+
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("note.md")), "LINE" + text.mid(4));
+    QEvent activation(QEvent::ActivationChange);
+    QCoreApplication::sendEvent(&window, &activation);
+    CHECK(waitFor([&] { return editor->toPlainText().startsWith(QStringLiteral("LINE 0")); }));
+    CHECK(editor->textCursor().position() == position);
+    CHECK(scroll->value() == scrolled);
 }
 
 // With no note open, the editor area explains itself instead of showing a
@@ -703,6 +740,7 @@ int main(int argc, char **argv)
         testReadableEditorText();
         testEditorTextWidth();
         testNoNoteEmptyState();
+        testReloadKeepsPlace();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
