@@ -5,7 +5,7 @@ description: Launch Inkstow on a headless X11 display, drive it with clicks and 
 
 # Drive and screenshot the Inkstow UI
 
-Screenshots show what a change looks like; they do not prove it is correct. Keep behavior checks in `tests/UiTests.cpp` and `tests/VaultTests.cpp`, and still run `ctest --preset debug` per `AGENTS.md`.
+Screenshots show what a change looks like; they do not prove it is correct. Keep behavior checks in `tests/UiTests.cpp` and `tests/CoreTests.cpp`, and still run `ctest --preset debug` per `AGENTS.md`.
 
 1. **Build.** `cmake --build --preset debug --parallel` in the worktree you are changing. For a before/after comparison, also build the base commit in its own worktree (`git worktree add ../inkstow-base main`, then configure and build there). Completion: each binary you will compare exists and reflects its commit.
 2. **Write an actions script.** The helper runs it with `bash -e` (any shebang is ignored, and the first failing command fails the run) from the directory you launched the helper in. It runs once Inkstow is visible, with the fixture copy already opened. Available: `$VAULT` (disposable vault copy), `$TRIAL`, `$SHOTS`, `$WINDOW` (X window id), `$SIZE`, `xdotool`, and `shot NAME`, which saves the window as `$SHOTS/NAME.png` with the cursor hidden. The window sits at screen `0,0`, so screen coordinates are window coordinates. Prefer keyboard input (`xdotool type`, `xdotool key Tab Return`) where focus is predictable. For clicks, read coordinates off a fresh screenshot of the *same build*, because a redesign moves widgets. Completion: every state you want to show has a `shot` after the action that reaches it.
