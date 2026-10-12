@@ -3,7 +3,8 @@
 #include <QTextEdit>
 
 // Edits a note's raw Markdown as plain text, in the theme's font and line
-// spacing. Pasted or dropped rich text is inserted as plain text, so the
+// spacing, with padding around the text and its width capped and centred.
+// Pasted or dropped rich text is inserted as plain text, so the
 // document always holds exactly what is saved.
 class NoteEditor : public QTextEdit
 {
@@ -15,4 +16,5 @@ public:
 
 protected:
     void insertFromMimeData(const QMimeData *source) override;
+    void resizeEvent(QResizeEvent *event) override;
 };

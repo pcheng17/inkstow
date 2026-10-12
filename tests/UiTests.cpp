@@ -15,6 +15,7 @@
 #include <QDeadlineTimer>
 #include <QFile>
 #include <QFileSystemWatcher>
+#include <QFontMetrics>
 #include <QFontMetricsF>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -34,6 +35,7 @@
 #include <QTreeWidgetItemIterator>
 
 #include <algorithm>
+#include <cstdlib>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -302,6 +304,50 @@ static void testReadableEditorText()
     CHECK(
         readFile(QDir(dir.path()).filePath(QStringLiteral("note.md"))) ==
         "first\nsecond\nthird\nfourth\nfifth");
+}
+
+// The area the editor's characters occupy, in the editor's own coordinates.
+static QRect textBounds(const QTextEdit *editor)
+{
+    QRect bounds;
+    QTextCursor cursor(editor->document());
+    for (int position = 0; position < editor->document()->characterCount(); ++position) {
+        cursor.setPosition(position);
+        bounds |= editor->cursorRect(cursor).translated(editor->viewport()->pos());
+    }
+    return bounds;
+}
+
+// Long lines wrap at a readable width centred in a wide window, and padding
+// keeps text off the editor's edges in a narrow one.
+static void testEditorTextWidth()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    openSingleNote(window, dir, QByteArray("lorem ipsum ").repeated(80));
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    CHECK(editor);
+    const int word = QFontMetrics(editor->font()).horizontalAdvance(QStringLiteral("lorem "));
+
+    window.resize(1800, 750);
+    QCoreApplication::processEvents();
+    QRect text = textBounds(editor);
+    CHECK(text.width() <= 720);
+    CHECK(text.width() > 720 - 2 * word); // Wraps near the cap, not far short of it.
+    CHECK(std::abs(text.left() - (editor->width() - text.right())) <= 2 * word);
+
+    window.resize(700, 750);
+    QCoreApplication::processEvents();
+    text = textBounds(editor);
+    CHECK(text.left() >= 24);
+    CHECK(text.top() >= 24);
+    CHECK(editor->width() - text.right() >= 24);
 }
 
 // Pins the current light look so moving style values into the theme changes nothing.
@@ -623,6 +669,7 @@ int main(int argc, char **argv)
         testUnrememberedVaultIsReported();
         testNoteTree();
         testReadableEditorText();
+        testEditorTextWidth();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));

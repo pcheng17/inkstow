@@ -6,10 +6,13 @@
 #include <QTextBlockFormat>
 #include <QTextCursor>
 
+#include <algorithm>
+
 NoteEditor::NoteEditor()
 {
     setAcceptRichText(false);
     setFont(theme::editorFont(font()));
+    document()->setDocumentMargin(theme::kEditorPadding);
 }
 
 void NoteEditor::setNoteText(const QString &text)
@@ -32,4 +35,15 @@ void NoteEditor::insertFromMimeData(const QMimeData *source)
     if (!source->hasText()) return;
     textCursor().insertText(source->text());
     ensureCursorVisible();
+}
+
+void NoteEditor::resizeEvent(QResizeEvent *event)
+{
+    // The document margin pads each side; side margins take up any width
+    // beyond the cap so the text stays centred.
+    const int spare =
+        contentsRect().width() - theme::kEditorMaxTextWidth - 2 * theme::kEditorPadding;
+    const int side = std::max(0, spare / 2);
+    setViewportMargins(side, 0, side, 0);
+    QTextEdit::resizeEvent(event);
 }
