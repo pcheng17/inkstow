@@ -88,7 +88,7 @@ private:
     QAction *mOpenVault;
     QStackedWidget *mPages;
     QLabel *mEmptyMessage;
-    QWidget *mEmptyState;
+    QWidget *mEmptyState; // Built from mOpenVault and mEmptyMessage, so declared after them.
     QWidget *mVaultView = nullptr;
     QLabel *mFilename;
     QLabel *mStatus;
