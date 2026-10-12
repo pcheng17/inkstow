@@ -3,6 +3,8 @@
 #include "NoteEditor.h"
 #include "NoteHeader.h"
 #include "NoteTree.h"
+#include "PromptBanner.h"
+#include "StatusLabel.h"
 #include "Theme.h"
 
 #include <QAction>
@@ -90,16 +92,12 @@ Window::Window(
     , mDelete(new QAction(QStringLiteral("&Delete…"), this))
     , mMove(new QAction(QStringLiteral("&Rename / move…"), this))
     , mNewPath(new QLineEdit)
-    , mDeleteBar(new QWidget)
-    , mDeleteLabel(new QLabel)
-    , mConflictBar(new QWidget)
-    , mConflictLabel(new QLabel)
     , mOpenVault(new QAction(QStringLiteral("&Open vault…"), this))
     , mPages(new QStackedWidget)
     , mEmptyMessage(new QLabel(QStringLiteral("Open a folder of Markdown notes to begin.")))
     , mEmptyState(createEmptyState())
     , mHeader(new NoteHeader)
-    , mStatus(new QLabel)
+    , mStatus(new StatusLabel)
 {
     setWindowTitle(QStringLiteral("Inkstow"));
     createActions();
@@ -119,9 +117,6 @@ Window::Window(
     auto *right = new QWidget;
     auto *rightLayout = new QVBoxLayout(right);
     rightLayout->addWidget(mHeader);
-    mConflictBar->setObjectName(QStringLiteral("conflictBar"));
-    auto *conflictLayout = new QHBoxLayout(mConflictBar);
-    conflictLayout->setContentsMargins(theme::kFlushMargins);
     mReload = new QPushButton(QStringLiteral("Reload from disk"));
     mReload->setObjectName(QStringLiteral("reloadFromDisk"));
     mKeepMine = new QPushButton(QStringLiteral("Keep mine"));
@@ -132,24 +127,16 @@ Window::Window(
     mSaveAsNew->setObjectName(QStringLiteral("saveAsNewNote"));
     mDiscard = new QPushButton(QStringLiteral("Discard edits"));
     mDiscard->setObjectName(QStringLiteral("discardEdits"));
-    conflictLayout->addWidget(mConflictLabel, 1);
-    conflictLayout->addWidget(mReload);
-    conflictLayout->addWidget(mKeepMine);
-    conflictLayout->addWidget(mMerge);
-    conflictLayout->addWidget(mSaveAsNew);
-    conflictLayout->addWidget(mDiscard);
+    mConflictBar = new PromptBanner({mReload, mKeepMine, mMerge, mSaveAsNew, mDiscard});
+    mConflictBar->setObjectName(QStringLiteral("conflictBar"));
     mConflictBar->hide();
     rightLayout->addWidget(mConflictBar);
-    mDeleteBar->setObjectName(QStringLiteral("deleteBar"));
-    auto *deleteLayout = new QHBoxLayout(mDeleteBar);
-    deleteLayout->setContentsMargins(theme::kFlushMargins);
     auto *confirmDelete = new QPushButton(QStringLiteral("Move to trash"));
     confirmDelete->setObjectName(QStringLiteral("confirmDelete"));
     auto *cancelDelete = new QPushButton(QStringLiteral("Cancel"));
     cancelDelete->setObjectName(QStringLiteral("cancelDelete"));
-    deleteLayout->addWidget(mDeleteLabel, 1);
-    deleteLayout->addWidget(confirmDelete);
-    deleteLayout->addWidget(cancelDelete);
+    mDeleteBar = new PromptBanner({confirmDelete, cancelDelete});
+    mDeleteBar->setObjectName(QStringLiteral("deleteBar"));
     mDeleteBar->hide();
     rightLayout->addWidget(mDeleteBar);
     mEditorPages->addWidget(mNoNoteState);
@@ -318,7 +305,8 @@ bool Window::openVaultFolder(const QString &folder, QString *error)
     replaceEditor(QString());
     watchNote();
     QString status = QStringLiteral("Found %1 notes").arg(mSession.notes().size());
-    if (!remembered) status += QStringLiteral(". Couldn't remember this vault for next launch.");
+    if (!remembered)
+        status = QStringLiteral("Error: Couldn't remember this vault for next launch. ") + status;
     mStatus->setText(status);
     return true;
 }
@@ -489,7 +477,7 @@ void Window::showConflictBar(DiskChange change)
         mConflictBar->hide();
         return;
     }
-    mConflictLabel->setText(
+    mConflictBar->setMessage(
         missing ? QStringLiteral(
                       "This note was deleted or moved outside "
                       "Inkstow. Copy any text you want to keep.")
@@ -631,7 +619,7 @@ void Window::moveNote()
 void Window::askToDelete()
 {
     mDeletePath = mSession.path();
-    mDeleteLabel->setText(QStringLiteral("Move %1 to the trash?").arg(mDeletePath));
+    mDeleteBar->setMessage(QStringLiteral("Move %1 to the trash?").arg(mDeletePath));
     mDeleteBar->show();
 }
 

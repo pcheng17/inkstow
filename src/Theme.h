@@ -19,10 +19,13 @@ constexpr QRgb kInk = qRgb(0x24, 0x21, 0x2b);
 constexpr QRgb kPaper = qRgb(0xfa, 0xf9, 0xfc);
 constexpr QRgb kSurface = qRgb(0xff, 0xff, 0xff);
 constexpr QRgb kSelection = qRgb(0xe7, 0xde, 0xf4);
-constexpr QRgb kMutedInk = qRgb(0x6f, 0x6a, 0x7a);       // Frontmatter.
-constexpr QRgb kLinkInk = qRgb(0x5b, 0x3f, 0x9e);        // Wikilinks.
-constexpr QRgb kCodeBackground = qRgb(0xf0, 0xed, 0xf5); // Inline code and code blocks.
-constexpr QRgb kUnsavedInk = kLinkInk;                   // The unsaved-changes indicator.
+constexpr QRgb kMutedInk = qRgb(0x6f, 0x6a, 0x7a);        // Frontmatter.
+constexpr QRgb kLinkInk = qRgb(0x5b, 0x3f, 0x9e);         // Wikilinks.
+constexpr QRgb kCodeBackground = qRgb(0xf0, 0xed, 0xf5);  // Inline code and code blocks.
+constexpr QRgb kUnsavedInk = kLinkInk;                    // The unsaved-changes indicator.
+constexpr QRgb kErrorInk = qRgb(0x9b, 0x22, 0x30);        // Error status text.
+constexpr QRgb kErrorBackground = qRgb(0xff, 0xeb, 0xed); // Error status surface.
+constexpr QRgb kPromptBackground = kSelection;            // Attention prompts.
 
 // Fonts.
 constexpr int kTitlePointSize = 14;
@@ -38,6 +41,8 @@ constexpr int kHeaderSpacing = 8;        // Between the note title and the unsav
 constexpr int kEditorPadding = 24;       // Between note text and the editor's edges.
 constexpr int kEditorMaxTextWidth = 720; // Longer lines wrap; wider editors centre the text.
 constexpr QMargins kFlushMargins{};
+constexpr QMargins kPromptMargins{12, 8, 12, 8};
+constexpr int kPromptSpacing = 8;
 
 // Window geometry.
 constexpr int kWindowWidth = 1100;

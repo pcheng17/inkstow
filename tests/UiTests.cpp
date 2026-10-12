@@ -101,6 +101,7 @@ static void testUnrememberedVaultIsReported()
     open->click();
     CHECK(notePaths(notes).size() == 1); // The vault still opens.
     CHECK(status->text().contains(QStringLiteral("Couldn't remember this vault")));
+    CHECK(status->palette().color(QPalette::WindowText) == QColor(theme::kErrorInk));
 }
 
 static void testReopeningLastVault()
@@ -643,6 +644,24 @@ static void testNoteTree()
     CHECK(currentPath(tree).isEmpty());
 }
 
+static void checkStatusAppearance(QLabel *status, bool error)
+{
+    CHECK(
+        status->palette().color(QPalette::WindowText) ==
+        QColor(error ? theme::kErrorInk : theme::kInk));
+    if (error) CHECK(status->palette().color(QPalette::Window) == QColor(theme::kErrorBackground));
+}
+
+static void checkPromptAppearance(QWidget *bar, const QString &message)
+{
+    CHECK(bar->palette().color(QPalette::Window) == QColor(theme::kPromptBackground));
+    CHECK(bar->accessibleName().contains(message));
+    for (auto *button : bar->findChildren<QPushButton *>()) {
+        CHECK(!button->objectName().isEmpty());
+        CHECK(button->accessibleName() == button->text());
+    }
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -835,6 +854,7 @@ int main(int argc, char **argv)
         CHECK(readFile(note) == "external edit");
         CHECK(save->isEnabled());
         CHECK(!conflictBar->isHidden());
+        checkPromptAppearance(conflictBar, QStringLiteral("changed outside"));
 
         CHECK(!merge->isHidden());
         CHECK(saveAsNew->isHidden());
@@ -885,6 +905,7 @@ int main(int argc, char **argv)
         syncWithoutWatcher();
         CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
         CHECK(!discard->isHidden());
+        checkPromptAppearance(conflictBar, QStringLiteral("deleted or moved"));
         CHECK(keepMine->isHidden());
         CHECK(merge->isHidden());
         CHECK(!saveAsNew->isHidden());
@@ -920,6 +941,7 @@ int main(int argc, char **argv)
         newPath->setText(QStringLiteral("../escape"));
         create->click();
         CHECK(status->text().startsWith(QStringLiteral("Error")));
+        checkStatusAppearance(status, true);
         CHECK(newPath->text() == QStringLiteral("../escape"));
 
         // Rename/move asks for a destination and explicitly confirms link updates.
@@ -963,6 +985,7 @@ int main(int argc, char **argv)
         CHECK(remove->isEnabled() && deleteBar->isHidden());
         remove->trigger();
         CHECK(!deleteBar->isHidden());
+        checkPromptAppearance(deleteBar, QStringLiteral("Move Moved.md to the trash?"));
         cancelDelete->click();
         CHECK(deleteBar->isHidden());
         CHECK(QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));

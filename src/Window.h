@@ -13,6 +13,8 @@
 class NoteEditor;
 class NoteHeader;
 class NoteTree;
+class StatusLabel;
+class PromptBanner;
 class QAction;
 class QLabel;
 class QLineEdit;
@@ -84,11 +86,9 @@ private:
     QAction *mMove;
     QLineEdit *mNewPath;
     QPushButton *mCreate;
-    QWidget *mDeleteBar;
-    QLabel *mDeleteLabel;
+    PromptBanner *mDeleteBar = nullptr;
     QString mDeletePath; // The note the delete confirmation was shown for.
-    QWidget *mConflictBar;
-    QLabel *mConflictLabel;
+    PromptBanner *mConflictBar = nullptr;
     QPushButton *mReload;
     QPushButton *mKeepMine;
     QPushButton *mMerge;
@@ -100,5 +100,5 @@ private:
     QWidget *mEmptyState; // Built from mOpenVault and mEmptyMessage, so declared after them.
     QWidget *mVaultView = nullptr;
     NoteHeader *mHeader;
-    QLabel *mStatus;
+    StatusLabel *mStatus;
 };
