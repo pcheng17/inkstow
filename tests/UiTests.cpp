@@ -121,7 +121,7 @@ static void testMissingLastVault()
     checkLastVaultNotReopened(file);
 }
 
-static void testUnsavedLastVaultIsReported()
+static void testUnrememberedVaultIsReported()
 {
     QTemporaryDir dir;
     CHECK(dir.isValid());
@@ -368,7 +368,7 @@ int main(int argc, char **argv)
         testCurrentStyleKept(window);
         testReopeningLastVault();
         testMissingLastVault();
-        testUnsavedLastVaultIsReported();
+        testUnrememberedVaultIsReported();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
@@ -409,7 +409,7 @@ int main(int argc, char **argv)
         editor->setPlainText(QStringLiteral("first edit"));
         CHECK(save->isEnabled());
         notes->setCurrentRow(1);
-        CHECK(notes->currentRow() == 0); // Unsaved note cannot be switched away.
+        CHECK(notes->currentRow() == 0);                    // Unsaved note cannot be switched away.
         testVaultSwitchRefusedWhileUnsaved(window, picker); // Nor can its vault.
         save->click();
         CHECK(readFile(note) == "first edit");
