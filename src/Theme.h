@@ -20,7 +20,7 @@ constexpr QRgb kSelection = qRgb(0xe7, 0xde, 0xf4);
 constexpr int kTitlePointSize = 14;
 
 // Spacing.
-constexpr int kHeaderGap = 16;
+constexpr int kEmptyStateSpacing = 12;
 constexpr QMargins kFlushMargins{};
 
 // Window geometry.

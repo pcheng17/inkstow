@@ -23,6 +23,8 @@ public:
     {
     }
 
+    // Refuses while the selected note has unsaved changes.
+    bool canOpenVault(QString *error) const;
     bool openVault(const QString &folder, QString *error);
     bool selectNote(const QString &path, QString *error);
     bool save(QString *error);

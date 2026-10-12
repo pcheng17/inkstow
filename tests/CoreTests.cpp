@@ -212,6 +212,25 @@ static void rejectsInvalidUtf8AndKeepsPriorVaultOnFailure()
     CHECK(session.content() == QStringLiteral("good"));
 }
 
+static void sessionRefusesAnotherVaultWithUnsavedEdits()
+{
+    QTemporaryDir dir;
+    QTemporaryDir other;
+    CHECK(dir.isValid() && other.isValid());
+    writeFile(dir.filePath(QStringLiteral("note.md")), "original");
+    QString error;
+    Session session;
+    CHECK(session.canOpenVault(&error));
+    CHECK(session.openVault(dir.path(), &error));
+    CHECK(session.selectNote(QStringLiteral("note.md"), &error));
+    session.setContent(QStringLiteral("edited"));
+    CHECK(!session.canOpenVault(&error));
+    CHECK(error.contains(QStringLiteral("Save the current note")));
+    CHECK(!session.openVault(other.path(), &error));
+    CHECK(session.path() == QStringLiteral("note.md"));
+    CHECK(session.content() == QStringLiteral("edited"));
+}
+
 static void sessionRetainsLocalEditsOnConflict()
 {
     QTemporaryDir dir;
@@ -843,6 +862,7 @@ int main(int argc, char **argv)
         rejectsEscapesAndSymlinks();
         preservesUtf8BomWhenEditing();
         rejectsInvalidUtf8AndKeepsPriorVaultOnFailure();
+        sessionRefusesAnotherVaultWithUnsavedEdits();
         sessionRetainsLocalEditsOnConflict();
         sessionSyncsExternalEdits();
         sessionKeepsTextWhenDiskCannotBeLoaded();

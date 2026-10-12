@@ -1,6 +1,8 @@
+#include "SettingsStore.h"
 #include "Theme.h"
 #include "Window.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QDir>
 #include <QDialog>
@@ -14,6 +16,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
@@ -21,7 +25,10 @@
 #include <QTextCursor>
 #include <QThread>
 
+#include <algorithm>
+#include <optional>
 #include <stdexcept>
+#include <utility>
 
 #define CHECK(value)                                                                               \
     do {                                                                                           \
@@ -55,6 +62,117 @@ static bool waitFor(Done done)
     return done();
 }
 
+// Remembers settings for one test instead of touching the user's real settings.
+class MemorySettings : public SettingsStore
+{
+public:
+    QString lastVault() const override { return mLastVault; }
+    bool setLastVault(const QString &path) override
+    {
+        mLastVault = path;
+        return true;
+    }
+
+private:
+    QString mLastVault;
+};
+
+// Stands in for settings that can't be written, such as a read-only config folder.
+class FailingSettings : public SettingsStore
+{
+public:
+    QString lastVault() const override { return {}; }
+    bool setLastVault(const QString & /*path*/) override { return false; }
+};
+
+static bool refuseTrash(const QString & /*path*/, QString * /*error*/)
+{
+    return false;
+}
+
+static std::optional<QString> failIfPicked(QWidget * /*parent*/)
+{
+    throw std::runtime_error("The folder picker was shown unexpectedly");
+}
+
+// A last vault that can't be reopened leaves the empty state up with the reason.
+static void checkLastVaultNotReopened(const QString &lastVault)
+{
+    const auto settings = std::make_shared<MemorySettings>();
+    settings->setLastVault(lastVault);
+    Window window(refuseTrash, {}, failIfPicked, settings);
+    auto *emptyState = window.findChild<QWidget *>(QStringLiteral("emptyState"));
+    auto *message = window.findChild<QLabel *>(QStringLiteral("emptyStateMessage"));
+    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    CHECK(emptyState && message && notes);
+    CHECK(emptyState->isVisibleTo(&window));
+    CHECK(!notes->isVisibleTo(&window));
+    CHECK(message->text().contains(lastVault));
+    CHECK(window.windowTitle() == QStringLiteral("Inkstow"));
+}
+
+static void testMissingLastVault()
+{
+    QTemporaryDir parent;
+    CHECK(parent.isValid());
+    checkLastVaultNotReopened(QDir(parent.path()).filePath(QStringLiteral("Gone")));
+    const QString file = QDir(parent.path()).filePath(QStringLiteral("not-a-folder.md"));
+    writeFile(file, "note");
+    checkLastVaultNotReopened(file);
+}
+
+static void testUnrememberedVaultIsReported()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("Welcome.md")), "welcome");
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<FailingSettings>());
+    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
+    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    CHECK(open && notes && status);
+    open->click();
+    CHECK(notes->count() == 1); // The vault still opens.
+    CHECK(status->text().contains(QStringLiteral("Couldn't remember this vault")));
+}
+
+static void testReopeningLastVault()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("Welcome.md")), "welcome");
+    const QString title = QStringLiteral("Inkstow - ") + QDir(dir.path()).dirName();
+    const auto settings = std::make_shared<MemorySettings>();
+    {
+        std::optional<QString> picked;
+        Window first(refuseTrash, {}, [&](QWidget *) { return picked; }, settings);
+        CHECK(first.windowTitle() == QStringLiteral("Inkstow"));
+        auto *open = first.findChild<QPushButton *>(QStringLiteral("openVault"));
+        auto *emptyState = first.findChild<QWidget *>(QStringLiteral("emptyState"));
+        CHECK(open && emptyState);
+        CHECK(emptyState->isVisibleTo(&first));
+        open->click(); // Cancelled.
+        CHECK(emptyState->isVisibleTo(&first));
+        CHECK(settings->lastVault().isEmpty());
+        CHECK(first.windowTitle() == QStringLiteral("Inkstow"));
+        picked = dir.path();
+        open->click();
+        CHECK(!emptyState->isVisibleTo(&first));
+        CHECK(settings->lastVault() == dir.path());
+        CHECK(first.windowTitle() == title);
+    }
+    Window second(refuseTrash, {}, failIfPicked, settings);
+    auto *notes = second.findChild<QListWidget *>(QStringLiteral("notes"));
+    CHECK(notes);
+    CHECK(notes->count() == 1);
+    CHECK(notes->item(0)->text() == QStringLiteral("Welcome.md"));
+    CHECK(second.windowTitle() == title);
+}
+
 // Pins the current light look so moving style values into the theme changes nothing.
 static void testCurrentStyleKept(const Window &window)
 {
@@ -76,6 +194,65 @@ static void testCurrentStyleKept(const Window &window)
     CHECK(title->font().bold());
     CHECK(title->font().pointSize() == 14);
     CHECK(window.size() == QSize(1100, 750));
+}
+
+// What the injected folder picker answers, and how often the window asked it.
+struct PickerScript
+{
+    std::optional<QString> mAnswer;
+    int mCalls = 0;
+};
+
+// Triggers File > Open vault with the picker answering `answer` this once, then
+// checks the open vault's notes and window title were left as they were.
+static void openVaultExpectingNoChange(
+    Window &window, PickerScript &picker, std::optional<QString> answer)
+{
+    auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
+    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    CHECK(switchVault && notes);
+    const int listed = notes->count();
+    const QString title = window.windowTitle();
+    const std::optional<QString> usual = std::exchange(picker.mAnswer, std::move(answer));
+    switchVault->trigger();
+    picker.mAnswer = usual;
+    CHECK(notes->count() == listed);
+    CHECK(window.windowTitle() == title);
+}
+
+// Opening a vault from the File menu and cancelling the picker changes nothing.
+static void testCancellingOpenVault(Window &window, PickerScript &picker)
+{
+    auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
+    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    CHECK(switchVault && status);
+    CHECK(switchVault->shortcut() == QKeySequence(QKeySequence::Open));
+    const auto menus = window.menuBar()->actions();
+    CHECK(std::any_of(menus.begin(), menus.end(), [&](QAction *menu) {
+        return menu->menu() && menu->menu()->actions().contains(switchVault);
+    }));
+    const QString openedStatus = status->text();
+    openVaultExpectingNoChange(window, picker, std::nullopt);
+    CHECK(status->text() == openedStatus);
+}
+
+// Unsaved edits block switching vaults, the same way they block switching notes.
+static void testVaultSwitchRefusedWhileUnsaved(Window &window, PickerScript &picker)
+{
+    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    CHECK(notes && editor && status);
+    QTemporaryDir otherVault;
+    CHECK(otherVault.isValid());
+    writeFile(QDir(otherVault.path()).filePath(QStringLiteral("elsewhere.md")), "elsewhere");
+    const QString text = editor->toPlainText();
+    const int callsBefore = picker.mCalls;
+    openVaultExpectingNoChange(window, picker, otherVault.path());
+    CHECK(picker.mCalls == callsBefore); // Refused before asking for a folder.
+    CHECK(status->text().contains(QStringLiteral("Save the current note")));
+    CHECK(notes->findItems(QStringLiteral("elsewhere.md"), Qt::MatchExactly).isEmpty());
+    CHECK(editor->toPlainText() == text);
 }
 
 static void testFollowingLinks(
@@ -173,6 +350,7 @@ int main(int argc, char **argv)
         QTemporaryDir trash;
         CHECK(trash.isValid());
         QStringList openedAttachments;
+        PickerScript picker{dir.path()};
         Window window(
             [&](const QString &path, QString *) {
                 return QFile::rename(path, QDir(trash.path()).filePath(QFileInfo(path).fileName()));
@@ -181,9 +359,16 @@ int main(int argc, char **argv)
                 CHECK(url.isLocalFile());
                 openedAttachments.append(url.toLocalFile());
                 return true;
-            });
+            },
+            [&](QWidget *) {
+                ++picker.mCalls;
+                return picker.mAnswer;
+            },
+            std::make_shared<MemorySettings>());
         testCurrentStyleKept(window);
-        auto *folder = window.findChild<QLineEdit *>(QStringLiteral("vaultFolder"));
+        testReopeningLastVault();
+        testMissingLastVault();
+        testUnrememberedVaultIsReported();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
@@ -202,8 +387,8 @@ int main(int argc, char **argv)
         auto *confirmDelete = window.findChild<QPushButton *>(QStringLiteral("confirmDelete"));
         auto *cancelDelete = window.findChild<QPushButton *>(QStringLiteral("cancelDelete"));
         CHECK(
-            folder && open && notes && editor && save && status && conflictBar && keepMine &&
-            reload && discard && merge && saveAsNew && newPath && create && remove && deleteBar &&
+            open && notes && editor && save && status && conflictBar && keepMine && reload &&
+            discard && merge && saveAsNew && newPath && create && remove && deleteBar &&
             confirmDelete && cancelDelete);
         CHECK(!create->isEnabled()); // No vault yet.
         CHECK(!remove->isEnabled());
@@ -216,15 +401,16 @@ int main(int argc, char **argv)
                 QCoreApplication::sendEvent(&window, &activation);
             }
         };
-        folder->setText(dir.path());
         open->click();
         CHECK(notes->count() == 2);
         CHECK(notes->item(0)->text() == QStringLiteral("note.md"));
+        testCancellingOpenVault(window, picker);
         testFollowingLinks(window, QDir(dir.path()), openedAttachments);
         editor->setPlainText(QStringLiteral("first edit"));
         CHECK(save->isEnabled());
         notes->setCurrentRow(1);
-        CHECK(notes->currentRow() == 0); // Unsaved note cannot be switched away.
+        CHECK(notes->currentRow() == 0);                    // Unsaved note cannot be switched away.
+        testVaultSwitchRefusedWhileUnsaved(window, picker); // Nor can its vault.
         save->click();
         CHECK(readFile(note) == "first edit");
         CHECK(!save->isEnabled());

@@ -2,8 +2,11 @@
 
 #include "Theme.h"
 
+#include <QAction>
 #include <QCloseEvent>
 #include <QDesktopServices>
+#include <QDir>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QHBoxLayout>
@@ -11,6 +14,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -18,18 +23,34 @@
 #include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QTextCursor>
 #include <QTimer>
 #include <QVBoxLayout>
 
 #include <algorithm>
 
-Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttachment)
+namespace
+{
+std::optional<QString> pickFolderWithDialog(QWidget *parent)
+{
+    QString folder = QFileDialog::getExistingDirectory(parent, QStringLiteral("Open vault"));
+    if (folder.isEmpty()) return std::nullopt;
+    return folder;
+}
+} // namespace
+
+Window::Window(
+    TrashFunction trash,
+    std::function<bool(const QUrl &)> openAttachment,
+    FolderPicker pickFolder,
+    std::shared_ptr<SettingsStore> settings)
     : mSession(std::move(trash))
     , mOpenAttachment(openAttachment ? std::move(openAttachment) : QDesktopServices::openUrl)
+    , mPickFolder(pickFolder ? std::move(pickFolder) : pickFolderWithDialog)
+    , mSettings(settings ? std::move(settings) : std::make_shared<AppSettingsStore>())
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
-    , mFolder(new QLineEdit)
     , mNotes(new QListWidget)
     , mEditor(new QPlainTextEdit)
     , mNewPath(new QLineEdit)
@@ -37,25 +58,23 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     , mDeleteLabel(new QLabel)
     , mConflictBar(new QWidget)
     , mConflictLabel(new QLabel)
+    , mOpenVault(new QAction(QStringLiteral("&Open vault…"), this))
+    , mPages(new QStackedWidget)
+    , mEmptyMessage(new QLabel(QStringLiteral("Open a folder of Markdown notes to begin.")))
+    , mEmptyState(createEmptyState())
+    , mStatus(new QLabel)
 {
     setWindowTitle(QStringLiteral("Inkstow"));
+    mOpenVault->setObjectName(QStringLiteral("openVaultAction"));
+    mOpenVault->setShortcut(QKeySequence::Open);
+    menuBar()->addMenu(QStringLiteral("&File"))->addAction(mOpenVault);
     resize(theme::kWindowWidth, theme::kWindowHeight);
     auto *central = new QWidget(this);
     auto *page = new QVBoxLayout(central);
-    auto *header = new QHBoxLayout;
     auto *title = new QLabel(QStringLiteral("Inkstow"));
     title->setObjectName(QStringLiteral("appTitle"));
     title->setFont(theme::titleFont(title->font()));
-    mFolder->setObjectName(QStringLiteral("vaultFolder"));
-    mFolder->setPlaceholderText(QStringLiteral("/path/to/vault"));
-    auto *open = new QPushButton(QStringLiteral("Open"));
-    open->setObjectName(QStringLiteral("openVault"));
-    header->addWidget(title);
-    header->addSpacing(theme::kHeaderGap);
-    header->addWidget(new QLabel(QStringLiteral("Vault folder")));
-    header->addWidget(mFolder, 1);
-    header->addWidget(open);
-    page->addLayout(header);
+    page->addWidget(title);
 
     auto *splitter = new QSplitter;
     mNotes->setObjectName(QStringLiteral("notes"));
@@ -129,8 +148,10 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     splitter->addWidget(right);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({theme::kSidebarWidth, theme::kEditorWidth});
-    page->addWidget(splitter, 1);
-    mStatus = new QLabel(QStringLiteral("Open a vault folder to begin."));
+    mVaultView = splitter;
+    mPages->addWidget(mEmptyState);
+    mPages->addWidget(mVaultView);
+    page->addWidget(mPages, 1);
     mStatus->setObjectName(QStringLiteral("status"));
     page->addWidget(mStatus);
     setCentralWidget(central);
@@ -139,8 +160,7 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     mSyncTimer->setInterval(150);
     refresh();
 
-    connect(open, &QPushButton::clicked, this, [this] { openVault(); });
-    connect(mFolder, &QLineEdit::returnPressed, this, [this] { openVault(); });
+    connect(mOpenVault, &QAction::triggered, this, [this] { openVault(); });
     connect(mSave, &QPushButton::clicked, this, [this] { saveNote(); });
     connect(mFollow, &QPushButton::clicked, this, [this] { followLink(); });
     connect(mReload, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
@@ -174,10 +194,36 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     connect(mNotes, &QListWidget::currentTextChanged, this, [this](const QString &path) {
         if (!path.isEmpty() && path != mSession.path()) selectNote(path);
     });
+    reopenLastVault();
+}
+
+QWidget *Window::createEmptyState()
+{
+    auto *emptyState = new QWidget;
+    emptyState->setObjectName(QStringLiteral("emptyState"));
+    auto *layout = new QVBoxLayout(emptyState);
+    layout->setSpacing(theme::kEmptyStateSpacing);
+    auto *heading = new QLabel(QStringLiteral("No vault open"));
+    heading->setFont(theme::titleFont(heading->font()));
+    mEmptyMessage->setObjectName(QStringLiteral("emptyStateMessage"));
+    mEmptyMessage->setWordWrap(true);
+    mEmptyMessage->setAlignment(Qt::AlignHCenter);
+    auto *open = new QPushButton(QStringLiteral("Open vault…"));
+    open->setObjectName(QStringLiteral("openVault"));
+    open->setAccessibleName(QStringLiteral("Open vault"));
+    open->setDefault(true);
+    connect(open, &QPushButton::clicked, mOpenVault, &QAction::trigger);
+    layout->addStretch(1);
+    layout->addWidget(heading, 0, Qt::AlignHCenter);
+    layout->addWidget(mEmptyMessage);
+    layout->addWidget(open, 0, Qt::AlignHCenter);
+    layout->addStretch(1);
+    return emptyState;
 }
 
 void Window::refresh()
 {
+    mPages->setCurrentWidget(mSession.hasVault() ? mVaultView : mEmptyState);
     const bool selected = !mSession.path().isEmpty();
     mFilename->setText(
         selected ? mSession.path() + (mSession.dirty() ? QStringLiteral(" *") : QString())
@@ -202,14 +248,36 @@ void Window::replaceEditor(const QString &text)
 void Window::openVault()
 {
     QString error;
-    if (!mSession.openVault(mFolder->text().trimmed(), &error)) {
+    if (!mSession.canOpenVault(&error)) {
         mStatus->setText(QStringLiteral("Error: ") + error);
         return;
     }
+    const auto folder = mPickFolder(this);
+    if (!folder) return;
+    if (!openVaultFolder(*folder, &error)) mStatus->setText(QStringLiteral("Error: ") + error);
+}
+
+bool Window::openVaultFolder(const QString &folder, QString *error)
+{
+    if (!mSession.openVault(folder, error)) return false;
+    const bool remembered = mSettings->setLastVault(folder);
+    setWindowTitle(QStringLiteral("Inkstow - ") + QDir(folder).dirName());
     showNotes();
     replaceEditor(QString());
     watchNote();
-    mStatus->setText(QStringLiteral("Found %1 notes").arg(mSession.notes().size()));
+    QString status = QStringLiteral("Found %1 notes").arg(mSession.notes().size());
+    if (!remembered) status += QStringLiteral(". Couldn't remember this vault for next launch.");
+    mStatus->setText(status);
+    return true;
+}
+
+void Window::reopenLastVault()
+{
+    const QString folder = mSettings->lastVault();
+    if (folder.isEmpty()) return;
+    QString error;
+    if (!openVaultFolder(folder, &error))
+        mEmptyMessage->setText(QStringLiteral("Could not reopen %1: %2").arg(folder, error));
 }
 
 void Window::selectNote(const QString &path)

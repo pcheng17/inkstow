@@ -1,27 +1,37 @@
 #pragma once
 
 #include "Session.h"
+#include "SettingsStore.h"
 
 #include <QMainWindow>
 #include <QUrl>
 
 #include <functional>
+#include <memory>
+#include <optional>
 
+class QAction;
 class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
+class QStackedWidget;
 class QTimer;
 class QCloseEvent;
 class QFileSystemWatcher;
+
+// Asks for a vault folder; returns nothing when the user cancels.
+using FolderPicker = std::function<std::optional<QString>(QWidget *parent)>;
 
 class Window : public QMainWindow
 {
 public:
     explicit Window(
         TrashFunction trash = moveToSystemTrash,
-        std::function<bool(const QUrl &)> openAttachment = {});
+        std::function<bool(const QUrl &)> openAttachment = {},
+        FolderPicker pickFolder = {},
+        std::shared_ptr<SettingsStore> settings = {});
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -29,9 +39,12 @@ protected:
 
 private:
     void openVault();
+    bool openVaultFolder(const QString &folder, QString *error);
+    void reopenLastVault();
     void selectNote(const QString &path);
     void saveNote();
     void followLink();
+    QWidget *createEmptyState();
     void refresh();
     void replaceEditor(const QString &text);
     void watchNote();
@@ -50,9 +63,10 @@ private:
 
     Session mSession;
     std::function<bool(const QUrl &)> mOpenAttachment;
+    FolderPicker mPickFolder;
+    std::shared_ptr<SettingsStore> mSettings;
     QFileSystemWatcher *mWatcher;
     QTimer *mSyncTimer;
-    QLineEdit *mFolder;
     QListWidget *mNotes;
     QPlainTextEdit *mEditor;
     QPushButton *mSave;
@@ -71,6 +85,11 @@ private:
     QPushButton *mMerge;
     QPushButton *mSaveAsNew;
     QPushButton *mDiscard;
+    QAction *mOpenVault;
+    QStackedWidget *mPages;
+    QLabel *mEmptyMessage;
+    QWidget *mEmptyState; // Built from mOpenVault and mEmptyMessage, so declared after them.
+    QWidget *mVaultView = nullptr;
     QLabel *mFilename;
     QLabel *mStatus;
 };
