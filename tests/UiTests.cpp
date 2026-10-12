@@ -82,13 +82,11 @@ static std::optional<QString> failIfPicked(QWidget * /*parent*/)
     throw std::runtime_error("The folder picker was shown unexpectedly");
 }
 
-static void testMissingLastVault()
+// A last vault that can't be reopened leaves the empty state up with the reason.
+static void checkLastVaultNotReopened(const QString &lastVault)
 {
-    QTemporaryDir parent;
-    CHECK(parent.isValid());
-    const QString missing = QDir(parent.path()).filePath(QStringLiteral("Gone"));
     const auto settings = std::make_shared<MemorySettings>();
-    settings->setLastVault(missing);
+    settings->setLastVault(lastVault);
     Window window(refuseTrash, {}, failIfPicked, settings);
     auto *emptyState = window.findChild<QWidget *>(QStringLiteral("emptyState"));
     auto *message = window.findChild<QLabel *>(QStringLiteral("emptyStateMessage"));
@@ -96,8 +94,18 @@ static void testMissingLastVault()
     CHECK(emptyState && message && notes);
     CHECK(emptyState->isVisibleTo(&window));
     CHECK(!notes->isVisibleTo(&window));
-    CHECK(message->text().contains(missing));
+    CHECK(message->text().contains(lastVault));
     CHECK(window.windowTitle() == QStringLiteral("Inkstow"));
+}
+
+static void testMissingLastVault()
+{
+    QTemporaryDir parent;
+    CHECK(parent.isValid());
+    checkLastVaultNotReopened(QDir(parent.path()).filePath(QStringLiteral("Gone")));
+    const QString file = QDir(parent.path()).filePath(QStringLiteral("not-a-folder.md"));
+    writeFile(file, "note");
+    checkLastVaultNotReopened(file);
 }
 
 static void testReopeningLastVault()
@@ -108,16 +116,18 @@ static void testReopeningLastVault()
     const QString title = QStringLiteral("Inkstow - ") + QDir(dir.path()).dirName();
     const auto settings = std::make_shared<MemorySettings>();
     {
-        Window first(
-            refuseTrash,
-            {},
-            [&](QWidget *) { return std::optional(dir.path()); },
-            settings);
+        std::optional<QString> picked;
+        Window first(refuseTrash, {}, [&](QWidget *) { return picked; }, settings);
         CHECK(first.windowTitle() == QStringLiteral("Inkstow"));
         auto *open = first.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *emptyState = first.findChild<QWidget *>(QStringLiteral("emptyState"));
         CHECK(open && emptyState);
         CHECK(emptyState->isVisibleTo(&first));
+        open->click(); // Cancelled.
+        CHECK(emptyState->isVisibleTo(&first));
+        CHECK(settings->lastVault().isEmpty());
+        CHECK(first.windowTitle() == QStringLiteral("Inkstow"));
+        picked = dir.path();
         open->click();
         CHECK(!emptyState->isVisibleTo(&first));
         CHECK(settings->lastVault() == dir.path());
