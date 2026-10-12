@@ -477,17 +477,22 @@ static void testNoteTree()
     CHECK(status->text().contains(QStringLiteral("Save the current note")));
     CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
     CHECK(editor->toPlainText() == QStringLiteral("draft"));
+    clickItem(tree, treeItem(tree, QStringLiteral("b.md")));
+    CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
+    CHECK(editor->toPlainText() == QStringLiteral("draft"));
     editor->setPlainText(QStringLiteral("inner"));
 
-    // A rescan after outside changes keeps expanded folders and the selection.
+    // A rescan after outside changes keeps expanded folders and the selection,
+    // and shows a new folder even when no note changed.
     treeItem(tree, QStringLiteral("Zeta"))->setExpanded(true);
-    CHECK(root.mkpath(QStringLiteral("Zeta/Later")));
-    writeFile(root.filePath(QStringLiteral("alpha/added.md")), "added");
     CHECK(waitFor([&] { return window.isActiveWindow(); }));
     QEvent activation(QEvent::ActivationChange);
+    CHECK(root.mkpath(QStringLiteral("Zeta/Later")));
+    QCoreApplication::sendEvent(&window, &activation);
+    CHECK(treeItem(tree, QStringLiteral("Zeta/Later")));
+    writeFile(root.filePath(QStringLiteral("alpha/added.md")), "added");
     QCoreApplication::sendEvent(&window, &activation);
     CHECK(treeItem(tree, QStringLiteral("alpha/added.md")));
-    CHECK(treeItem(tree, QStringLiteral("Zeta/Later")));
     CHECK(treeItem(tree, QStringLiteral("alpha"))->isExpanded());
     CHECK(treeItem(tree, QStringLiteral("alpha/deep"))->isExpanded());
     CHECK(treeItem(tree, QStringLiteral("Zeta"))->isExpanded());
