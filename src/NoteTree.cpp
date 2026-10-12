@@ -1,5 +1,7 @@
 #include "NoteTree.h"
 
+#include "Theme.h"
+
 #include <QHash>
 #include <QKeyEvent>
 #include <QSet>
@@ -59,6 +61,7 @@ NoteTree::NoteTree(std::function<void(const QString &path)> openNote)
     : mOpenNote(std::move(openNote))
 {
     setHeaderHidden(true);
+    setIndentation(theme::kTreeIndent);
     connect(this, &QTreeWidget::itemClicked, this, [this](const QTreeWidgetItem *item) {
         openItem(item);
     });

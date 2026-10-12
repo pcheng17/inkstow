@@ -21,6 +21,7 @@ constexpr int kTitlePointSize = 14;
 
 // Spacing.
 constexpr int kEmptyStateSpacing = 12;
+constexpr int kTreeIndent = 12; // Per nesting level in the note tree.
 constexpr QMargins kFlushMargins{};
 
 // Window geometry.

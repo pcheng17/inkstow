@@ -427,6 +427,7 @@ static void testNoteTree()
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(open && tree && editor && status);
     CHECK(!tree->accessibleName().isEmpty());
+    CHECK(tree->indentation() == 12);
     open->click();
 
     // Folders first, then notes, each by name; no ".md"; empty folders shown; dot entries hidden.
