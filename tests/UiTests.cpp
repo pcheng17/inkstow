@@ -3,6 +3,9 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QDialog>
+#include <QMessageBox>
+#include <QTimer>
 #include <QFileInfo>
 #include <QDeadlineTimer>
 #include <QFile>
@@ -385,10 +388,33 @@ int main(int argc, char **argv)
         CHECK(status->text().startsWith(QStringLiteral("Error")));
         CHECK(newPath->text() == QStringLiteral("../escape"));
 
+        // Rename/move asks for a destination and explicitly confirms link updates.
+        auto *move = window.findChild<QPushButton *>(QStringLiteral("moveNote"));
+        CHECK(move && move->isEnabled());
+        QTimer::singleShot(0, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            CHECK(dialog);
+            auto *input = dialog->findChild<QLineEdit *>();
+            CHECK(input);
+            input->setText(QStringLiteral("Moved"));
+            dialog->accept();
+            QTimer::singleShot(0, [&] {
+                auto *confirmation = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+                CHECK(confirmation);
+                CHECK(confirmation->defaultButton());
+                confirmation->defaultButton()->click();
+            });
+        });
+        move->click();
+        CHECK(QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));
+        CHECK(notes->currentItem()->text() == QStringLiteral("Moved.md"));
+        CHECK(!QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
+
         // Unsaved edits disable both, and a confirmation never outlives its note.
         editor->setPlainText(QStringLiteral("draft"));
         CHECK(!create->isEnabled());
         CHECK(!remove->isEnabled());
+        CHECK(!move->isEnabled());
         editor->setPlainText(QString());
         CHECK(create->isEnabled() && remove->isEnabled());
         remove->click();
@@ -398,7 +424,7 @@ int main(int argc, char **argv)
         CHECK(deleteBar->isHidden());
         CHECK(QFile::exists(dir.filePath(QStringLiteral("other.md"))));
         notes->setCurrentItem(
-            notes->findItems(QStringLiteral("Ideas.md"), Qt::MatchExactly).first());
+            notes->findItems(QStringLiteral("Moved.md"), Qt::MatchExactly).first());
         CHECK(deleteBar->isHidden());
 
         // Deleting asks first, and Cancel leaves the note alone.
@@ -407,13 +433,13 @@ int main(int argc, char **argv)
         CHECK(!deleteBar->isHidden());
         cancelDelete->click();
         CHECK(deleteBar->isHidden());
-        CHECK(QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
+        CHECK(QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));
         remove->click();
         confirmDelete->click();
         CHECK(deleteBar->isHidden());
-        CHECK(!QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
-        CHECK(QFile::exists(QDir(trash.path()).filePath(QStringLiteral("Ideas.md"))));
-        CHECK(notes->findItems(QStringLiteral("Ideas.md"), Qt::MatchExactly).isEmpty());
+        CHECK(!QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));
+        CHECK(QFile::exists(QDir(trash.path()).filePath(QStringLiteral("Moved.md"))));
+        CHECK(notes->findItems(QStringLiteral("Moved.md"), Qt::MatchExactly).isEmpty());
         CHECK(!editor->isEnabled());
         CHECK(!remove->isEnabled());
     } catch (const std::exception &error) {

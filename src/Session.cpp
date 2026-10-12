@@ -315,6 +315,50 @@ bool Session::createNote(const QString &input, QString *error)
     return selectNote(path, error);
 }
 
+bool Session::moveNote(const QString &input, bool updateLinks, QString *error)
+{
+    const Vault *vault = requireNote(error);
+    if (!vault || !requireClean(error)) return false;
+    QString path = input.trimmed().normalized(QString::NormalizationForm_C);
+    if (!path.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)) path += QStringLiteral(".md");
+    if (!vault->moveNote(mPath, path, mSavedBytes, updateLinks, error)) {
+        if (error->startsWith(QStringLiteral("Move partially completed"))) {
+            const QString failure = *error;
+            QByteArray partial;
+            QString text;
+            if (vault->readNote(path, &partial, error) && decode(partial, &text, error)) {
+                QString ignored;
+                if (reloadNotes(&ignored)) path = discoveredPath(path);
+                load(path, partial, text);
+            }
+            *error = failure;
+        }
+        return false;
+    }
+    // The selected note may itself contain rewritten links. Discovery may use
+    // the existing folder's spelling on a case-insensitive filesystem.
+    QString ignored;
+    if (reloadNotes(&ignored)) path = discoveredPath(path);
+    QByteArray bytes;
+    QString text;
+    if (!vault->readNote(path, &bytes, error) || !decode(bytes, &text, error)) {
+        const QString failure = *error;
+        mPath = path; // The move succeeded even if the new disk state cannot be loaded.
+        *error = QStringLiteral("Move partially completed; check the moved note: ") + failure;
+        return false;
+    }
+    load(path, bytes, text);
+    return true;
+}
+
+QString Session::discoveredPath(const QString &requested) const
+{
+    for (const QString &note : mNotes) {
+        if (note.compare(requested, Qt::CaseInsensitive) == 0) return note;
+    }
+    return requested;
+}
+
 bool Session::trashNote(QString *error)
 {
     const Vault *vault = requireNote(error);

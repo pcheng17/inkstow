@@ -44,6 +44,14 @@ public:
     bool createNoteWithContent(
         const QString &relative, const QByteArray &content, QString *error) const;
     bool trashNote(const QString &relative, const TrashFunction &trash, QString *error) const;
+    // Preflights links and disk bytes before moving. On a write failure after the
+    // move, reports partial completion (filesystem operations are not atomic).
+    bool moveNote(
+        const QString &from,
+        const QString &to,
+        const QByteArray &expected,
+        bool updateLinks,
+        QString *error) const;
 
 private:
     explicit Vault(QString root)

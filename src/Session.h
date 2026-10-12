@@ -31,6 +31,7 @@ public:
     // editor has unsaved edits.
     bool createNote(const QString &input, QString *error);
     bool trashNote(QString *error);
+    bool moveNote(const QString &input, bool updateLinks, QString *error);
     bool reloadNotes(QString *error);
     // Reloads a clean note changed by another program. Never discards edits.
     DiskChange syncWithDisk(QString *error);
@@ -69,6 +70,7 @@ private:
     const Vault *requireNote(QString *error) const;
     bool requireClean(QString *error) const;
     void clearNote();
+    QString discoveredPath(const QString &requested) const;
     bool write(const QByteArray &expected, QString *error);
     static bool decode(const QByteArray &bytes, QString *text, QString *error);
     void load(const QString &path, const QByteArray &bytes, const QString &text);
