@@ -14,6 +14,9 @@ NoteEditor::NoteEditor()
     setAcceptRichText(false);
     setFont(theme::editorFont(font()));
     document()->setDocumentMargin(theme::kEditorPadding);
+    // Side margins share the text's background, so a wide editor reads as one page.
+    setBackgroundRole(QPalette::Base);
+    setAutoFillBackground(true);
     connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this] { centreText(); });
 }
 

@@ -343,6 +343,8 @@ static void testEditorTextWidth()
     CHECK(text.width() <= 720);
     CHECK(text.width() > 720 - word); // Wraps at the cap, not short of it.
     CHECK(std::abs(text.left() - (editor->width() - text.right())) <= word);
+    const QPoint margin(text.left() / 2, editor->height() / 2);
+    CHECK(editor->grab().toImage().pixelColor(margin) == editor->palette().color(QPalette::Base));
 
     window.resize(700, 750);
     QCoreApplication::processEvents();
