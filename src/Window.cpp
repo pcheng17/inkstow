@@ -53,6 +53,8 @@ Window::Window(
     , mSyncTimer(new QTimer(this))
     , mNotes(new NoteTree([this](const QString &path) { openNote(path); }))
     , mEditor(new NoteEditor)
+    , mNoNoteState(createNoNoteState())
+    , mEditorPages(new QStackedWidget)
     , mNewPath(new QLineEdit)
     , mDeleteBar(new QWidget)
     , mDeleteLabel(new QLabel)
@@ -80,7 +82,7 @@ Window::Window(
     mNotes->setObjectName(QStringLiteral("notes"));
     mNotes->setAccessibleName(QStringLiteral("Notes"));
     mEditor->setObjectName(QStringLiteral("editor"));
-    mEditor->setPlaceholderText(QStringLiteral("Select a note"));
+    mEditor->setAccessibleName(QStringLiteral("Note text"));
     auto *right = new QWidget;
     auto *rightLayout = new QVBoxLayout(right);
     auto *toolbar = new QHBoxLayout;
@@ -132,7 +134,9 @@ Window::Window(
     deleteLayout->addWidget(cancelDelete);
     mDeleteBar->hide();
     rightLayout->addWidget(mDeleteBar);
-    rightLayout->addWidget(mEditor, 1);
+    mEditorPages->addWidget(mNoNoteState);
+    mEditorPages->addWidget(mEditor);
+    rightLayout->addWidget(mEditorPages, 1);
     auto *left = new QWidget;
     auto *leftLayout = new QVBoxLayout(left);
     leftLayout->setContentsMargins(theme::kFlushMargins);
@@ -219,6 +223,26 @@ QWidget *Window::createEmptyState()
     return emptyState;
 }
 
+QWidget *Window::createNoNoteState()
+{
+    auto *noNoteState = new QWidget;
+    noNoteState->setObjectName(QStringLiteral("noNoteState"));
+    auto *layout = new QVBoxLayout(noNoteState);
+    layout->setSpacing(theme::kEmptyStateSpacing);
+    auto *heading = new QLabel(QStringLiteral("No note open"));
+    heading->setFont(theme::titleFont(heading->font()));
+    auto *message =
+        new QLabel(QStringLiteral("Select a note in the sidebar, or create one below it."));
+    message->setObjectName(QStringLiteral("noNoteMessage"));
+    message->setWordWrap(true);
+    message->setAlignment(Qt::AlignHCenter);
+    layout->addStretch(1);
+    layout->addWidget(heading, 0, Qt::AlignHCenter);
+    layout->addWidget(message);
+    layout->addStretch(1);
+    return noNoteState;
+}
+
 void Window::refresh()
 {
     mPages->setCurrentWidget(mSession.hasVault() ? mVaultView : mEmptyState);
@@ -234,6 +258,7 @@ void Window::refresh()
     mMove->setEnabled(selected && !mSession.dirty());
     mCreate->setEnabled(mSession.hasVault() && !mSession.dirty());
     mEditor->setEnabled(selected);
+    mEditorPages->setCurrentWidget(selected ? static_cast<QWidget *>(mEditor) : mNoNoteState);
 }
 
 void Window::replaceEditor(const QString &text)

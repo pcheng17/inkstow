@@ -350,6 +350,36 @@ static void testEditorTextWidth()
     CHECK(editor->width() - text.right() >= 24);
 }
 
+// With no note open, the editor area explains itself instead of showing a
+// blank, disabled editor.
+static void testNoNoteEmptyState()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("note.md")), "text");
+    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
+    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto *empty = window.findChild<QWidget *>(QStringLiteral("noNoteState"));
+    auto *message = window.findChild<QLabel *>(QStringLiteral("noNoteMessage"));
+    CHECK(open && notes && editor && empty && message);
+    CHECK(editor->accessibleName() == QStringLiteral("Note text"));
+    window.show();
+    window.activateWindow(); // So the editor can take focus.
+    CHECK(waitFor([&] { return window.isActiveWindow(); }));
+    open->click();
+    CHECK(empty->isVisible() && !editor->isVisible());
+    CHECK(message->text().contains(QStringLiteral("Select a note")));
+    openNote(notes, QStringLiteral("note.md"));
+    CHECK(editor->isVisible() && !empty->isVisible());
+    CHECK(editor->hasFocus());
+}
+
 // Pins the current light look so moving style values into the theme changes nothing.
 static void testCurrentStyleKept(const Window &window)
 {
@@ -670,6 +700,7 @@ int main(int argc, char **argv)
         testNoteTree();
         testReadableEditorText();
         testEditorTextWidth();
+        testNoNoteEmptyState();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
@@ -940,6 +971,7 @@ int main(int argc, char **argv)
         CHECK(QFile::exists(QDir(trash.path()).filePath(QStringLiteral("Moved.md"))));
         CHECK(treeItem(notes, QStringLiteral("Moved.md")) == nullptr);
         CHECK(!editor->isEnabled());
+        CHECK(window.findChild<QWidget *>(QStringLiteral("noNoteState"))->isVisible());
         CHECK(!remove->isEnabled());
     } catch (const std::exception &error) {
         qCritical("%s", error.what());

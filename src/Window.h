@@ -47,6 +47,7 @@ private:
     void saveNote();
     void followLink();
     QWidget *createEmptyState();
+    QWidget *createNoNoteState();
     void refresh();
     void replaceEditor(const QString &text);
     void watchNote();
@@ -71,6 +72,8 @@ private:
     QTimer *mSyncTimer;
     NoteTree *mNotes;
     NoteEditor *mEditor;
+    QWidget *mNoNoteState;
+    QStackedWidget *mEditorPages; // Shows mEditor, or mNoNoteState when no note is open.
     QPushButton *mSave;
     QPushButton *mFollow;
     QPushButton *mDelete;
