@@ -10,7 +10,7 @@ if(APPLE)
   include(cmake/Apple.cmake)
 endif()
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets)
 include(cmake/CompilerOptions.cmake)
 
 add_library(core src/Vault.cpp src/Session.cpp)
@@ -20,7 +20,8 @@ target_link_libraries(core PUBLIC Qt6::Core PRIVATE inkstow-warnings)
 add_executable(vault-inspect src/VaultInspect.cpp)
 target_link_libraries(vault-inspect PRIVATE core inkstow-warnings)
 
-add_executable(inkstow src/main.cpp src/NoteEditor.cpp src/NoteTree.cpp src/SettingsStore.cpp src/Theme.cpp src/Window.cpp)
+add_executable(inkstow src/main.cpp src/MarkdownHighlighter.cpp src/NoteEditor.cpp src/NoteTree.cpp
+                       src/SettingsStore.cpp src/Theme.cpp src/Window.cpp)
 target_link_libraries(inkstow PRIVATE core Qt6::Widgets inkstow-warnings)
 
 include(CTest)
