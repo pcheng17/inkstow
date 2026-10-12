@@ -49,7 +49,7 @@ QWidget *createNoNoteState()
     auto *heading = new QLabel(QStringLiteral("No note open"));
     heading->setFont(theme::titleFont(heading->font()));
     auto *message =
-        new QLabel(QStringLiteral("Select a note in the sidebar, or create one below it."));
+        new QLabel(QStringLiteral("Select a note in the sidebar, or create a new one."));
     message->setObjectName(QStringLiteral("noNoteMessage"));
     message->setWordWrap(true);
     message->setAlignment(Qt::AlignHCenter);
