@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 
+class QAction;
 class QLabel;
 class QLineEdit;
 class QListWidget;
@@ -84,6 +85,7 @@ private:
     QPushButton *mMerge;
     QPushButton *mSaveAsNew;
     QPushButton *mDiscard;
+    QAction *mOpenVault;
     QStackedWidget *mPages;
     QLabel *mEmptyMessage;
     QWidget *mVaultView = nullptr;

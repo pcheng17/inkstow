@@ -2,6 +2,7 @@
 #include "Theme.h"
 #include "Window.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QDir>
 #include <QDialog>
@@ -15,6 +16,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
@@ -22,6 +25,7 @@
 #include <QTextCursor>
 #include <QThread>
 
+#include <algorithm>
 #include <optional>
 #include <stdexcept>
 
@@ -261,6 +265,7 @@ int main(int argc, char **argv)
         testReopeningLastVault();
         testMissingLastVault();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
+        auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
         auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
@@ -278,8 +283,8 @@ int main(int argc, char **argv)
         auto *confirmDelete = window.findChild<QPushButton *>(QStringLiteral("confirmDelete"));
         auto *cancelDelete = window.findChild<QPushButton *>(QStringLiteral("cancelDelete"));
         CHECK(
-            open && notes && editor && save && status && conflictBar && keepMine && reload &&
-            discard && merge && saveAsNew && newPath && create && remove && deleteBar &&
+            open && switchVault && notes && editor && save && status && conflictBar && keepMine &&
+            reload && discard && merge && saveAsNew && newPath && create && remove && deleteBar &&
             confirmDelete && cancelDelete);
         CHECK(!create->isEnabled()); // No vault yet.
         CHECK(!remove->isEnabled());
@@ -296,8 +301,13 @@ int main(int argc, char **argv)
         CHECK(notes->count() == 2);
         CHECK(notes->item(0)->text() == QStringLiteral("note.md"));
         const QString openedStatus = status->text();
+        CHECK(switchVault->shortcut() == QKeySequence(QKeySequence::Open));
+        const auto menus = window.menuBar()->actions();
+        CHECK(std::any_of(menus.begin(), menus.end(), [&](QAction *menu) {
+            return menu->menu() && menu->menu()->actions().contains(switchVault);
+        }));
         picked.reset(); // Cancelling the picker changes nothing.
-        open->click();
+        switchVault->trigger();
         CHECK(notes->count() == 2);
         CHECK(status->text() == openedStatus);
         testFollowingLinks(window, QDir(dir.path()), openedAttachments);
@@ -309,7 +319,7 @@ int main(int argc, char **argv)
         CHECK(otherVault.isValid());
         writeFile(QDir(otherVault.path()).filePath(QStringLiteral("elsewhere.md")), "elsewhere");
         picked = otherVault.path();
-        open->click(); // Nor can its vault.
+        switchVault->trigger(); // Nor can its vault.
         CHECK(status->text().contains(QStringLiteral("Save the current note")));
         CHECK(notes->count() == 2);
         CHECK(editor->toPlainText() == QStringLiteral("first edit"));

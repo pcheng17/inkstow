@@ -2,6 +2,7 @@
 
 #include "Theme.h"
 
+#include <QAction>
 #include <QCloseEvent>
 #include <QDesktopServices>
 #include <QDir>
@@ -13,6 +14,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -55,10 +58,14 @@ Window::Window(
     , mDeleteLabel(new QLabel)
     , mConflictBar(new QWidget)
     , mConflictLabel(new QLabel)
+    , mOpenVault(new QAction(QStringLiteral("&Open vault…"), this))
     , mPages(new QStackedWidget)
     , mEmptyMessage(new QLabel(QStringLiteral("Open a folder of Markdown notes to begin.")))
 {
     setWindowTitle(QStringLiteral("Inkstow"));
+    mOpenVault->setObjectName(QStringLiteral("openVaultAction"));
+    mOpenVault->setShortcut(QKeySequence::Open);
+    menuBar()->addMenu(QStringLiteral("&File"))->addAction(mOpenVault);
     resize(theme::kWindowWidth, theme::kWindowHeight);
     auto *central = new QWidget(this);
     auto *page = new QVBoxLayout(central);
@@ -154,6 +161,7 @@ Window::Window(
     mSyncTimer->setInterval(150);
     refresh();
 
+    connect(mOpenVault, &QAction::triggered, this, [this] { openVault(); });
     connect(mSave, &QPushButton::clicked, this, [this] { saveNote(); });
     connect(mFollow, &QPushButton::clicked, this, [this] { followLink(); });
     connect(mReload, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
@@ -204,7 +212,7 @@ QWidget *Window::createEmptyState()
     open->setObjectName(QStringLiteral("openVault"));
     open->setAccessibleName(QStringLiteral("Open vault"));
     open->setDefault(true);
-    connect(open, &QPushButton::clicked, this, [this] { openVault(); });
+    connect(open, &QPushButton::clicked, mOpenVault, &QAction::trigger);
     layout->addStretch(1);
     layout->addWidget(heading, 0, Qt::AlignHCenter);
     layout->addWidget(mEmptyMessage, 0, Qt::AlignHCenter);
