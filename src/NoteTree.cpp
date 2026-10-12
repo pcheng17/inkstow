@@ -2,8 +2,10 @@
 
 #include "Theme.h"
 
+#include <QContextMenuEvent>
 #include <QHash>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QSet>
 #include <QTreeWidgetItemIterator>
 
@@ -102,6 +104,35 @@ void NoteTree::revealNote(const QString &path)
         folder->setExpanded(true);
     setCurrentItem(item);
     if (item) scrollToItem(item);
+}
+
+void NoteTree::setNoteActions(const QList<QAction *> &actions)
+{
+    mNoteActions = actions;
+}
+
+std::unique_ptr<QMenu> NoteTree::contextMenuAt(const QPoint &point)
+{
+    const QTreeWidgetItem *item = itemAt(point);
+    if (!item || item->type() != kNoteItem) return nullptr;
+    const QString path = itemPath(item);
+    // Opening may be refused or fail, leaving another note open. The actions
+    // act on the open note, so offer them only if the clicked note opened.
+    openItem(item);
+    const QTreeWidgetItem *current = currentItem();
+    if (!current || itemPath(current) != path) return nullptr;
+    auto menu = std::make_unique<QMenu>(this);
+    menu->setObjectName(QStringLiteral("noteContextMenu"));
+    menu->setAccessibleName(QStringLiteral("Note actions"));
+    menu->addActions(mNoteActions);
+    return menu;
+}
+
+void NoteTree::contextMenuEvent(QContextMenuEvent *event)
+{
+    const std::unique_ptr<QMenu> menu = contextMenuAt(event->pos());
+    if (menu) menu->exec(event->globalPos());
+    event->accept();
 }
 
 void NoteTree::keyPressEvent(QKeyEvent *event)

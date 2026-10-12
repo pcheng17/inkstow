@@ -2,6 +2,7 @@
 #include "NoteTree.h"
 #include "SettingsStore.h"
 #include "Theme.h"
+#include "UiTestSupport.h"
 #include "Window.h"
 
 #include <QAbstractTextDocumentLayout>
@@ -44,53 +45,6 @@
 #include <stdexcept>
 #include <utility>
 
-#define CHECK(value)                                                                               \
-    do {                                                                                           \
-        if (!(value))                                                                              \
-            throw std::runtime_error("Failed: " #value " at line " + std::to_string(__LINE__));    \
-    } while (false)
-
-static void writeFile(const QString &path, const QByteArray &bytes)
-{
-    QFile file(path);
-    CHECK(file.open(QIODevice::WriteOnly));
-    CHECK(file.write(bytes) == bytes.size());
-}
-
-static QByteArray readFile(const QString &path)
-{
-    QFile file(path);
-    CHECK(file.open(QIODevice::ReadOnly));
-    return file.readAll();
-}
-
-// Lets the file watcher deliver its notifications.
-template<typename Done>
-static bool waitFor(Done done)
-{
-    QDeadlineTimer deadline(5000);
-    while (!done() && !deadline.hasExpired()) {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-        QThread::msleep(10);
-    }
-    return done();
-}
-
-// Remembers settings for one test instead of touching the user's real settings.
-class MemorySettings : public SettingsStore
-{
-public:
-    QString lastVault() const override { return mLastVault; }
-    bool setLastVault(const QString &path) override
-    {
-        mLastVault = path;
-        return true;
-    }
-
-private:
-    QString mLastVault;
-};
-
 // Stands in for settings that can't be written, such as a read-only config folder.
 class FailingSettings : public SettingsStore
 {
@@ -99,80 +53,9 @@ public:
     bool setLastVault(const QString & /*path*/) override { return false; }
 };
 
-static bool refuseTrash(const QString & /*path*/, QString * /*error*/)
-{
-    return false;
-}
-
 static std::optional<QString> failIfPicked(QWidget * /*parent*/)
 {
     throw std::runtime_error("The folder picker was shown unexpectedly");
-}
-
-// Finds the tree item holding a vault-relative note or folder path.
-static QTreeWidgetItem *treeItem(QTreeWidget *tree, const QString &path)
-{
-    for (QTreeWidgetItemIterator it(tree); *it; ++it) {
-        if ((*it)->data(0, NoteTree::kPathRole).toString() == path) return *it;
-    }
-    return nullptr;
-}
-
-static QString currentPath(const QTreeWidget *tree)
-{
-    const QTreeWidgetItem *item = tree->currentItem();
-    return item ? item->data(0, NoteTree::kPathRole).toString() : QString();
-}
-
-static QStringList notePaths(QTreeWidget *tree)
-{
-    QStringList paths;
-    for (QTreeWidgetItemIterator it(tree); *it; ++it) {
-        if ((*it)->type() == NoteTree::kNoteItem)
-            paths.append((*it)->data(0, NoteTree::kPathRole).toString());
-    }
-    return paths;
-}
-
-static void pressKey(QWidget *widget, int key)
-{
-    QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
-    QCoreApplication::sendEvent(widget, &press);
-    QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier);
-    QCoreApplication::sendEvent(widget, &release);
-}
-
-static void clickItem(QTreeWidget *tree, QTreeWidgetItem *item)
-{
-    CHECK(item);
-    tree->scrollToItem(item);
-    const QPointF point = tree->visualItemRect(item).center();
-    const QPointF global = tree->viewport()->mapToGlobal(point);
-    QMouseEvent press(
-        QEvent::MouseButtonPress,
-        point,
-        global,
-        Qt::LeftButton,
-        Qt::LeftButton,
-        Qt::NoModifier);
-    QCoreApplication::sendEvent(tree->viewport(), &press);
-    QMouseEvent release(
-        QEvent::MouseButtonRelease,
-        point,
-        global,
-        Qt::LeftButton,
-        Qt::NoButton,
-        Qt::NoModifier);
-    QCoreApplication::sendEvent(tree->viewport(), &release);
-}
-
-// Moves to a note with the keyboard and presses Enter, as a user would.
-static void openNote(QTreeWidget *tree, const QString &path)
-{
-    QTreeWidgetItem *item = treeItem(tree, path);
-    CHECK(item);
-    tree->setCurrentItem(item);
-    pressKey(tree, Qt::Key_Return);
 }
 
 // A last vault that can't be reopened leaves the empty state up with the reason.
@@ -286,7 +169,7 @@ static void testReadableEditorText()
     window.show(); // Text is laid out only once it is shown.
     openSingleNote(window, dir, "first\nsecond");
     auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
+    auto *save = window.findChild<QAction *>(QStringLiteral("saveAction"));
     CHECK(editor && save);
     CHECK(editor->font().pointSize() == 13);
     const qreal roomy = 1.4 * QFontMetricsF(editor->font()).height();
@@ -304,7 +187,7 @@ static void testReadableEditorText()
     editor->paste();
     CHECK(linePitch(editor, 2) >= roomy);
     CHECK(linePitch(editor, 3) >= roomy);
-    save->click();
+    save->trigger();
     CHECK(
         readFile(QDir(dir.path()).filePath(QStringLiteral("note.md"))) ==
         "first\nsecond\nthird\nfourth\nfifth");
@@ -370,7 +253,7 @@ static void testEditorHighlightsMarkdown()
         std::make_shared<MemorySettings>());
     openSingleNote(window, dir, "# Title\n**bold** and [[link]]");
     auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
+    auto *save = window.findChild<QAction *>(QStringLiteral("saveAction"));
     CHECK(editor && save);
     CHECK(
         dynamic_cast<MarkdownHighlighter *>(editor->document()->findChild<QSyntaxHighlighter *>(
@@ -391,7 +274,7 @@ static void testEditorHighlightsMarkdown()
     editor->setTextCursor(end);
     editor->insertPlainText(QStringLiteral("\n```\n# not a heading"));
     CHECK(kindsAt(3, 2) == static_cast<int>(theme::MarkdownKind::CodeBlock));
-    save->click();
+    save->trigger();
     CHECK(
         readFile(QDir(dir.path()).filePath(QStringLiteral("note.md"))) ==
         "# Title\n**bold** and [[link]]\n```\n# not a heading");
@@ -582,7 +465,7 @@ static void testFollowingLinks(
 {
     auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
     auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *follow = window.findChild<QPushButton *>(QStringLiteral("followLink"));
+    auto *follow = window.findChild<QAction *>(QStringLiteral("followLinkAction"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(notes && editor && follow && status);
     writeFile(
@@ -596,10 +479,10 @@ static void testFollowingLinks(
         editor->setTextCursor(cursor);
     };
     cursorAt(QStringLiteral("[[missing]]"));
-    follow->click();
+    follow->trigger();
     CHECK(status->text() == QStringLiteral("Unresolved link"));
     cursorAt(QStringLiteral("[[asset.png]]"));
-    follow->click();
+    follow->trigger();
     CHECK(status->text() == QStringLiteral("Opened attachment: asset.png"));
     CHECK(
         openedAttachments ==
@@ -613,17 +496,17 @@ static void testFollowingLinks(
             editor->toPlainText().indexOf(QStringLiteral("[[asset.png]]")) +
             QStringLiteral("[[asset.png]]").size()));
     editor->setTextCursor(after);
-    follow->click();
+    follow->trigger();
     CHECK(status->text().contains(QStringLiteral("cursor inside")));
     CHECK(openedAttachments.size() == 1);
     // Make sure unsaved edits cannot be abandoned through Follow link.
     editor->setPlainText(QStringLiteral("[[note#Part|Alias]] [[asset.png]] draft"));
     cursorAt(QStringLiteral("[[note#Part|Alias]]"));
-    follow->click();
+    follow->trigger();
     CHECK(currentPath(notes) == QStringLiteral("other.md"));
     CHECK(status->text().contains(QStringLiteral("Save the current note")));
     cursorAt(QStringLiteral("[[asset.png]]"));
-    follow->click();
+    follow->trigger();
     CHECK(status->text().contains(QStringLiteral("Save the current note")));
     CHECK(openedAttachments.size() == 1);
     CHECK(
@@ -631,7 +514,7 @@ static void testFollowingLinks(
         "[[note#Part|Alias]] [[missing]] [[asset.png]]");
     editor->setPlainText(QStringLiteral("[[note#Part|Alias]] [[missing]] [[asset.png]]"));
     cursorAt(QStringLiteral("[[note#Part|Alias]]"));
-    follow->click();
+    follow->trigger();
     CHECK(currentPath(notes) == QStringLiteral("note.md"));
     CHECK(editor->toPlainText() == QStringLiteral("original"));
     CHECK(
@@ -722,7 +605,7 @@ static void testNoteTree()
     QTextCursor cursor = editor->textCursor();
     cursor.setPosition(3);
     editor->setTextCursor(cursor);
-    window.findChild<QPushButton *>(QStringLiteral("followLink"))->click();
+    window.findChild<QAction *>(QStringLiteral("followLinkAction"))->trigger();
     CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
     CHECK(alpha->isExpanded() && treeItem(tree, QStringLiteral("alpha/deep"))->isExpanded());
 
@@ -819,10 +702,11 @@ int main(int argc, char **argv)
         testReloadKeepsPlace();
         testEditorHighlightsMarkdown();
         testLongNoteStaysResponsive();
+        runNoteActionTests();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-        auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
+        auto *save = window.findChild<QAction *>(QStringLiteral("saveAction"));
         auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
         auto *conflictBar = window.findChild<QWidget *>(QStringLiteral("conflictBar"));
         auto *keepMine = window.findChild<QPushButton *>(QStringLiteral("keepMine"));
@@ -832,7 +716,7 @@ int main(int argc, char **argv)
         auto *saveAsNew = window.findChild<QPushButton *>(QStringLiteral("saveAsNewNote"));
         auto *newPath = window.findChild<QLineEdit *>(QStringLiteral("newNotePath"));
         auto *create = window.findChild<QPushButton *>(QStringLiteral("createNote"));
-        auto *remove = window.findChild<QPushButton *>(QStringLiteral("deleteNote"));
+        auto *remove = window.findChild<QAction *>(QStringLiteral("deleteNoteAction"));
         auto *deleteBar = window.findChild<QWidget *>(QStringLiteral("deleteBar"));
         auto *confirmDelete = window.findChild<QPushButton *>(QStringLiteral("confirmDelete"));
         auto *cancelDelete = window.findChild<QPushButton *>(QStringLiteral("cancelDelete"));
@@ -864,7 +748,7 @@ int main(int argc, char **argv)
             currentPath(notes) ==
             QStringLiteral("note.md"));                     // Unsaved note cannot be switched away.
         testVaultSwitchRefusedWhileUnsaved(window, picker); // Nor can its vault.
-        save->click();
+        save->trigger();
         CHECK(readFile(note) == "first edit");
         CHECK(!save->isEnabled());
 
@@ -945,7 +829,7 @@ int main(int argc, char **argv)
         syncWithoutWatcher();
         CHECK(waitFor([&] { return status->text().contains(QStringLiteral("changed on disk")); }));
         CHECK(editor->toPlainText() == QStringLiteral("local edit"));
-        save->click();
+        save->trigger();
         CHECK(status->text().contains(QStringLiteral("Save conflict")));
         CHECK(editor->toPlainText() == QStringLiteral("local edit"));
         CHECK(readFile(note) == "external edit");
@@ -959,12 +843,12 @@ int main(int argc, char **argv)
         CHECK(readFile(note) == "external edit");
         CHECK(conflictBar->isHidden());
         editor->setPlainText(QStringLiteral("local edit"));
-        save->click();
+        save->trigger();
         CHECK(readFile(note) == "local edit");
 
         editor->setPlainText(QStringLiteral("another local"));
         writeFile(note, "another outside");
-        save->click();
+        save->trigger();
         keepMine->click();
         CHECK(readFile(note) == "another local");
         CHECK(conflictBar->isHidden());
@@ -982,13 +866,13 @@ int main(int argc, char **argv)
         CHECK(editor->toPlainText() == QStringLiteral("mine again"));
         CHECK(save->isEnabled());
         CHECK(conflictBar->isHidden()); // The outside version has been seen.
-        save->click();
+        save->trigger();
         CHECK(readFile(note) == "mine again");
 
         // Save alone, before the watcher reports anything, also shows the bar.
         editor->setPlainText(QStringLiteral("mine 3"));
         writeFile(note, "theirs 3");
-        save->click();
+        save->trigger();
         CHECK(!conflictBar->isHidden());
         CHECK(!keepMine->isHidden());
         CHECK(discard->isHidden());
@@ -1039,7 +923,7 @@ int main(int argc, char **argv)
         CHECK(newPath->text() == QStringLiteral("../escape"));
 
         // Rename/move asks for a destination and explicitly confirms link updates.
-        auto *move = window.findChild<QPushButton *>(QStringLiteral("moveNote"));
+        auto *move = window.findChild<QAction *>(QStringLiteral("moveNoteAction"));
         CHECK(move && move->isEnabled());
         QTimer::singleShot(0, [&] {
             auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
@@ -1055,7 +939,7 @@ int main(int argc, char **argv)
                 confirmation->defaultButton()->click();
             });
         });
-        move->click();
+        move->trigger();
         CHECK(QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));
         CHECK(currentPath(notes) == QStringLiteral("Moved.md"));
         CHECK(!QFile::exists(dir.filePath(QStringLiteral("Ideas.md"))));
@@ -1067,7 +951,7 @@ int main(int argc, char **argv)
         CHECK(!move->isEnabled());
         editor->setPlainText(QString());
         CHECK(create->isEnabled() && remove->isEnabled());
-        remove->click();
+        remove->trigger();
         CHECK(!deleteBar->isHidden());
         openNote(notes, QStringLiteral("other.md"));
         CHECK(deleteBar->isHidden());
@@ -1077,12 +961,12 @@ int main(int argc, char **argv)
 
         // Deleting asks first, and Cancel leaves the note alone.
         CHECK(remove->isEnabled() && deleteBar->isHidden());
-        remove->click();
+        remove->trigger();
         CHECK(!deleteBar->isHidden());
         cancelDelete->click();
         CHECK(deleteBar->isHidden());
         CHECK(QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));
-        remove->click();
+        remove->trigger();
         confirmDelete->click();
         CHECK(deleteBar->isHidden());
         CHECK(!QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));

@@ -22,6 +22,7 @@ constexpr QRgb kSelection = qRgb(0xe7, 0xde, 0xf4);
 constexpr QRgb kMutedInk = qRgb(0x6f, 0x6a, 0x7a);       // Frontmatter.
 constexpr QRgb kLinkInk = qRgb(0x5b, 0x3f, 0x9e);        // Wikilinks.
 constexpr QRgb kCodeBackground = qRgb(0xf0, 0xed, 0xf5); // Inline code and code blocks.
+constexpr QRgb kUnsavedInk = kLinkInk;                   // The unsaved-changes indicator.
 
 // Fonts.
 constexpr int kTitlePointSize = 14;
@@ -33,6 +34,7 @@ constexpr std::array<int, 6> kHeadingSizePercent{160, 140, 125, 115, 105, 100};
 // Spacing.
 constexpr int kEmptyStateSpacing = 12;   // Between the empty state's heading, message and button.
 constexpr int kTreeIndent = 12;          // Per nesting level in the note tree.
+constexpr int kHeaderSpacing = 8;        // Between the note title and the unsaved indicator.
 constexpr int kEditorPadding = 24;       // Between note text and the editor's edges.
 constexpr int kEditorMaxTextWidth = 720; // Longer lines wrap; wider editors centre the text.
 constexpr QMargins kFlushMargins{};

@@ -14,11 +14,14 @@ target_link_libraries(highlighter-tests PRIVATE Qt6::Gui Qt6::Widgets inkstow-wa
 add_test(NAME highlighter-tests COMMAND highlighter-tests)
 set_tests_properties(highlighter-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-add_executable(ui-tests UiTests.cpp ${PROJECT_SOURCE_DIR}/src/MarkdownHighlighter.cpp
+# QTest delivers key presses through the shortcut map, as real typing does.
+find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
+add_executable(ui-tests UiTests.cpp NoteActionTests.cpp ${PROJECT_SOURCE_DIR}/src/MarkdownHighlighter.cpp
                         ${PROJECT_SOURCE_DIR}/src/NoteEditor.cpp
+                        ${PROJECT_SOURCE_DIR}/src/NoteHeader.cpp
                         ${PROJECT_SOURCE_DIR}/src/NoteTree.cpp
                         ${PROJECT_SOURCE_DIR}/src/SettingsStore.cpp
                         ${PROJECT_SOURCE_DIR}/src/Theme.cpp ${PROJECT_SOURCE_DIR}/src/Window.cpp)
-target_link_libraries(ui-tests PRIVATE core Qt6::Widgets inkstow-warnings)
+target_link_libraries(ui-tests PRIVATE core Qt6::Widgets Qt6::Test inkstow-warnings)
 add_test(NAME ui-tests COMMAND ui-tests)
 set_tests_properties(ui-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
