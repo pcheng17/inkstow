@@ -1,5 +1,6 @@
 #pragma once
 
+#include "NoteTree.h"
 #include "Session.h"
 #include "SettingsStore.h"
 
@@ -13,7 +14,6 @@
 class QAction;
 class QLabel;
 class QLineEdit;
-class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
 class QStackedWidget;
@@ -67,7 +67,7 @@ private:
     std::shared_ptr<SettingsStore> mSettings;
     QFileSystemWatcher *mWatcher;
     QTimer *mSyncTimer;
-    QListWidget *mNotes;
+    NoteTree *mNotes;
     QPlainTextEdit *mEditor;
     QPushButton *mSave;
     QPushButton *mFollow;

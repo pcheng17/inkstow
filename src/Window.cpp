@@ -13,7 +13,6 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -51,7 +50,10 @@ Window::Window(
     , mSettings(settings ? std::move(settings) : std::make_shared<AppSettingsStore>())
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
-    , mNotes(new QListWidget)
+    , mNotes(new NoteTree([this](const QString &path) {
+        if (path != mSession.path()) selectNote(path);
+        if (mSession.path() == path) mEditor->setFocus();
+    }))
     , mEditor(new QPlainTextEdit)
     , mNewPath(new QLineEdit)
     , mDeleteBar(new QWidget)
@@ -78,6 +80,7 @@ Window::Window(
 
     auto *splitter = new QSplitter;
     mNotes->setObjectName(QStringLiteral("notes"));
+    mNotes->setAccessibleName(QStringLiteral("Notes"));
     mEditor->setObjectName(QStringLiteral("editor"));
     mEditor->setPlaceholderText(QStringLiteral("Select a note"));
     auto *right = new QWidget;
@@ -191,9 +194,6 @@ Window::Window(
         mSyncTimer,
         qOverload<>(&QTimer::start));
     connect(mSyncTimer, &QTimer::timeout, this, [this] { syncWithDisk(); });
-    connect(mNotes, &QListWidget::currentTextChanged, this, [this](const QString &path) {
-        if (!path.isEmpty() && path != mSession.path()) selectNote(path);
-    });
     reopenLastVault();
 }
 
@@ -285,14 +285,11 @@ void Window::selectNote(const QString &path)
     QString error;
     if (!mSession.selectNote(path, &error)) {
         mStatus->setText(QStringLiteral("Error: ") + error);
-        const QSignalBlocker block(mNotes);
-        const auto matches = mNotes->findItems(mSession.path(), Qt::MatchExactly);
-        mNotes->setCurrentItem(matches.isEmpty() ? nullptr : matches.first());
+        mNotes->revealNote(mSession.path());
         return;
     }
     replaceEditor(mSession.content());
     watchNote();
-    mEditor->setFocus();
     mStatus->setText(QStringLiteral("Opened ") + path);
 }
 
@@ -323,9 +320,8 @@ void Window::followLink()
         } else {
             selectNote(*target); // Session refuses to abandon unsaved changes.
             if (mSession.path() == *target) {
-                const QSignalBlocker block(mNotes);
-                const auto items = mNotes->findItems(*target, Qt::MatchExactly);
-                mNotes->setCurrentItem(items.isEmpty() ? nullptr : items.first());
+                mNotes->revealNote(*target);
+                mEditor->setFocus();
             }
         }
         return;
@@ -416,9 +412,12 @@ void Window::syncWithDisk()
         break;
     }
     if (mSession.hasVault()) {
-        const QStringList previous = mSession.notes();
+        const QStringList previousNotes = mSession.notes();
+        const QStringList previousFolders = mSession.folders();
         QString listError;
-        if (mSession.reloadNotes(&listError) && previous != mSession.notes()) showNotes();
+        if (mSession.reloadNotes(&listError) &&
+            (previousNotes != mSession.notes() || previousFolders != mSession.folders()))
+            mNotes->setNotes(mSession.notes(), mSession.folders());
     }
     // File replacements and directory removal drop watches; reconcile after
     // every rescan, including when the note itself has disappeared.
@@ -514,11 +513,8 @@ void Window::discardEdits()
 
 void Window::showNotes()
 {
-    const QSignalBlocker block(mNotes);
-    mNotes->clear();
-    mNotes->addItems(mSession.notes());
-    const auto matches = mNotes->findItems(mSession.path(), Qt::MatchExactly);
-    mNotes->setCurrentItem(matches.isEmpty() ? nullptr : matches.first());
+    mNotes->setNotes(mSession.notes(), mSession.folders());
+    mNotes->revealNote(mSession.path());
 }
 
 void Window::createNote()
