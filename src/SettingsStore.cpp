@@ -4,7 +4,7 @@
 
 namespace
 {
-const QString kLastVaultKey = QStringLiteral("lastVault");
+constexpr auto kLastVaultKey = QLatin1StringView("lastVault");
 } // namespace
 
 QString AppSettingsStore::lastVault() const

@@ -34,7 +34,7 @@ namespace
 {
 std::optional<QString> pickFolderWithDialog(QWidget *parent)
 {
-    const QString folder = QFileDialog::getExistingDirectory(parent, QStringLiteral("Open vault"));
+    QString folder = QFileDialog::getExistingDirectory(parent, QStringLiteral("Open vault"));
     if (folder.isEmpty()) return std::nullopt;
     return folder;
 }
@@ -61,6 +61,7 @@ Window::Window(
     , mOpenVault(new QAction(QStringLiteral("&Open vault…"), this))
     , mPages(new QStackedWidget)
     , mEmptyMessage(new QLabel(QStringLiteral("Open a folder of Markdown notes to begin.")))
+    , mStatus(new QLabel)
 {
     setWindowTitle(QStringLiteral("Inkstow"));
     mOpenVault->setObjectName(QStringLiteral("openVaultAction"));
@@ -152,7 +153,6 @@ Window::Window(
     mPages->addWidget(createEmptyState());
     mPages->addWidget(mVaultView);
     page->addWidget(mPages, 1);
-    mStatus = new QLabel;
     mStatus->setObjectName(QStringLiteral("status"));
     page->addWidget(mStatus);
     setCentralWidget(central);
