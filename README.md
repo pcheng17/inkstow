@@ -30,7 +30,7 @@ Open that path in Inkstow. Only `Welcome.md` and `Folder/Second note.md` should 
 
 ## Pre-commit hook
 
-The `.githooks/pre-commit` hook auto-formats staged `.h` and `.cpp` files with `clang-format` before each commit. Install `clang-format` and activate the hook once after cloning:
+The `.githooks/pre-commit` hook auto-formats staged `.h` and `.cpp` files with `clang-format` before each commit. Install `clang-format` 21 or newer (older versions reformat already-formatted code) and activate the hook once after cloning:
 
 ```sh
 git config core.hooksPath .githooks
