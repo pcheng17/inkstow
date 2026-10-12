@@ -4,6 +4,7 @@
 
 #include <QCloseEvent>
 #include <QDesktopServices>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QHBoxLayout>
@@ -24,12 +25,23 @@
 
 #include <algorithm>
 
-Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttachment)
+namespace
+{
+std::optional<QString> pickFolderWithDialog(QWidget *parent)
+{
+    const QString folder = QFileDialog::getExistingDirectory(parent, QStringLiteral("Open vault"));
+    if (folder.isEmpty()) return std::nullopt;
+    return folder;
+}
+} // namespace
+
+Window::Window(
+    TrashFunction trash, std::function<bool(const QUrl &)> openAttachment, FolderPicker pickFolder)
     : mSession(std::move(trash))
     , mOpenAttachment(openAttachment ? std::move(openAttachment) : QDesktopServices::openUrl)
+    , mPickFolder(pickFolder ? std::move(pickFolder) : pickFolderWithDialog)
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
-    , mFolder(new QLineEdit)
     , mNotes(new QListWidget)
     , mEditor(new QPlainTextEdit)
     , mNewPath(new QLineEdit)
@@ -46,14 +58,12 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     auto *title = new QLabel(QStringLiteral("Inkstow"));
     title->setObjectName(QStringLiteral("appTitle"));
     title->setFont(theme::titleFont(title->font()));
-    mFolder->setObjectName(QStringLiteral("vaultFolder"));
-    mFolder->setPlaceholderText(QStringLiteral("/path/to/vault"));
-    auto *open = new QPushButton(QStringLiteral("Open"));
+    auto *open = new QPushButton(QStringLiteral("Open vault…"));
     open->setObjectName(QStringLiteral("openVault"));
+    open->setAccessibleName(QStringLiteral("Open vault"));
     header->addWidget(title);
     header->addSpacing(theme::kHeaderGap);
-    header->addWidget(new QLabel(QStringLiteral("Vault folder")));
-    header->addWidget(mFolder, 1);
+    header->addStretch(1);
     header->addWidget(open);
     page->addLayout(header);
 
@@ -140,7 +150,6 @@ Window::Window(TrashFunction trash, std::function<bool(const QUrl &)> openAttach
     refresh();
 
     connect(open, &QPushButton::clicked, this, [this] { openVault(); });
-    connect(mFolder, &QLineEdit::returnPressed, this, [this] { openVault(); });
     connect(mSave, &QPushButton::clicked, this, [this] { saveNote(); });
     connect(mFollow, &QPushButton::clicked, this, [this] { followLink(); });
     connect(mReload, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
@@ -201,8 +210,10 @@ void Window::replaceEditor(const QString &text)
 
 void Window::openVault()
 {
+    const auto folder = mPickFolder(this);
+    if (!folder) return;
     QString error;
-    if (!mSession.openVault(mFolder->text().trimmed(), &error)) {
+    if (!mSession.openVault(*folder, &error)) {
         mStatus->setText(QStringLiteral("Error: ") + error);
         return;
     }

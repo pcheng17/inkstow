@@ -21,6 +21,7 @@
 #include <QTextCursor>
 #include <QThread>
 
+#include <optional>
 #include <stdexcept>
 
 #define CHECK(value)                                                                               \
@@ -181,9 +182,9 @@ int main(int argc, char **argv)
                 CHECK(url.isLocalFile());
                 openedAttachments.append(url.toLocalFile());
                 return true;
-            });
+            },
+            [&](QWidget *) { return std::optional<QString>(dir.path()); });
         testCurrentStyleKept(window);
-        auto *folder = window.findChild<QLineEdit *>(QStringLiteral("vaultFolder"));
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
@@ -202,8 +203,8 @@ int main(int argc, char **argv)
         auto *confirmDelete = window.findChild<QPushButton *>(QStringLiteral("confirmDelete"));
         auto *cancelDelete = window.findChild<QPushButton *>(QStringLiteral("cancelDelete"));
         CHECK(
-            folder && open && notes && editor && save && status && conflictBar && keepMine &&
-            reload && discard && merge && saveAsNew && newPath && create && remove && deleteBar &&
+            open && notes && editor && save && status && conflictBar && keepMine && reload &&
+            discard && merge && saveAsNew && newPath && create && remove && deleteBar &&
             confirmDelete && cancelDelete);
         CHECK(!create->isEnabled()); // No vault yet.
         CHECK(!remove->isEnabled());
@@ -216,7 +217,6 @@ int main(int argc, char **argv)
                 QCoreApplication::sendEvent(&window, &activation);
             }
         };
-        folder->setText(dir.path());
         open->click();
         CHECK(notes->count() == 2);
         CHECK(notes->item(0)->text() == QStringLiteral("note.md"));

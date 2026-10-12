@@ -6,6 +6,7 @@
 #include <QUrl>
 
 #include <functional>
+#include <optional>
 
 class QLabel;
 class QLineEdit;
@@ -16,12 +17,16 @@ class QTimer;
 class QCloseEvent;
 class QFileSystemWatcher;
 
+// Asks for a vault folder; returns nothing when the user cancels.
+using FolderPicker = std::function<std::optional<QString>(QWidget *parent)>;
+
 class Window : public QMainWindow
 {
 public:
     explicit Window(
         TrashFunction trash = moveToSystemTrash,
-        std::function<bool(const QUrl &)> openAttachment = {});
+        std::function<bool(const QUrl &)> openAttachment = {},
+        FolderPicker pickFolder = {});
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -50,9 +55,9 @@ private:
 
     Session mSession;
     std::function<bool(const QUrl &)> mOpenAttachment;
+    FolderPicker mPickFolder;
     QFileSystemWatcher *mWatcher;
     QTimer *mSyncTimer;
-    QLineEdit *mFolder;
     QListWidget *mNotes;
     QPlainTextEdit *mEditor;
     QPushButton *mSave;
