@@ -239,7 +239,7 @@ void Window::refresh()
 void Window::replaceEditor(const QString &text)
 {
     const QSignalBlocker block(mEditor);
-    mEditor->setPlainText(text);
+    mEditor->setNoteText(text);
     refresh();
 }
 

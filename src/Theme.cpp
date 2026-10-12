@@ -12,6 +12,12 @@ QFont theme::titleFont(QFont base)
     return base;
 }
 
+QFont theme::editorFont(QFont base)
+{
+    base.setPointSize(kEditorPointSize);
+    return base;
+}
+
 void configureLightTheme([[maybe_unused]] QApplication &app)
 {
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));

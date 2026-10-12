@@ -3,8 +3,10 @@
 #include "Theme.h"
 #include "Window.h"
 
+#include <QAbstractTextDocumentLayout>
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QDialog>
 #include <QMessageBox>
@@ -13,6 +15,7 @@
 #include <QDeadlineTimer>
 #include <QFile>
 #include <QFileSystemWatcher>
+#include <QFontMetricsF>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QEvent>
@@ -20,10 +23,12 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMimeData>
 #include <QTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
 #include <QTemporaryDir>
+#include <QTextBlock>
 #include <QTextCursor>
 #include <QThread>
 #include <QTreeWidgetItemIterator>
@@ -239,6 +244,64 @@ static void testReopeningLastVault()
     CHECK(notes);
     CHECK(notePaths(notes) == QStringList{QStringLiteral("Welcome.md")});
     CHECK(second.windowTitle() == title);
+}
+
+// Opens a vault holding one note.md with `text` and selects it.
+static void openSingleNote(Window &window, const QTemporaryDir &dir, const QByteArray &text)
+{
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("note.md")), text);
+    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
+    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
+    CHECK(open && notes);
+    open->click();
+    openNote(notes, QStringLiteral("note.md"));
+}
+
+// Distance from the top of one paragraph to the top of the next.
+static qreal linePitch(const QTextEdit *editor, int paragraph)
+{
+    const QTextBlock block = editor->document()->findBlockByNumber(paragraph);
+    CHECK(block.isValid() && block.next().isValid());
+    QAbstractTextDocumentLayout *layout = editor->document()->documentLayout();
+    return layout->blockBoundingRect(block.next()).top() - layout->blockBoundingRect(block).top();
+}
+
+// Text is shown at a readable size with roomy line spacing, including lines
+// typed or pasted later, and none of it changes the saved bytes.
+static void testReadableEditorText()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show(); // Text is laid out only once it is shown.
+    openSingleNote(window, dir, "first\nsecond");
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
+    CHECK(editor && save);
+    CHECK(editor->font().pointSize() == 13);
+    const qreal roomy = 1.4 * QFontMetricsF(editor->font()).height();
+    CHECK(linePitch(editor, 0) >= roomy);
+
+    QTextCursor end = editor->textCursor();
+    end.movePosition(QTextCursor::End);
+    editor->setTextCursor(end);
+    editor->insertPlainText(QStringLiteral("\nthird"));
+    CHECK(linePitch(editor, 1) >= roomy);
+    auto *pasted = new QMimeData;
+    pasted->setHtml(QStringLiteral("<h1>fourth</h1><p><b>fifth</b></p>"));
+    pasted->setText(QStringLiteral("\nfourth\nfifth"));
+    QApplication::clipboard()->setMimeData(pasted);
+    editor->paste();
+    CHECK(linePitch(editor, 2) >= roomy);
+    CHECK(linePitch(editor, 3) >= roomy);
+    save->click();
+    CHECK(
+        readFile(QDir(dir.path()).filePath(QStringLiteral("note.md"))) ==
+        "first\nsecond\nthird\nfourth\nfifth");
 }
 
 // Pins the current light look so moving style values into the theme changes nothing.
@@ -559,6 +622,7 @@ int main(int argc, char **argv)
         testMissingLastVault();
         testUnrememberedVaultIsReported();
         testNoteTree();
+        testReadableEditorText();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
