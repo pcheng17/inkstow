@@ -17,4 +17,7 @@ public:
 protected:
     void insertFromMimeData(const QMimeData *source) override;
     void resizeEvent(QResizeEvent *event) override;
+
+private:
+    void centreText();
 };

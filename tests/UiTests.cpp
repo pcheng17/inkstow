@@ -319,8 +319,8 @@ static QRect textBounds(const QTextEdit *editor)
     return bounds;
 }
 
-// Long lines wrap at a readable width centred in a wide window, and padding
-// keeps text off the editor's edges in a narrow one.
+// Long lines wrap at a readable width centred in a wide window, even with a
+// scroll bar, and padding keeps text off the editor's edges in a narrow one.
 static void testEditorTextWidth()
 {
     QTemporaryDir dir;
@@ -331,17 +331,18 @@ static void testEditorTextWidth()
         [&](QWidget *) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
-    openSingleNote(window, dir, QByteArray("lorem ipsum ").repeated(80));
+    openSingleNote(window, dir, QByteArray("a ").repeated(4000)); // Short words wrap evenly.
     auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
     CHECK(editor);
-    const int word = QFontMetrics(editor->font()).horizontalAdvance(QStringLiteral("lorem "));
+    const int word = QFontMetrics(editor->font()).horizontalAdvance(QStringLiteral("a "));
 
     window.resize(1800, 750);
     QCoreApplication::processEvents();
+    CHECK(editor->verticalScrollBar()->isVisible());
     QRect text = textBounds(editor);
     CHECK(text.width() <= 720);
-    CHECK(text.width() > 720 - (2 * word)); // Wraps near the cap, not far short of it.
-    CHECK(std::abs(text.left() - (editor->width() - text.right())) <= 2 * word);
+    CHECK(text.width() > 720 - word); // Wraps at the cap, not short of it.
+    CHECK(std::abs(text.left() - (editor->width() - text.right())) <= word);
 
     window.resize(700, 750);
     QCoreApplication::processEvents();
