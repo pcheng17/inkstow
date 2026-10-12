@@ -57,6 +57,11 @@ TRIAL="$trial" ACTIONS="$actions" BIN="$bin" SIZE="$size" OPEN="$open" \
         export XDG_DATA_HOME="$HOME/.local/share"
         export VAULT="$TRIAL/vault" SHOTS="$TRIAL/shots" SIZE
         export PATH="$TRIAL/bin:$PATH"
+        if ((OPEN)); then
+            # Seed the last-vault setting so Inkstow reopens the fixture copy on launch.
+            mkdir -p "$XDG_CONFIG_HOME/Inkstow"
+            printf "[General]\nlastVault=%s\n" "$VAULT" >"$XDG_CONFIG_HOME/Inkstow/Inkstow.conf"
+        fi
         "$BIN" >"$TRIAL/inkstow.log" 2>&1 &
         app=$!
         trap '\''kill "$app" 2>/dev/null || :; wait "$app" 2>/dev/null || :'\'' EXIT
@@ -78,11 +83,5 @@ TRIAL="$trial" ACTIONS="$actions" BIN="$bin" SIZE="$size" OPEN="$open" \
         xdotool windowmove --sync "$WINDOW" 0 0
         xdotool windowsize --sync "$WINDOW" "${SIZE%x*}" "${SIZE#*x}"
         xdotool windowfocus --sync "$WINDOW"
-        if ((OPEN)); then
-            # The vault path field has focus on launch.
-            xdotool type --delay 5 "$VAULT"
-            xdotool key Return
-            sleep 0.5
-        fi
         bash -e "$ACTIONS"
     '
