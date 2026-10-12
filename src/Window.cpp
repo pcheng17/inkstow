@@ -70,12 +70,10 @@ Window::Window(
     resize(theme::kWindowWidth, theme::kWindowHeight);
     auto *central = new QWidget(this);
     auto *page = new QVBoxLayout(central);
-    auto *header = new QHBoxLayout;
     auto *title = new QLabel(QStringLiteral("Inkstow"));
     title->setObjectName(QStringLiteral("appTitle"));
     title->setFont(theme::titleFont(title->font()));
-    header->addWidget(title);
-    page->addLayout(header);
+    page->addWidget(title);
 
     auto *splitter = new QSplitter;
     mNotes->setObjectName(QStringLiteral("notes"));
