@@ -11,6 +11,7 @@
 #include <optional>
 
 class NoteEditor;
+class NoteHeader;
 class NoteTree;
 class QAction;
 class QLabel;
@@ -38,6 +39,9 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
+    // Sets up the actions shared by the menu bar, the note tree's context
+    // menu and the empty state's button.
+    void createActions();
     void openVault();
     bool openVaultFolder(const QString &folder, QString *error);
     void reopenLastVault();
@@ -60,6 +64,7 @@ private:
     void discardEdits();
     void showNotes();
     void createNote();
+    void askToDelete();
     void trashNote();
     void moveNote();
 
@@ -73,10 +78,10 @@ private:
     NoteEditor *mEditor;
     QWidget *mNoNoteState;
     QStackedWidget *mEditorPages; // Shows mEditor, or mNoNoteState when no note is open.
-    QPushButton *mSave;
-    QPushButton *mFollow;
-    QPushButton *mDelete;
-    QPushButton *mMove;
+    QAction *mSave;
+    QAction *mFollowLink;
+    QAction *mDelete;
+    QAction *mMove;
     QLineEdit *mNewPath;
     QPushButton *mCreate;
     QWidget *mDeleteBar;
@@ -94,6 +99,6 @@ private:
     QLabel *mEmptyMessage;
     QWidget *mEmptyState; // Built from mOpenVault and mEmptyMessage, so declared after them.
     QWidget *mVaultView = nullptr;
-    QLabel *mFilename;
+    NoteHeader *mHeader;
     QLabel *mStatus;
 };

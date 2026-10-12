@@ -1,6 +1,7 @@
 #include "Window.h"
 
 #include "NoteEditor.h"
+#include "NoteHeader.h"
 #include "NoteTree.h"
 #include "Theme.h"
 
@@ -59,6 +60,14 @@ QWidget *createNoNoteState()
     layout->addStretch(1);
     return noNoteState;
 }
+
+void describeAction(
+    QAction *action, const QString &name, const QString &toolTip, const QKeySequence &shortcut)
+{
+    action->setObjectName(name);
+    action->setToolTip(toolTip);
+    action->setShortcut(shortcut);
+}
 } // namespace
 
 Window::Window(
@@ -73,9 +82,13 @@ Window::Window(
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
     , mNotes(new NoteTree([this](const QString &path) { openNote(path); }))
-    , mEditor(new NoteEditor)
+    , mEditor(new NoteEditor([this] { mFollowLink->trigger(); }))
     , mNoNoteState(createNoNoteState())
     , mEditorPages(new QStackedWidget)
+    , mSave(new QAction(QStringLiteral("&Save"), this))
+    , mFollowLink(new QAction(QStringLiteral("&Follow link"), this))
+    , mDelete(new QAction(QStringLiteral("&Delete…"), this))
+    , mMove(new QAction(QStringLiteral("&Rename / move…"), this))
     , mNewPath(new QLineEdit)
     , mDeleteBar(new QWidget)
     , mDeleteLabel(new QLabel)
@@ -85,12 +98,11 @@ Window::Window(
     , mPages(new QStackedWidget)
     , mEmptyMessage(new QLabel(QStringLiteral("Open a folder of Markdown notes to begin.")))
     , mEmptyState(createEmptyState())
+    , mHeader(new NoteHeader)
     , mStatus(new QLabel)
 {
     setWindowTitle(QStringLiteral("Inkstow"));
-    mOpenVault->setObjectName(QStringLiteral("openVaultAction"));
-    mOpenVault->setShortcut(QKeySequence::Open);
-    menuBar()->addMenu(QStringLiteral("&File"))->addAction(mOpenVault);
+    createActions();
     resize(theme::kWindowWidth, theme::kWindowHeight);
     auto *central = new QWidget(this);
     auto *page = new QVBoxLayout(central);
@@ -106,22 +118,7 @@ Window::Window(
     mEditor->setAccessibleName(QStringLiteral("Note text"));
     auto *right = new QWidget;
     auto *rightLayout = new QVBoxLayout(right);
-    auto *toolbar = new QHBoxLayout;
-    mFilename = new QLabel(QStringLiteral("Select a note"));
-    mFollow = new QPushButton(QStringLiteral("Follow link"));
-    mFollow->setObjectName(QStringLiteral("followLink"));
-    mSave = new QPushButton(QStringLiteral("Save"));
-    mSave->setObjectName(QStringLiteral("saveNote"));
-    mMove = new QPushButton(QStringLiteral("Rename / move"));
-    mMove->setObjectName(QStringLiteral("moveNote"));
-    mDelete = new QPushButton(QStringLiteral("Delete"));
-    mDelete->setObjectName(QStringLiteral("deleteNote"));
-    toolbar->addWidget(mFilename, 1);
-    toolbar->addWidget(mFollow);
-    toolbar->addWidget(mMove);
-    toolbar->addWidget(mDelete);
-    toolbar->addWidget(mSave);
-    rightLayout->addLayout(toolbar);
+    rightLayout->addWidget(mHeader);
     mConflictBar->setObjectName(QStringLiteral("conflictBar"));
     auto *conflictLayout = new QHBoxLayout(mConflictBar);
     conflictLayout->setContentsMargins(theme::kFlushMargins);
@@ -186,22 +183,13 @@ Window::Window(
     mSyncTimer->setInterval(150);
     refresh();
 
-    connect(mOpenVault, &QAction::triggered, this, [this] { openVault(); });
-    connect(mSave, &QPushButton::clicked, this, [this] { saveNote(); });
-    connect(mFollow, &QPushButton::clicked, this, [this] { followLink(); });
     connect(mReload, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
     connect(mKeepMine, &QPushButton::clicked, this, [this] { keepMine(); });
     connect(mMerge, &QPushButton::clicked, this, [this] { mergeOutsideChanges(); });
     connect(mSaveAsNew, &QPushButton::clicked, this, [this] { saveAsNewNote(); });
     connect(mDiscard, &QPushButton::clicked, this, [this] { discardEdits(); });
     connect(mCreate, &QPushButton::clicked, this, [this] { createNote(); });
-    connect(mMove, &QPushButton::clicked, this, [this] { moveNote(); });
     connect(mNewPath, &QLineEdit::returnPressed, this, [this] { createNote(); });
-    connect(mDelete, &QPushButton::clicked, this, [this] {
-        mDeletePath = mSession.path();
-        mDeleteLabel->setText(QStringLiteral("Move %1 to the trash?").arg(mDeletePath));
-        mDeleteBar->show();
-    });
     connect(confirmDelete, &QPushButton::clicked, this, [this] { trashNote(); });
     connect(cancelDelete, &QPushButton::clicked, mDeleteBar, &QWidget::hide);
     connect(mEditor, &QTextEdit::textChanged, this, [this] {
@@ -218,6 +206,47 @@ Window::Window(
         qOverload<>(&QTimer::start));
     connect(mSyncTimer, &QTimer::timeout, this, [this] { syncWithDisk(); });
     reopenLastVault();
+}
+
+void Window::createActions()
+{
+    describeAction(
+        mOpenVault,
+        QStringLiteral("openVaultAction"),
+        QStringLiteral("Open a folder of Markdown notes"),
+        QKeySequence::Open);
+    describeAction(
+        mSave,
+        QStringLiteral("saveAction"),
+        QStringLiteral("Save the open note"),
+        QKeySequence::Save);
+    describeAction(
+        mFollowLink,
+        QStringLiteral("followLinkAction"),
+        QStringLiteral("Follow the [[link]] at the cursor"),
+        QKeySequence(Qt::ALT | Qt::Key_Return));
+    describeAction(
+        mMove,
+        QStringLiteral("moveNoteAction"),
+        QStringLiteral("Rename or move the open note"),
+        QKeySequence(Qt::Key_F2));
+    // No shortcut: Delete and Backspace belong to editing.
+    describeAction(
+        mDelete,
+        QStringLiteral("deleteNoteAction"),
+        QStringLiteral("Move the open note to the trash"),
+        QKeySequence());
+    menuBar()->addMenu(QStringLiteral("&File"))->addAction(mOpenVault);
+    menuBar()->addMenu(QStringLiteral("&Note"))->addActions({mSave, mFollowLink, mMove, mDelete});
+    // Also added to the window, so the shortcuts work wherever focus is in it
+    // even when the menu bar is the platform's.
+    addActions({mOpenVault, mSave, mFollowLink, mMove, mDelete});
+    mNotes->setNoteActions({mMove, mDelete});
+    connect(mOpenVault, &QAction::triggered, this, [this] { openVault(); });
+    connect(mSave, &QAction::triggered, this, [this] { saveNote(); });
+    connect(mFollowLink, &QAction::triggered, this, [this] { followLink(); });
+    connect(mMove, &QAction::triggered, this, [this] { moveNote(); });
+    connect(mDelete, &QAction::triggered, this, [this] { askToDelete(); });
 }
 
 QWidget *Window::createEmptyState()
@@ -248,11 +277,9 @@ void Window::refresh()
 {
     mPages->setCurrentWidget(mSession.hasVault() ? mVaultView : mEmptyState);
     const bool selected = !mSession.path().isEmpty();
-    mFilename->setText(
-        selected ? mSession.path() + (mSession.dirty() ? QStringLiteral(" *") : QString())
-                 : QStringLiteral("Select a note"));
+    mHeader->showNote(mSession.path(), mSession.dirty());
     mSave->setEnabled(selected && mSession.dirty());
-    mFollow->setEnabled(selected);
+    mFollowLink->setEnabled(selected);
     if (!mSession.dirty()) mConflictBar->hide();
     if (mSession.path() != mDeletePath) mDeleteBar->hide();
     mDelete->setEnabled(selected && !mSession.dirty());
@@ -601,13 +628,20 @@ void Window::moveNote()
         moved ? QStringLiteral("Moved to ") + mSession.path() : QStringLiteral("Error: ") + error);
 }
 
+void Window::askToDelete()
+{
+    mDeletePath = mSession.path();
+    mDeleteLabel->setText(QStringLiteral("Move %1 to the trash?").arg(mDeletePath));
+    mDeleteBar->show();
+}
+
 void Window::trashNote()
 {
     const QString path = mSession.path();
     QString error;
     mDeleteBar->hide();
     if (path != mDeletePath) {
-        mStatus->setText(QStringLiteral("Error: the selected note changed; press Delete again."));
+        mStatus->setText(QStringLiteral("Error: the selected note changed; choose Delete again."));
         return;
     }
     if (!mSession.trashNote(&error)) {

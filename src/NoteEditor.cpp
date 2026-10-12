@@ -4,13 +4,16 @@
 #include "Theme.h"
 
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QScrollBar>
 #include <QTextBlockFormat>
 #include <QTextCursor>
 
 #include <algorithm>
+#include <utility>
 
-NoteEditor::NoteEditor()
+NoteEditor::NoteEditor(std::function<void()> followLink)
+    : mFollowLink(std::move(followLink))
 {
     setAcceptRichText(false);
     setFont(theme::editorFont(font()));
@@ -42,6 +45,17 @@ void NoteEditor::insertFromMimeData(const QMimeData *source)
     if (!source->hasText()) return;
     textCursor().insertText(source->text());
     ensureCursorVisible();
+}
+
+void NoteEditor::mouseReleaseEvent(QMouseEvent *event)
+{
+    QTextEdit::mouseReleaseEvent(event);
+    // Qt reports Cmd as the control modifier on macOS. A drag selects instead.
+    if (event->button() != Qt::LeftButton || !event->modifiers().testFlag(Qt::ControlModifier) ||
+        textCursor().hasSelection())
+        return;
+    setTextCursor(cursorForPosition(event->position().toPoint()));
+    mFollowLink();
 }
 
 void NoteEditor::resizeEvent(QResizeEvent *event)
