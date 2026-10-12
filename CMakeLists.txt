@@ -20,7 +20,7 @@ target_link_libraries(vault-core PUBLIC Qt6::Core PRIVATE inkstow-warnings)
 add_executable(vault-inspect src/VaultInspect.cpp)
 target_link_libraries(vault-inspect PRIVATE vault-core inkstow-warnings)
 
-add_executable(inkstow src/main.cpp src/Theme.cpp src/Window.cpp)
+add_executable(inkstow src/main.cpp src/SettingsStore.cpp src/Theme.cpp src/Window.cpp)
 target_link_libraries(inkstow PRIVATE vault-core Qt6::Widgets inkstow-warnings)
 
 include(CTest)

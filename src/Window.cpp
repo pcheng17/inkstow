@@ -4,6 +4,7 @@
 
 #include <QCloseEvent>
 #include <QDesktopServices>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
@@ -36,10 +37,14 @@ std::optional<QString> pickFolderWithDialog(QWidget *parent)
 } // namespace
 
 Window::Window(
-    TrashFunction trash, std::function<bool(const QUrl &)> openAttachment, FolderPicker pickFolder)
+    TrashFunction trash,
+    std::function<bool(const QUrl &)> openAttachment,
+    FolderPicker pickFolder,
+    std::shared_ptr<SettingsStore> settings)
     : mSession(std::move(trash))
     , mOpenAttachment(openAttachment ? std::move(openAttachment) : QDesktopServices::openUrl)
     , mPickFolder(pickFolder ? std::move(pickFolder) : pickFolderWithDialog)
+    , mSettings(settings ? std::move(settings) : std::make_shared<AppSettingsStore>())
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
     , mNotes(new QListWidget)
@@ -183,6 +188,7 @@ Window::Window(
     connect(mNotes, &QListWidget::currentTextChanged, this, [this](const QString &path) {
         if (!path.isEmpty() && path != mSession.path()) selectNote(path);
     });
+    reopenLastVault();
 }
 
 void Window::refresh()
@@ -213,14 +219,28 @@ void Window::openVault()
     const auto folder = mPickFolder(this);
     if (!folder) return;
     QString error;
-    if (!mSession.openVault(*folder, &error)) {
-        mStatus->setText(QStringLiteral("Error: ") + error);
-        return;
-    }
+    if (!openVaultFolder(*folder, &error)) mStatus->setText(QStringLiteral("Error: ") + error);
+}
+
+bool Window::openVaultFolder(const QString &folder, QString *error)
+{
+    if (!mSession.openVault(folder, error)) return false;
+    mSettings->setLastVault(folder);
+    setWindowTitle(QStringLiteral("Inkstow - ") + QDir(folder).dirName());
     showNotes();
     replaceEditor(QString());
     watchNote();
     mStatus->setText(QStringLiteral("Found %1 notes").arg(mSession.notes().size()));
+    return true;
+}
+
+void Window::reopenLastVault()
+{
+    const QString folder = mSettings->lastVault();
+    if (folder.isEmpty()) return;
+    QString error;
+    if (!openVaultFolder(folder, &error))
+        mStatus->setText(QStringLiteral("Could not reopen the last vault: ") + error);
 }
 
 void Window::selectNote(const QString &path)

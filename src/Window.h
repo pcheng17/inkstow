@@ -1,11 +1,13 @@
 #pragma once
 
 #include "Session.h"
+#include "SettingsStore.h"
 
 #include <QMainWindow>
 #include <QUrl>
 
 #include <functional>
+#include <memory>
 #include <optional>
 
 class QLabel;
@@ -26,7 +28,8 @@ public:
     explicit Window(
         TrashFunction trash = moveToSystemTrash,
         std::function<bool(const QUrl &)> openAttachment = {},
-        FolderPicker pickFolder = {});
+        FolderPicker pickFolder = {},
+        std::shared_ptr<SettingsStore> settings = {});
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -34,6 +37,8 @@ protected:
 
 private:
     void openVault();
+    bool openVaultFolder(const QString &folder, QString *error);
+    void reopenLastVault();
     void selectNote(const QString &path);
     void saveNote();
     void followLink();
@@ -56,6 +61,7 @@ private:
     Session mSession;
     std::function<bool(const QUrl &)> mOpenAttachment;
     FolderPicker mPickFolder;
+    std::shared_ptr<SettingsStore> mSettings;
     QFileSystemWatcher *mWatcher;
     QTimer *mSyncTimer;
     QListWidget *mNotes;

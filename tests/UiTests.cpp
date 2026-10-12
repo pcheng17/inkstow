@@ -1,3 +1,4 @@
+#include "SettingsStore.h"
 #include "Theme.h"
 #include "Window.h"
 
@@ -54,6 +55,55 @@ static bool waitFor(Done done)
         QThread::msleep(10);
     }
     return done();
+}
+
+// Remembers settings for one test instead of touching the user's real settings.
+class MemorySettings : public SettingsStore
+{
+public:
+    QString lastVault() const override { return mLastVault; }
+    void setLastVault(const QString &path) override { mLastVault = path; }
+
+private:
+    QString mLastVault;
+};
+
+static bool refuseTrash(const QString &, QString *)
+{
+    return false;
+}
+
+static std::optional<QString> failIfPicked(QWidget *)
+{
+    throw std::runtime_error("The folder picker was shown unexpectedly");
+}
+
+static void testReopeningLastVault()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("Welcome.md")), "welcome");
+    const QString title = QStringLiteral("Inkstow - ") + QDir(dir.path()).dirName();
+    const auto settings = std::make_shared<MemorySettings>();
+    {
+        Window first(
+            refuseTrash,
+            {},
+            [&](QWidget *) { return std::optional(dir.path()); },
+            settings);
+        CHECK(first.windowTitle() == QStringLiteral("Inkstow"));
+        auto *open = first.findChild<QPushButton *>(QStringLiteral("openVault"));
+        CHECK(open);
+        open->click();
+        CHECK(settings->lastVault() == dir.path());
+        CHECK(first.windowTitle() == title);
+    }
+    Window second(refuseTrash, {}, failIfPicked, settings);
+    auto *notes = second.findChild<QListWidget *>(QStringLiteral("notes"));
+    CHECK(notes);
+    CHECK(notes->count() == 1);
+    CHECK(notes->item(0)->text() == QStringLiteral("Welcome.md"));
+    CHECK(second.windowTitle() == title);
 }
 
 // Pins the current light look so moving style values into the theme changes nothing.
@@ -184,8 +234,10 @@ int main(int argc, char **argv)
                 openedAttachments.append(url.toLocalFile());
                 return true;
             },
-            [&](QWidget *) { return picked; });
+            [&](QWidget *) { return picked; },
+            std::make_shared<MemorySettings>());
         testCurrentStyleKept(window);
+        testReopeningLastVault();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
