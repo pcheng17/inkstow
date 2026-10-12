@@ -208,6 +208,7 @@ QWidget *Window::createEmptyState()
     heading->setFont(theme::titleFont(heading->font()));
     mEmptyMessage->setObjectName(QStringLiteral("emptyStateMessage"));
     mEmptyMessage->setWordWrap(true);
+    mEmptyMessage->setAlignment(Qt::AlignHCenter);
     auto *open = new QPushButton(QStringLiteral("Open vault…"));
     open->setObjectName(QStringLiteral("openVault"));
     open->setAccessibleName(QStringLiteral("Open vault"));
@@ -215,7 +216,7 @@ QWidget *Window::createEmptyState()
     connect(open, &QPushButton::clicked, mOpenVault, &QAction::trigger);
     layout->addStretch(1);
     layout->addWidget(heading, 0, Qt::AlignHCenter);
-    layout->addWidget(mEmptyMessage, 0, Qt::AlignHCenter);
+    layout->addWidget(mEmptyMessage);
     layout->addWidget(open, 0, Qt::AlignHCenter);
     layout->addStretch(1);
     return emptyState;
