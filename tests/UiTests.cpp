@@ -78,6 +78,24 @@ static std::optional<QString> failIfPicked(QWidget *)
     throw std::runtime_error("The folder picker was shown unexpectedly");
 }
 
+static void testMissingLastVault()
+{
+    QTemporaryDir parent;
+    CHECK(parent.isValid());
+    const QString missing = QDir(parent.path()).filePath(QStringLiteral("Gone"));
+    const auto settings = std::make_shared<MemorySettings>();
+    settings->setLastVault(missing);
+    Window window(refuseTrash, {}, failIfPicked, settings);
+    auto *emptyState = window.findChild<QWidget *>(QStringLiteral("emptyState"));
+    auto *message = window.findChild<QLabel *>(QStringLiteral("emptyStateMessage"));
+    auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    CHECK(emptyState && message && notes);
+    CHECK(emptyState->isVisibleTo(&window));
+    CHECK(!notes->isVisibleTo(&window));
+    CHECK(message->text().contains(missing));
+    CHECK(window.windowTitle() == QStringLiteral("Inkstow"));
+}
+
 static void testReopeningLastVault()
 {
     QTemporaryDir dir;
@@ -93,8 +111,11 @@ static void testReopeningLastVault()
             settings);
         CHECK(first.windowTitle() == QStringLiteral("Inkstow"));
         auto *open = first.findChild<QPushButton *>(QStringLiteral("openVault"));
-        CHECK(open);
+        auto *emptyState = first.findChild<QWidget *>(QStringLiteral("emptyState"));
+        CHECK(open && emptyState);
+        CHECK(emptyState->isVisibleTo(&first));
         open->click();
+        CHECK(!emptyState->isVisibleTo(&first));
         CHECK(settings->lastVault() == dir.path());
         CHECK(first.windowTitle() == title);
     }
@@ -238,6 +259,7 @@ int main(int argc, char **argv)
             std::make_shared<MemorySettings>());
         testCurrentStyleKept(window);
         testReopeningLastVault();
+        testMissingLastVault();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));

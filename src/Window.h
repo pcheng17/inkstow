@@ -15,6 +15,7 @@ class QLineEdit;
 class QListWidget;
 class QPlainTextEdit;
 class QPushButton;
+class QStackedWidget;
 class QTimer;
 class QCloseEvent;
 class QFileSystemWatcher;
@@ -42,6 +43,7 @@ private:
     void selectNote(const QString &path);
     void saveNote();
     void followLink();
+    QWidget *createEmptyState();
     void refresh();
     void replaceEditor(const QString &text);
     void watchNote();
@@ -82,6 +84,9 @@ private:
     QPushButton *mMerge;
     QPushButton *mSaveAsNew;
     QPushButton *mDiscard;
+    QStackedWidget *mPages;
+    QLabel *mEmptyMessage;
+    QWidget *mVaultView = nullptr;
     QLabel *mFilename;
     QLabel *mStatus;
 };

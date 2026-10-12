@@ -20,6 +20,7 @@
 #include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QTextCursor>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -54,6 +55,8 @@ Window::Window(
     , mDeleteLabel(new QLabel)
     , mConflictBar(new QWidget)
     , mConflictLabel(new QLabel)
+    , mPages(new QStackedWidget)
+    , mEmptyMessage(new QLabel(QStringLiteral("Open a folder of Markdown notes to begin.")))
 {
     setWindowTitle(QStringLiteral("Inkstow"));
     resize(theme::kWindowWidth, theme::kWindowHeight);
@@ -63,13 +66,7 @@ Window::Window(
     auto *title = new QLabel(QStringLiteral("Inkstow"));
     title->setObjectName(QStringLiteral("appTitle"));
     title->setFont(theme::titleFont(title->font()));
-    auto *open = new QPushButton(QStringLiteral("Open vault…"));
-    open->setObjectName(QStringLiteral("openVault"));
-    open->setAccessibleName(QStringLiteral("Open vault"));
     header->addWidget(title);
-    header->addSpacing(theme::kHeaderGap);
-    header->addStretch(1);
-    header->addWidget(open);
     page->addLayout(header);
 
     auto *splitter = new QSplitter;
@@ -144,8 +141,11 @@ Window::Window(
     splitter->addWidget(right);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({theme::kSidebarWidth, theme::kEditorWidth});
-    page->addWidget(splitter, 1);
-    mStatus = new QLabel(QStringLiteral("Open a vault folder to begin."));
+    mVaultView = splitter;
+    mPages->addWidget(createEmptyState());
+    mPages->addWidget(mVaultView);
+    page->addWidget(mPages, 1);
+    mStatus = new QLabel;
     mStatus->setObjectName(QStringLiteral("status"));
     page->addWidget(mStatus);
     setCentralWidget(central);
@@ -154,7 +154,6 @@ Window::Window(
     mSyncTimer->setInterval(150);
     refresh();
 
-    connect(open, &QPushButton::clicked, this, [this] { openVault(); });
     connect(mSave, &QPushButton::clicked, this, [this] { saveNote(); });
     connect(mFollow, &QPushButton::clicked, this, [this] { followLink(); });
     connect(mReload, &QPushButton::clicked, this, [this] { reloadFromDisk(); });
@@ -191,8 +190,32 @@ Window::Window(
     reopenLastVault();
 }
 
+QWidget *Window::createEmptyState()
+{
+    auto *emptyState = new QWidget;
+    emptyState->setObjectName(QStringLiteral("emptyState"));
+    auto *layout = new QVBoxLayout(emptyState);
+    layout->setSpacing(theme::kEmptyStateSpacing);
+    auto *heading = new QLabel(QStringLiteral("No vault open"));
+    heading->setFont(theme::titleFont(heading->font()));
+    mEmptyMessage->setObjectName(QStringLiteral("emptyStateMessage"));
+    mEmptyMessage->setWordWrap(true);
+    auto *open = new QPushButton(QStringLiteral("Open vault…"));
+    open->setObjectName(QStringLiteral("openVault"));
+    open->setAccessibleName(QStringLiteral("Open vault"));
+    open->setDefault(true);
+    connect(open, &QPushButton::clicked, this, [this] { openVault(); });
+    layout->addStretch(1);
+    layout->addWidget(heading, 0, Qt::AlignHCenter);
+    layout->addWidget(mEmptyMessage, 0, Qt::AlignHCenter);
+    layout->addWidget(open, 0, Qt::AlignHCenter);
+    layout->addStretch(1);
+    return emptyState;
+}
+
 void Window::refresh()
 {
+    mPages->setCurrentIndex(mSession.hasVault() ? mPages->indexOf(mVaultView) : 0);
     const bool selected = !mSession.path().isEmpty();
     mFilename->setText(
         selected ? mSession.path() + (mSession.dirty() ? QStringLiteral(" *") : QString())
@@ -240,7 +263,7 @@ void Window::reopenLastVault()
     if (folder.isEmpty()) return;
     QString error;
     if (!openVaultFolder(folder, &error))
-        mStatus->setText(QStringLiteral("Could not reopen the last vault: ") + error);
+        mEmptyMessage->setText(QStringLiteral("Could not reopen %1: %2").arg(folder, error));
 }
 
 void Window::selectNote(const QString &path)
