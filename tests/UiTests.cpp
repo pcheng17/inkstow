@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 
 #define CHECK(value)                                                                               \
     do {                                                                                           \
@@ -195,57 +196,63 @@ static void testCurrentStyleKept(const Window &window)
     CHECK(window.size() == QSize(1100, 750));
 }
 
-// Opening a vault from the File menu and cancelling the picker changes nothing.
-static void testCancellingOpenVault(Window &window, std::optional<QString> &picked)
+// What the injected folder picker answers, and how often the window asked it.
+struct PickerScript
+{
+    std::optional<QString> mAnswer;
+    int mCalls = 0;
+};
+
+// Triggers File > Open vault with the picker answering `answer` this once, then
+// checks the open vault's notes and window title were left as they were.
+static void openVaultExpectingNoChange(
+    Window &window, PickerScript &picker, std::optional<QString> answer)
 {
     auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
     auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
+    CHECK(switchVault && notes);
+    const int listed = notes->count();
+    const QString title = window.windowTitle();
+    const std::optional<QString> usual = std::exchange(picker.mAnswer, std::move(answer));
+    switchVault->trigger();
+    picker.mAnswer = usual;
+    CHECK(notes->count() == listed);
+    CHECK(window.windowTitle() == title);
+}
+
+// Opening a vault from the File menu and cancelling the picker changes nothing.
+static void testCancellingOpenVault(Window &window, PickerScript &picker)
+{
+    auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
-    CHECK(switchVault && notes && status);
+    CHECK(switchVault && status);
     CHECK(switchVault->shortcut() == QKeySequence(QKeySequence::Open));
     const auto menus = window.menuBar()->actions();
     CHECK(std::any_of(menus.begin(), menus.end(), [&](QAction *menu) {
         return menu->menu() && menu->menu()->actions().contains(switchVault);
     }));
-    const int listed = notes->count();
     const QString openedStatus = status->text();
-    const QString title = window.windowTitle();
-    const std::optional<QString> vault = picked;
-    picked.reset();
-    switchVault->trigger();
-    CHECK(notes->count() == listed);
+    openVaultExpectingNoChange(window, picker, std::nullopt);
     CHECK(status->text() == openedStatus);
-    CHECK(window.windowTitle() == title);
-    picked = vault;
 }
 
 // Unsaved edits block switching vaults, the same way they block switching notes.
-// pickerCalls counts how often the window asked for a folder.
-static void testVaultSwitchRefusedWhileUnsaved(
-    Window &window, std::optional<QString> &picked, const int &pickerCalls)
+static void testVaultSwitchRefusedWhileUnsaved(Window &window, PickerScript &picker)
 {
-    auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
     auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
     auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
-    CHECK(switchVault && notes && editor && status);
+    CHECK(notes && editor && status);
     QTemporaryDir otherVault;
     CHECK(otherVault.isValid());
     writeFile(QDir(otherVault.path()).filePath(QStringLiteral("elsewhere.md")), "elsewhere");
-    const int listed = notes->count();
     const QString text = editor->toPlainText();
-    const QString title = window.windowTitle();
-    const std::optional<QString> vault = picked;
-    picked = otherVault.path();
-    const int callsBefore = pickerCalls;
-    switchVault->trigger();
-    CHECK(pickerCalls == callsBefore); // Refused before asking for a folder.
+    const int callsBefore = picker.mCalls;
+    openVaultExpectingNoChange(window, picker, otherVault.path());
+    CHECK(picker.mCalls == callsBefore); // Refused before asking for a folder.
     CHECK(status->text().contains(QStringLiteral("Save the current note")));
-    CHECK(notes->count() == listed);
     CHECK(notes->findItems(QStringLiteral("elsewhere.md"), Qt::MatchExactly).isEmpty());
     CHECK(editor->toPlainText() == text);
-    CHECK(window.windowTitle() == title);
-    picked = vault;
 }
 
 static void testFollowingLinks(
@@ -343,8 +350,7 @@ int main(int argc, char **argv)
         QTemporaryDir trash;
         CHECK(trash.isValid());
         QStringList openedAttachments;
-        std::optional<QString> picked = dir.path();
-        int pickerCalls = 0;
+        PickerScript picker{dir.path()};
         Window window(
             [&](const QString &path, QString *) {
                 return QFile::rename(path, QDir(trash.path()).filePath(QFileInfo(path).fileName()));
@@ -355,8 +361,8 @@ int main(int argc, char **argv)
                 return true;
             },
             [&](QWidget *) {
-                ++pickerCalls;
-                return picked;
+                ++picker.mCalls;
+                return picker.mAnswer;
             },
             std::make_shared<MemorySettings>());
         testCurrentStyleKept(window);
@@ -398,13 +404,13 @@ int main(int argc, char **argv)
         open->click();
         CHECK(notes->count() == 2);
         CHECK(notes->item(0)->text() == QStringLiteral("note.md"));
-        testCancellingOpenVault(window, picked);
+        testCancellingOpenVault(window, picker);
         testFollowingLinks(window, QDir(dir.path()), openedAttachments);
         editor->setPlainText(QStringLiteral("first edit"));
         CHECK(save->isEnabled());
         notes->setCurrentRow(1);
         CHECK(notes->currentRow() == 0); // Unsaved note cannot be switched away.
-        testVaultSwitchRefusedWhileUnsaved(window, picked, pickerCalls); // Nor can its vault.
+        testVaultSwitchRefusedWhileUnsaved(window, picker); // Nor can its vault.
         save->click();
         CHECK(readFile(note) == "first edit");
         CHECK(!save->isEnabled());
