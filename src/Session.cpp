@@ -144,12 +144,18 @@ QString threeWayMerge(const QString &baseText, const QString &mineText, const QS
 }
 } // namespace
 
-bool Session::openVault(const QString &folder, QString *error)
+bool Session::canOpenVault(QString *error) const
 {
     if (dirty()) {
         *error = QStringLiteral("Save the current note before opening another vault.");
         return false;
     }
+    return true;
+}
+
+bool Session::openVault(const QString &folder, QString *error)
+{
+    if (!canOpenVault(error)) return false;
     auto next = Vault::open(folder, error);
     if (!next) return false;
     QStringList notes;

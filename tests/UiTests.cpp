@@ -189,7 +189,9 @@ static void testCancellingOpenVault(Window &window, std::optional<QString> &pick
 }
 
 // Unsaved edits block switching vaults, the same way they block switching notes.
-static void testVaultSwitchRefusedWhileUnsaved(Window &window, std::optional<QString> &picked)
+// pickerCalls counts how often the window asked for a folder.
+static void testVaultSwitchRefusedWhileUnsaved(
+    Window &window, std::optional<QString> &picked, const int &pickerCalls)
 {
     auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
     auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
@@ -204,7 +206,9 @@ static void testVaultSwitchRefusedWhileUnsaved(Window &window, std::optional<QSt
     const QString title = window.windowTitle();
     const std::optional<QString> vault = picked;
     picked = otherVault.path();
+    const int callsBefore = pickerCalls;
     switchVault->trigger();
+    CHECK(pickerCalls == callsBefore); // Refused before asking for a folder.
     CHECK(status->text().contains(QStringLiteral("Save the current note")));
     CHECK(notes->count() == listed);
     CHECK(notes->findItems(QStringLiteral("elsewhere.md"), Qt::MatchExactly).isEmpty());
@@ -309,6 +313,7 @@ int main(int argc, char **argv)
         CHECK(trash.isValid());
         QStringList openedAttachments;
         std::optional<QString> picked = dir.path();
+        int pickerCalls = 0;
         Window window(
             [&](const QString &path, QString *) {
                 return QFile::rename(path, QDir(trash.path()).filePath(QFileInfo(path).fileName()));
@@ -318,7 +323,10 @@ int main(int argc, char **argv)
                 openedAttachments.append(url.toLocalFile());
                 return true;
             },
-            [&](QWidget *) { return picked; },
+            [&](QWidget *) {
+                ++pickerCalls;
+                return picked;
+            },
             std::make_shared<MemorySettings>());
         testCurrentStyleKept(window);
         testReopeningLastVault();
@@ -363,8 +371,8 @@ int main(int argc, char **argv)
         editor->setPlainText(QStringLiteral("first edit"));
         CHECK(save->isEnabled());
         notes->setCurrentRow(1);
-        CHECK(notes->currentRow() == 0);                    // Unsaved note cannot be switched away.
-        testVaultSwitchRefusedWhileUnsaved(window, picked); // Nor can its vault.
+        CHECK(notes->currentRow() == 0); // Unsaved note cannot be switched away.
+        testVaultSwitchRefusedWhileUnsaved(window, picked, pickerCalls); // Nor can its vault.
         save->click();
         CHECK(readFile(note) == "first edit");
         CHECK(!save->isEnabled());

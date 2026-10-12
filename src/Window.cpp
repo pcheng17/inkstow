@@ -247,9 +247,13 @@ void Window::replaceEditor(const QString &text)
 
 void Window::openVault()
 {
+    QString error;
+    if (!mSession.canOpenVault(&error)) {
+        mStatus->setText(QStringLiteral("Error: ") + error);
+        return;
+    }
     const auto folder = mPickFolder(this);
     if (!folder) return;
-    QString error;
     if (!openVaultFolder(*folder, &error)) mStatus->setText(QStringLiteral("Error: ") + error);
 }
 
