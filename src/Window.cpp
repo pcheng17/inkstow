@@ -61,6 +61,7 @@ Window::Window(
     , mOpenVault(new QAction(QStringLiteral("&Open vault…"), this))
     , mPages(new QStackedWidget)
     , mEmptyMessage(new QLabel(QStringLiteral("Open a folder of Markdown notes to begin.")))
+    , mEmptyState(createEmptyState())
     , mStatus(new QLabel)
 {
     setWindowTitle(QStringLiteral("Inkstow"));
@@ -147,7 +148,6 @@ Window::Window(
     splitter->addWidget(right);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({theme::kSidebarWidth, theme::kEditorWidth});
-    mEmptyState = createEmptyState();
     mVaultView = splitter;
     mPages->addWidget(mEmptyState);
     mPages->addWidget(mVaultView);
