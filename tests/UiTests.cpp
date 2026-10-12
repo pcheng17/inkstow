@@ -1,3 +1,4 @@
+#include "MarkdownHighlighter.h"
 #include "NoteTree.h"
 #include "SettingsStore.h"
 #include "Theme.h"
@@ -13,6 +14,7 @@
 #include <QTimer>
 #include <QFileInfo>
 #include <QDeadlineTimer>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileSystemWatcher>
 #include <QFontMetrics>
@@ -32,6 +34,7 @@
 #include <QTemporaryDir>
 #include <QTextBlock>
 #include <QTextCursor>
+#include <QTextLayout>
 #include <QThread>
 #include <QTreeWidgetItemIterator>
 
@@ -352,6 +355,76 @@ static void testEditorTextWidth()
     CHECK(text.left() >= 24);
     CHECK(text.top() >= 24);
     CHECK(editor->width() - text.right() >= 24);
+}
+
+// The editor highlights Markdown as it is typed, and saving writes exactly the
+// typed text, with none of the formatting.
+static void testEditorHighlightsMarkdown()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    openSingleNote(window, dir, "# Title\n**bold** and [[link]]");
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
+    CHECK(editor && save);
+    CHECK(
+        dynamic_cast<MarkdownHighlighter *>(editor->document()->findChild<QSyntaxHighlighter *>(
+            QStringLiteral("markdownHighlighter"))));
+    const auto kindsAt = [&](int block, int position) {
+        const auto ranges = editor->document()->findBlockByNumber(block).layout()->formats();
+        for (const QTextLayout::FormatRange &range : ranges) {
+            if (position >= range.start && position < range.start + range.length)
+                return range.format.intProperty(theme::kMarkdownKindsProperty);
+        }
+        return 0;
+    };
+    CHECK(kindsAt(0, 2) == static_cast<int>(theme::MarkdownKind::Heading));
+    CHECK(kindsAt(1, 2) == static_cast<int>(theme::MarkdownKind::Bold));
+
+    QTextCursor end = editor->textCursor();
+    end.movePosition(QTextCursor::End);
+    editor->setTextCursor(end);
+    editor->insertPlainText(QStringLiteral("\n```\n# not a heading"));
+    CHECK(kindsAt(3, 2) == static_cast<int>(theme::MarkdownKind::CodeBlock));
+    save->click();
+    CHECK(
+        readFile(QDir(dir.path()).filePath(QStringLiteral("note.md"))) ==
+        "# Title\n**bold** and [[link]]\n```\n# not a heading");
+}
+
+// Typing in a long, highlighted note stays quick. HighlighterTests checks that
+// edits re-highlight incrementally; this bounds the cost in the real editor.
+static void testLongNoteStaysResponsive()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    QByteArray text;
+    for (int line = 0; line < 2000; ++line) {
+        text += "## Section " + QByteArray::number(line) + "\n";
+        text += "Some **bold**, *italic*, `code` and [[Note " + QByteArray::number(line) + "]].\n";
+        text += "```\nfenced " + QByteArray::number(line) + "\n```\n";
+    }
+    openSingleNote(window, dir, text);
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    CHECK(editor);
+    CHECK(editor->document()->blockCount() > 10000);
+    QTextCursor middle(editor->document()->findBlockByNumber(5001));
+    QElapsedTimer timer;
+    timer.start();
+    middle.insertText(QStringLiteral("x"));
+    QCoreApplication::processEvents();
+    CHECK(timer.elapsed() < 500);
 }
 
 // Reloading a note changed outside Inkstow keeps the cursor and scroll position.
@@ -744,6 +817,8 @@ int main(int argc, char **argv)
         testEditorTextWidth();
         testNoNoteEmptyState();
         testReloadKeepsPlace();
+        testEditorHighlightsMarkdown();
+        testLongNoteStaysResponsive();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
         auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));

@@ -5,7 +5,17 @@ target_compile_definitions(core-tests
                                    LINKS_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/links")
 add_test(NAME core-tests COMMAND core-tests)
 
-add_executable(ui-tests UiTests.cpp ${PROJECT_SOURCE_DIR}/src/NoteEditor.cpp
+add_executable(highlighter-tests HighlighterTests.cpp ${PROJECT_SOURCE_DIR}/src/MarkdownHighlighter.cpp
+                                 ${PROJECT_SOURCE_DIR}/src/Theme.cpp)
+target_include_directories(highlighter-tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+# Theme.cpp also styles the QApplication, so Widgets is linked, but the tests
+# run on a QGuiApplication.
+target_link_libraries(highlighter-tests PRIVATE Qt6::Gui Qt6::Widgets inkstow-warnings)
+add_test(NAME highlighter-tests COMMAND highlighter-tests)
+set_tests_properties(highlighter-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+add_executable(ui-tests UiTests.cpp ${PROJECT_SOURCE_DIR}/src/MarkdownHighlighter.cpp
+                        ${PROJECT_SOURCE_DIR}/src/NoteEditor.cpp
                         ${PROJECT_SOURCE_DIR}/src/NoteTree.cpp
                         ${PROJECT_SOURCE_DIR}/src/SettingsStore.cpp
                         ${PROJECT_SOURCE_DIR}/src/Theme.cpp ${PROJECT_SOURCE_DIR}/src/Window.cpp)

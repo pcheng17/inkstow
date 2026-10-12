@@ -1,5 +1,6 @@
 #include "NoteEditor.h"
 
+#include "MarkdownHighlighter.h"
 #include "Theme.h"
 
 #include <QMimeData>
@@ -14,6 +15,7 @@ NoteEditor::NoteEditor()
     setAcceptRichText(false);
     setFont(theme::editorFont(font()));
     document()->setDocumentMargin(theme::kEditorPadding);
+    new MarkdownHighlighter(document()); // Owned by the document, which setNoteText keeps.
     // Side margins share the text's background, so a wide editor reads as one page.
     setBackgroundRole(QPalette::Base);
     setAutoFillBackground(true);
