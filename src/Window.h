@@ -47,7 +47,6 @@ private:
     void saveNote();
     void followLink();
     QWidget *createEmptyState();
-    QWidget *createNoNoteState();
     void refresh();
     void replaceEditor(const QString &text);
     void watchNote();

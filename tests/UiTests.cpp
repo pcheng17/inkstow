@@ -339,7 +339,7 @@ static void testEditorTextWidth()
     QCoreApplication::processEvents();
     QRect text = textBounds(editor);
     CHECK(text.width() <= 720);
-    CHECK(text.width() > 720 - 2 * word); // Wraps near the cap, not far short of it.
+    CHECK(text.width() > 720 - (2 * word)); // Wraps near the cap, not far short of it.
     CHECK(std::abs(text.left() - (editor->width() - text.right())) <= 2 * word);
 
     window.resize(700, 750);
@@ -373,10 +373,12 @@ static void testNoNoteEmptyState()
     window.activateWindow(); // So the editor can take focus.
     CHECK(waitFor([&] { return window.isActiveWindow(); }));
     open->click();
-    CHECK(empty->isVisible() && !editor->isVisible());
+    CHECK(empty->isVisible());
+    CHECK(!editor->isVisible());
     CHECK(message->text().contains(QStringLiteral("Select a note")));
     openNote(notes, QStringLiteral("note.md"));
-    CHECK(editor->isVisible() && !empty->isVisible());
+    CHECK(editor->isVisible());
+    CHECK(!empty->isVisible());
     CHECK(editor->hasFocus());
 }
 

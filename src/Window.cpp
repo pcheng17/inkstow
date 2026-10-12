@@ -38,6 +38,27 @@ std::optional<QString> pickFolderWithDialog(QWidget *parent)
     if (folder.isEmpty()) return std::nullopt;
     return folder;
 }
+
+// Explains the editor area when no note is open.
+QWidget *createNoNoteState()
+{
+    auto *noNoteState = new QWidget;
+    noNoteState->setObjectName(QStringLiteral("noNoteState"));
+    auto *layout = new QVBoxLayout(noNoteState);
+    layout->setSpacing(theme::kEmptyStateSpacing);
+    auto *heading = new QLabel(QStringLiteral("No note open"));
+    heading->setFont(theme::titleFont(heading->font()));
+    auto *message =
+        new QLabel(QStringLiteral("Select a note in the sidebar, or create one below it."));
+    message->setObjectName(QStringLiteral("noNoteMessage"));
+    message->setWordWrap(true);
+    message->setAlignment(Qt::AlignHCenter);
+    layout->addStretch(1);
+    layout->addWidget(heading, 0, Qt::AlignHCenter);
+    layout->addWidget(message);
+    layout->addStretch(1);
+    return noNoteState;
+}
 } // namespace
 
 Window::Window(
@@ -221,26 +242,6 @@ QWidget *Window::createEmptyState()
     layout->addWidget(open, 0, Qt::AlignHCenter);
     layout->addStretch(1);
     return emptyState;
-}
-
-QWidget *Window::createNoNoteState()
-{
-    auto *noNoteState = new QWidget;
-    noNoteState->setObjectName(QStringLiteral("noNoteState"));
-    auto *layout = new QVBoxLayout(noNoteState);
-    layout->setSpacing(theme::kEmptyStateSpacing);
-    auto *heading = new QLabel(QStringLiteral("No note open"));
-    heading->setFont(theme::titleFont(heading->font()));
-    auto *message =
-        new QLabel(QStringLiteral("Select a note in the sidebar, or create one below it."));
-    message->setObjectName(QStringLiteral("noNoteMessage"));
-    message->setWordWrap(true);
-    message->setAlignment(Qt::AlignHCenter);
-    layout->addStretch(1);
-    layout->addWidget(heading, 0, Qt::AlignHCenter);
-    layout->addWidget(message);
-    layout->addStretch(1);
-    return noNoteState;
 }
 
 void Window::refresh()
