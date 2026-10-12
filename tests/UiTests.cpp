@@ -174,6 +174,7 @@ int main(int argc, char **argv)
         QTemporaryDir trash;
         CHECK(trash.isValid());
         QStringList openedAttachments;
+        std::optional<QString> picked = dir.path();
         Window window(
             [&](const QString &path, QString *) {
                 return QFile::rename(path, QDir(trash.path()).filePath(QFileInfo(path).fileName()));
@@ -183,7 +184,7 @@ int main(int argc, char **argv)
                 openedAttachments.append(url.toLocalFile());
                 return true;
             },
-            [&](QWidget *) { return std::optional<QString>(dir.path()); });
+            [&](QWidget *) { return picked; });
         testCurrentStyleKept(window);
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QListWidget *>(QStringLiteral("notes"));
@@ -220,11 +221,24 @@ int main(int argc, char **argv)
         open->click();
         CHECK(notes->count() == 2);
         CHECK(notes->item(0)->text() == QStringLiteral("note.md"));
+        const QString openedStatus = status->text();
+        picked.reset(); // Cancelling the picker changes nothing.
+        open->click();
+        CHECK(notes->count() == 2);
+        CHECK(status->text() == openedStatus);
         testFollowingLinks(window, QDir(dir.path()), openedAttachments);
         editor->setPlainText(QStringLiteral("first edit"));
         CHECK(save->isEnabled());
         notes->setCurrentRow(1);
         CHECK(notes->currentRow() == 0); // Unsaved note cannot be switched away.
+        QTemporaryDir otherVault;
+        CHECK(otherVault.isValid());
+        writeFile(QDir(otherVault.path()).filePath(QStringLiteral("elsewhere.md")), "elsewhere");
+        picked = otherVault.path();
+        open->click(); // Nor can its vault.
+        CHECK(status->text().contains(QStringLiteral("Save the current note")));
+        CHECK(notes->count() == 2);
+        CHECK(editor->toPlainText() == QStringLiteral("first edit"));
         save->click();
         CHECK(readFile(note) == "first edit");
         CHECK(!save->isEnabled());
