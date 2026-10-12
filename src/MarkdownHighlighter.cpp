@@ -97,17 +97,19 @@ int backtickRun(const QString &text, int from)
     return end - from;
 }
 
+// Position of the next backtick at or after from, or -1.
+int nextBacktick(const QString &text, int from)
+{
+    return static_cast<int>(text.indexOf(u'`', from));
+}
+
 // Start of the next run of exactly length backticks, or -1.
 int findBacktickRun(const QString &text, int from, int length)
 {
-    for (int at = from; at < text.size();) {
-        if (text[at] != u'`') {
-            ++at;
-            continue;
-        }
+    for (int at = nextBacktick(text, from); at >= 0;) {
         const int run = backtickRun(text, at);
         if (run == length) return at;
-        at += run;
+        at = nextBacktick(text, at + run);
     }
     return -1;
 }
@@ -117,19 +119,15 @@ int findBacktickRun(const QString &text, int from, int length)
 std::vector<Span> codeSpans(const QString &text)
 {
     std::vector<Span> spans;
-    for (int at = 0; at < text.size();) {
-        if (text[at] != u'`') {
-            ++at;
-            continue;
-        }
+    for (int at = nextBacktick(text, 0); at >= 0;) {
         const int run = backtickRun(text, at);
         const int close = findBacktickRun(text, at + run, run);
         if (close < 0) {
-            at += run;
+            at = nextBacktick(text, at + run);
             continue;
         }
         spans.push_back({at, close + run - at});
-        at = close + run;
+        at = nextBacktick(text, close + run);
     }
     return spans;
 }
