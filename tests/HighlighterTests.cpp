@@ -184,31 +184,30 @@ void testFencedCode()
         "before\n"
         "```cpp\n" // 1 opens
         "# not heading **x**\n"
-        "~~~\n"            // 3 other character: content
+        "~~~\n"            // 3 tildes: content
         "``` x\n"          // 4 info string: content
         "```\n"            // 5 closes
         "after **b**\n"    // 6
-        "~~~~ info `ok`\n" // 7 opens; tilde info may hold backticks
-        "~~~\n"            // 8 shorter: content
-        "~~~~~ \n"         // 9 longer, trailing space: closes
-        "# h\n"            // 10
-        "    ```\n"        // 11 indented four spaces: not a fence
-        "```a`b\n"         // 12 backtick in a backtick info string: not a fence
-        "   ```\n"         // 13 three spaces: opens
-        "unclosed **x**\n" // 14
-        "\n"               // 15
-        "end"));           // 16
+        "~~~\n"            // 7 tildes do not open a fence
+        "# h\n"            // 8
+        "````\n"           // 9 opens
+        "```\n"            // 10 shorter: content
+        "````` \n"         // 11 longer, trailing space: closes
+        "    ```\n"        // 12 indented four spaces: not a fence
+        "```a`b\n"         // 13 backtick in the info string: not a fence
+        "   ```\n"         // 14 three spaces: opens
+        "unclosed **x**\n" // 15
+        "\n"               // 16
+        "end"));           // 17
     const QStringList lines = document->toPlainText().split(QLatin1Char('\n'));
-    for (const int code : {1, 2, 3, 4, 5, 7, 8, 9, 13, 14, 16}) {
+    for (const int code : {1, 2, 3, 4, 5, 9, 10, 11, 14, 15, 17}) {
         const int length = static_cast<int>(lines[code].size());
         CHECK((spans(*document, code) == Spans{run(0, length, kCodeBlock)}));
     }
-    CHECK(spans(*document, 0).empty());
+    for (const int plain : {0, 7, 12, 13, 16})
+        CHECK(spans(*document, plain).empty());
     CHECK((spans(*document, 6) == Spans{run(6, 5, kBold)}));
-    CHECK((spans(*document, 10) == Spans{run(0, 3, kHeading, 1)}));
-    CHECK(spans(*document, 11).empty());
-    CHECK(spans(*document, 12).empty());
-    CHECK(spans(*document, 15).empty());
+    CHECK((spans(*document, 8) == Spans{run(0, 3, kHeading, 1)}));
 }
 
 void testFrontmatter()
@@ -271,7 +270,7 @@ void testTextUnchanged()
     const QString text = QStringLiteral(
         "---\ntitle: x\n---\n# Heading `code`\nSome **bold**, *italic*, __b__ and _i_.\n"
         "A [[Note|alias]] and ![[embed.png]] and [[unclosed\n```js\nlet a = `b`;\n```\n"
-        "~~~\nunclosed fence\n");
+        "```\nunclosed fence\n");
     const auto document = highlighted(text);
     auto *highlighter = dynamic_cast<MarkdownHighlighter *>(
         document->findChild<QSyntaxHighlighter *>(QStringLiteral("markdownHighlighter")));

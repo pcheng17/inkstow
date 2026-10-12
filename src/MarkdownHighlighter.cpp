@@ -13,22 +13,15 @@ namespace
 {
 using theme::MarkdownKind;
 
-// Block states. A fenced code block records its fence character and length,
-// so only a matching fence closes it.
+// Block states. A fenced code block records its fence length, so only a
+// fence at least as long closes it.
 constexpr int kNormal = 0;
 constexpr int kFrontmatter = 1;
 constexpr int kFenceFlag = 1 << 20;
-constexpr int kTildeFlag = 1 << 19;
-constexpr int kFenceLengthMask = kTildeFlag - 1;
+constexpr int kFenceLengthMask = kFenceFlag - 1;
 
 // Stands in for text that later rules must not see, such as code spans.
 constexpr QChar kMask(0xFFFC);
-
-struct Fence
-{
-    QChar mMarker;
-    int mLength;
-};
 
 struct Span
 {
@@ -43,10 +36,9 @@ struct EmphasisRule
     bool mItalic;
 };
 
-int fenceState(Fence fence)
+int fenceState(int fenceLength)
 {
-    const int tilde = fence.mMarker == u'~' ? kTildeFlag : 0;
-    return kFenceFlag | tilde | std::min(fence.mLength, kFenceLengthMask);
+    return kFenceFlag | std::min(fenceLength, kFenceLengthMask);
 }
 
 bool isFenceState(int state)
@@ -54,10 +46,9 @@ bool isFenceState(int state)
     return state > 0 && (state & kFenceFlag) != 0;
 }
 
-Fence fenceFromState(int state)
+int fenceLength(int state)
 {
-    const QChar marker = (state & kTildeFlag) != 0 ? QChar(u'~') : QChar(u'`');
-    return {marker, state & kFenceLengthMask};
+    return state & kFenceLengthMask;
 }
 
 // Obsidian only accepts --- around frontmatter, not YAML's ... end marker.
@@ -67,26 +58,23 @@ bool isFrontmatterDelimiter(const QString &text)
     return pattern.match(text).hasMatch();
 }
 
-// Up to three spaces, three or more ` or ~, then an info string, which may
-// not hold a backtick after a backtick fence.
-std::optional<Fence> openingFence(const QString &text)
+// Up to three spaces, three or more backticks, then an info string without
+// backticks. Returns the fence's length. Tildes do not open a fence.
+std::optional<int> openingFence(const QString &text)
 {
-    static const QRegularExpression pattern(QStringLiteral(R"(^ {0,3}(`{3,}|~{3,})(.*)$)"));
+    static const QRegularExpression pattern(QStringLiteral(R"(^ {0,3}(`{3,})[^`]*$)"));
     const QRegularExpressionMatch match = pattern.match(text);
     if (!match.hasMatch()) return std::nullopt;
-    const QChar marker = match.capturedView(1).front();
-    if (marker == u'`' && match.capturedView(2).contains(u'`')) return std::nullopt;
-    return Fence{marker, static_cast<int>(match.capturedLength(1))};
+    return static_cast<int>(match.capturedLength(1));
 }
 
-// A closing fence uses the same character, at least as many times, with
+// A closing fence has at least as many backticks as the opening one, with
 // nothing after it but whitespace.
-bool closesFence(const QString &text, Fence fence)
+bool closesFence(const QString &text, int length)
 {
-    static const QRegularExpression pattern(QStringLiteral(R"(^ {0,3}(`{3,}|~{3,})[ \t]*$)"));
+    static const QRegularExpression pattern(QStringLiteral(R"(^ {0,3}(`{3,})[ \t]*$)"));
     const QRegularExpressionMatch match = pattern.match(text);
-    return match.hasMatch() && match.capturedView(1).front() == fence.mMarker &&
-           match.capturedLength(1) >= fence.mLength;
+    return match.hasMatch() && match.capturedLength(1) >= length;
 }
 
 int backtickRun(const QString &text, int from)
@@ -215,7 +203,7 @@ void MarkdownHighlighter::highlightBlock(const QString &text)
         setCurrentBlockState(kFrontmatter);
         return;
     }
-    if (const std::optional<Fence> fence = openingFence(text)) {
+    if (const std::optional<int> fence = openingFence(text)) {
         formatLine(text, theme::markdownFormat(MarkdownKind::CodeBlock));
         setCurrentBlockState(fenceState(*fence));
         return;
@@ -232,7 +220,7 @@ void MarkdownHighlighter::continueFrontmatter(const QString &text)
 void MarkdownHighlighter::continueFence(const QString &text, int state)
 {
     formatLine(text, theme::markdownFormat(MarkdownKind::CodeBlock));
-    setCurrentBlockState(closesFence(text, fenceFromState(state)) ? kNormal : state);
+    setCurrentBlockState(closesFence(text, fenceLength(state)) ? kNormal : state);
 }
 
 // A heading styles its whole line; code spans, then wikilinks, then emphasis

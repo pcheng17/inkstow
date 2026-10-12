@@ -17,10 +17,13 @@ Links: [[Welcome]], [[Folder/Second note|alias]], [[Welcome#Heading]], ![[image.
 const a = `template`;
 ```
 
-~~~~
-~~~
+````
+```
 still code: a shorter fence does not close it
-~~~~
+````
+
+~~~
+Tildes do not open a code block.
 
 ---
 A --- after the first line is not frontmatter.
