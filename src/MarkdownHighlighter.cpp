@@ -36,9 +36,6 @@ struct Span
     int mLength;
 };
 
-// Opener must be followed, and closer preceded, by a non-space. A * run must
-// not touch another *, and a _ run must not touch a word character, so
-// snake_case stays plain.
 struct EmphasisRule
 {
     QRegularExpression mPattern;
@@ -163,6 +160,9 @@ const QRegularExpression &wikilinkPattern()
     return pattern;
 }
 
+// Opener must be followed, and closer preceded, by a non-space. A * run must
+// not touch another *, and a _ run must not touch a word character, so
+// snake_case stays plain.
 QRegularExpression emphasisPattern(QChar marker, int count)
 {
     const QString escaped = QRegularExpression::escape(QString(marker));
