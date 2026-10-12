@@ -1,5 +1,6 @@
 #include "Window.h"
 
+#include "NoteEditor.h"
 #include "NoteTree.h"
 #include "Theme.h"
 
@@ -17,7 +18,6 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
-#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QRegularExpression>
@@ -38,6 +38,27 @@ std::optional<QString> pickFolderWithDialog(QWidget *parent)
     if (folder.isEmpty()) return std::nullopt;
     return folder;
 }
+
+// Explains the editor area when no note is open.
+QWidget *createNoNoteState()
+{
+    auto *noNoteState = new QWidget;
+    noNoteState->setObjectName(QStringLiteral("noNoteState"));
+    auto *layout = new QVBoxLayout(noNoteState);
+    layout->setSpacing(theme::kEmptyStateSpacing);
+    auto *heading = new QLabel(QStringLiteral("No note open"));
+    heading->setFont(theme::titleFont(heading->font()));
+    auto *message =
+        new QLabel(QStringLiteral("Select a note in the sidebar, or create a new one."));
+    message->setObjectName(QStringLiteral("noNoteMessage"));
+    message->setWordWrap(true);
+    message->setAlignment(Qt::AlignHCenter);
+    layout->addStretch(1);
+    layout->addWidget(heading, 0, Qt::AlignHCenter);
+    layout->addWidget(message);
+    layout->addStretch(1);
+    return noNoteState;
+}
 } // namespace
 
 Window::Window(
@@ -52,7 +73,9 @@ Window::Window(
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
     , mNotes(new NoteTree([this](const QString &path) { openNote(path); }))
-    , mEditor(new QPlainTextEdit)
+    , mEditor(new NoteEditor)
+    , mNoNoteState(createNoNoteState())
+    , mEditorPages(new QStackedWidget)
     , mNewPath(new QLineEdit)
     , mDeleteBar(new QWidget)
     , mDeleteLabel(new QLabel)
@@ -80,7 +103,7 @@ Window::Window(
     mNotes->setObjectName(QStringLiteral("notes"));
     mNotes->setAccessibleName(QStringLiteral("Notes"));
     mEditor->setObjectName(QStringLiteral("editor"));
-    mEditor->setPlaceholderText(QStringLiteral("Select a note"));
+    mEditor->setAccessibleName(QStringLiteral("Note text"));
     auto *right = new QWidget;
     auto *rightLayout = new QVBoxLayout(right);
     auto *toolbar = new QHBoxLayout;
@@ -132,7 +155,9 @@ Window::Window(
     deleteLayout->addWidget(cancelDelete);
     mDeleteBar->hide();
     rightLayout->addWidget(mDeleteBar);
-    rightLayout->addWidget(mEditor, 1);
+    mEditorPages->addWidget(mNoNoteState);
+    mEditorPages->addWidget(mEditor);
+    rightLayout->addWidget(mEditorPages, 1);
     auto *left = new QWidget;
     auto *leftLayout = new QVBoxLayout(left);
     leftLayout->setContentsMargins(theme::kFlushMargins);
@@ -179,7 +204,7 @@ Window::Window(
     });
     connect(confirmDelete, &QPushButton::clicked, this, [this] { trashNote(); });
     connect(cancelDelete, &QPushButton::clicked, mDeleteBar, &QWidget::hide);
-    connect(mEditor, &QPlainTextEdit::textChanged, this, [this] {
+    connect(mEditor, &QTextEdit::textChanged, this, [this] {
         mSession.setContent(mEditor->toPlainText());
         refresh();
     });
@@ -234,12 +259,13 @@ void Window::refresh()
     mMove->setEnabled(selected && !mSession.dirty());
     mCreate->setEnabled(mSession.hasVault() && !mSession.dirty());
     mEditor->setEnabled(selected);
+    mEditorPages->setCurrentWidget(selected ? static_cast<QWidget *>(mEditor) : mNoNoteState);
 }
 
 void Window::replaceEditor(const QString &text)
 {
     const QSignalBlocker block(mEditor);
-    mEditor->setPlainText(text);
+    mEditor->setNoteText(text);
     refresh();
 }
 

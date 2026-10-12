@@ -10,11 +10,11 @@
 #include <memory>
 #include <optional>
 
+class NoteEditor;
 class NoteTree;
 class QAction;
 class QLabel;
 class QLineEdit;
-class QPlainTextEdit;
 class QPushButton;
 class QStackedWidget;
 class QTimer;
@@ -70,7 +70,9 @@ private:
     QFileSystemWatcher *mWatcher;
     QTimer *mSyncTimer;
     NoteTree *mNotes;
-    QPlainTextEdit *mEditor;
+    NoteEditor *mEditor;
+    QWidget *mNoNoteState;
+    QStackedWidget *mEditorPages; // Shows mEditor, or mNoNoteState when no note is open.
     QPushButton *mSave;
     QPushButton *mFollow;
     QPushButton *mDelete;

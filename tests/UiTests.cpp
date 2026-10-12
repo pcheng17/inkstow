@@ -3,8 +3,10 @@
 #include "Theme.h"
 #include "Window.h"
 
+#include <QAbstractTextDocumentLayout>
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QDir>
 #include <QDialog>
 #include <QMessageBox>
@@ -13,6 +15,8 @@
 #include <QDeadlineTimer>
 #include <QFile>
 #include <QFileSystemWatcher>
+#include <QFontMetrics>
+#include <QFontMetricsF>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QEvent>
@@ -20,15 +24,19 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
-#include <QPlainTextEdit>
+#include <QMimeData>
+#include <QTextEdit>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QScrollBar>
 #include <QTemporaryDir>
+#include <QTextBlock>
 #include <QTextCursor>
 #include <QThread>
 #include <QTreeWidgetItemIterator>
 
 #include <algorithm>
+#include <cstdlib>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -241,6 +249,179 @@ static void testReopeningLastVault()
     CHECK(second.windowTitle() == title);
 }
 
+// Opens a vault holding one note.md with `text` and selects it.
+static void openSingleNote(Window &window, const QTemporaryDir &dir, const QByteArray &text)
+{
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("note.md")), text);
+    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
+    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
+    CHECK(open && notes);
+    open->click();
+    openNote(notes, QStringLiteral("note.md"));
+}
+
+// Distance from the top of one paragraph to the top of the next.
+static qreal linePitch(const QTextEdit *editor, int paragraph)
+{
+    const QTextBlock block = editor->document()->findBlockByNumber(paragraph);
+    CHECK(block.isValid() && block.next().isValid());
+    QAbstractTextDocumentLayout *layout = editor->document()->documentLayout();
+    return layout->blockBoundingRect(block.next()).top() - layout->blockBoundingRect(block).top();
+}
+
+// Text is shown at a readable size with roomy line spacing, including lines
+// typed or pasted later, and none of it changes the saved bytes.
+static void testReadableEditorText()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show(); // Text is laid out only once it is shown.
+    openSingleNote(window, dir, "first\nsecond");
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
+    CHECK(editor && save);
+    CHECK(editor->font().pointSize() == 13);
+    const qreal roomy = 1.4 * QFontMetricsF(editor->font()).height();
+    CHECK(linePitch(editor, 0) >= roomy);
+
+    QTextCursor end = editor->textCursor();
+    end.movePosition(QTextCursor::End);
+    editor->setTextCursor(end);
+    editor->insertPlainText(QStringLiteral("\nthird"));
+    CHECK(linePitch(editor, 1) >= roomy);
+    auto *pasted = new QMimeData;
+    pasted->setHtml(QStringLiteral("<h1>fourth</h1><p><b>fifth</b></p>"));
+    pasted->setText(QStringLiteral("\nfourth\nfifth"));
+    QApplication::clipboard()->setMimeData(pasted);
+    editor->paste();
+    CHECK(linePitch(editor, 2) >= roomy);
+    CHECK(linePitch(editor, 3) >= roomy);
+    save->click();
+    CHECK(
+        readFile(QDir(dir.path()).filePath(QStringLiteral("note.md"))) ==
+        "first\nsecond\nthird\nfourth\nfifth");
+}
+
+// The area the editor's characters occupy, in the editor's own coordinates.
+static QRect textBounds(const QTextEdit *editor)
+{
+    QRect bounds;
+    QTextCursor cursor(editor->document());
+    for (int position = 0; position < editor->document()->characterCount(); ++position) {
+        cursor.setPosition(position);
+        bounds |= editor->cursorRect(cursor).translated(editor->viewport()->pos());
+    }
+    return bounds;
+}
+
+// Long lines wrap at a readable width centred in a wide window, even with a
+// scroll bar, and padding keeps text off the editor's edges in a narrow one.
+static void testEditorTextWidth()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    openSingleNote(window, dir, QByteArray("a ").repeated(4000)); // Short words wrap evenly.
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    CHECK(editor);
+    const int word = QFontMetrics(editor->font()).horizontalAdvance(QStringLiteral("a "));
+
+    window.resize(1800, 750);
+    QCoreApplication::processEvents();
+    CHECK(editor->verticalScrollBar()->isVisible());
+    QRect text = textBounds(editor);
+    CHECK(text.width() <= 720);
+    CHECK(text.width() > 720 - word); // Wraps at the cap, not short of it.
+    CHECK(std::abs(text.left() - (editor->width() - text.right())) <= word);
+    const QPoint margin(text.left() / 2, editor->height() / 2);
+    CHECK(editor->grab().toImage().pixelColor(margin) == editor->palette().color(QPalette::Base));
+
+    window.resize(700, 750);
+    QCoreApplication::processEvents();
+    text = textBounds(editor);
+    CHECK(text.left() >= 24);
+    CHECK(text.top() >= 24);
+    CHECK(editor->width() - text.right() >= 24);
+}
+
+// Reloading a note changed outside Inkstow keeps the cursor and scroll position.
+static void testReloadKeepsPlace()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    window.activateWindow(); // Activation is how this test asks for a sync.
+    CHECK(waitFor([&] { return window.isActiveWindow(); }));
+    QByteArray text;
+    for (int line = 0; line < 200; ++line)
+        text += "line " + QByteArray::number(line) + '\n';
+    openSingleNote(window, dir, text);
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    CHECK(editor);
+    QScrollBar *scroll = editor->verticalScrollBar();
+    CHECK(scroll->maximum() > 0);
+    QTextCursor cursor = editor->textCursor();
+    cursor.setPosition(static_cast<int>(text.indexOf("line 150")));
+    editor->setTextCursor(cursor);
+    scroll->setValue(scroll->maximum() / 2);
+    const int position = editor->textCursor().position();
+    const int scrolled = scroll->value();
+
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("note.md")), "LINE" + text.mid(4));
+    QEvent activation(QEvent::ActivationChange);
+    QCoreApplication::sendEvent(&window, &activation);
+    CHECK(waitFor([&] { return editor->toPlainText().startsWith(QStringLiteral("LINE 0")); }));
+    CHECK(editor->textCursor().position() == position);
+    CHECK(scroll->value() == scrolled);
+}
+
+// With no note open, the editor area explains itself instead of showing a
+// blank, disabled editor.
+static void testNoNoteEmptyState()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    writeFile(QDir(dir.path()).filePath(QStringLiteral("note.md")), "text");
+    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
+    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto *empty = window.findChild<QWidget *>(QStringLiteral("noNoteState"));
+    auto *message = window.findChild<QLabel *>(QStringLiteral("noNoteMessage"));
+    CHECK(open && notes && editor && empty && message);
+    CHECK(editor->accessibleName() == QStringLiteral("Note text"));
+    window.show();
+    window.activateWindow(); // So the editor can take focus.
+    CHECK(waitFor([&] { return window.isActiveWindow(); }));
+    open->click();
+    CHECK(empty->isVisible());
+    CHECK(!editor->isVisible());
+    CHECK(message->text().contains(QStringLiteral("Select a note")));
+    openNote(notes, QStringLiteral("note.md"));
+    CHECK(editor->isVisible());
+    CHECK(!empty->isVisible());
+    CHECK(editor->hasFocus());
+}
+
 // Pins the current light look so moving style values into the theme changes nothing.
 static void testCurrentStyleKept(const Window &window)
 {
@@ -308,7 +489,7 @@ static void testCancellingOpenVault(Window &window, PickerScript &picker)
 static void testVaultSwitchRefusedWhileUnsaved(Window &window, PickerScript &picker)
 {
     auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(notes && editor && status);
     QTemporaryDir otherVault;
@@ -327,7 +508,7 @@ static void testFollowingLinks(
     Window &window, const QDir &dir, const QStringList &openedAttachments)
 {
     auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
     auto *follow = window.findChild<QPushButton *>(QStringLiteral("followLink"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(notes && editor && follow && status);
@@ -423,7 +604,7 @@ static void testNoteTree()
     window.activateWindow();
     auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
     auto *tree = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
     auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
     CHECK(open && tree && editor && status);
     CHECK(!tree->accessibleName().isEmpty());
@@ -559,9 +740,13 @@ int main(int argc, char **argv)
         testMissingLastVault();
         testUnrememberedVaultIsReported();
         testNoteTree();
+        testReadableEditorText();
+        testEditorTextWidth();
+        testNoNoteEmptyState();
+        testReloadKeepsPlace();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-        auto *editor = window.findChild<QPlainTextEdit *>(QStringLiteral("editor"));
+        auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
         auto *save = window.findChild<QPushButton *>(QStringLiteral("saveNote"));
         auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
         auto *conflictBar = window.findChild<QWidget *>(QStringLiteral("conflictBar"));
@@ -829,6 +1014,7 @@ int main(int argc, char **argv)
         CHECK(QFile::exists(QDir(trash.path()).filePath(QStringLiteral("Moved.md"))));
         CHECK(treeItem(notes, QStringLiteral("Moved.md")) == nullptr);
         CHECK(!editor->isEnabled());
+        CHECK(window.findChild<QWidget *>(QStringLiteral("noNoteState"))->isVisible());
         CHECK(!remove->isEnabled());
     } catch (const std::exception &error) {
         qCritical("%s", error.what());
