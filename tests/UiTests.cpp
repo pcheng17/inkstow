@@ -836,6 +836,9 @@ int main(int argc, char **argv)
         CHECK(readFile(note) == "external edit");
         CHECK(save->isEnabled());
         CHECK(!conflictBar->isHidden());
+        CHECK(conflictBar->palette().color(QPalette::Window) == QColor(theme::kPromptBackground));
+        CHECK(conflictBar->accessibleName().contains(QStringLiteral("changed outside")));
+        CHECK(merge->accessibleName() == merge->text());
 
         CHECK(!merge->isHidden());
         CHECK(saveAsNew->isHidden());
@@ -886,6 +889,8 @@ int main(int argc, char **argv)
         syncWithoutWatcher();
         CHECK(waitFor([&] { return !conflictBar->isHidden(); }));
         CHECK(!discard->isHidden());
+        CHECK(conflictBar->accessibleName().contains(QStringLiteral("deleted or moved")));
+        CHECK(saveAsNew->accessibleName() == saveAsNew->text());
         CHECK(keepMine->isHidden());
         CHECK(merge->isHidden());
         CHECK(!saveAsNew->isHidden());
@@ -966,6 +971,10 @@ int main(int argc, char **argv)
         CHECK(remove->isEnabled() && deleteBar->isHidden());
         remove->trigger();
         CHECK(!deleteBar->isHidden());
+        CHECK(deleteBar->palette().color(QPalette::Window) == QColor(theme::kPromptBackground));
+        CHECK(deleteBar->accessibleName() == QStringLiteral("Move Moved.md to the trash?"));
+        CHECK(confirmDelete->accessibleName() == confirmDelete->text());
+        CHECK(cancelDelete->accessibleName() == cancelDelete->text());
         cancelDelete->click();
         CHECK(deleteBar->isHidden());
         CHECK(QFile::exists(dir.filePath(QStringLiteral("Moved.md"))));
