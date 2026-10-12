@@ -492,6 +492,12 @@ static void testNoteTree()
     CHECK(treeItem(tree, QStringLiteral("alpha/deep"))->isExpanded());
     CHECK(treeItem(tree, QStringLiteral("Zeta"))->isExpanded());
     CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
+
+    // Opening a vault starts with folders collapsed and nothing selected.
+    window.findChild<QAction *>(QStringLiteral("openVaultAction"))->trigger();
+    CHECK(!treeItem(tree, QStringLiteral("alpha"))->isExpanded());
+    CHECK(!treeItem(tree, QStringLiteral("Zeta"))->isExpanded());
+    CHECK(currentPath(tree).isEmpty());
 }
 
 int main(int argc, char **argv)

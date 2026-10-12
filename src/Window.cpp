@@ -262,6 +262,7 @@ bool Window::openVaultFolder(const QString &folder, QString *error)
     if (!mSession.openVault(folder, error)) return false;
     const bool remembered = mSettings->setLastVault(folder);
     setWindowTitle(QStringLiteral("Inkstow - ") + QDir(folder).dirName());
+    mNotes->clear(); // A new vault starts collapsed, without the last vault's state.
     showNotes();
     replaceEditor(QString());
     watchNote();
