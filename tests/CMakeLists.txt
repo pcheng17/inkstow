@@ -1,4 +1,4 @@
-add_executable(core-tests VaultTests.cpp)
+add_executable(core-tests CoreTests.cpp)
 target_link_libraries(core-tests PRIVATE core inkstow-warnings)
 target_compile_definitions(core-tests
                            PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample"
