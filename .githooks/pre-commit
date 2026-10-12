@@ -7,6 +7,17 @@ if [[ -z "$staged" ]]; then
     exit 0
 fi
 
+required_major=21
+if ! version=$(clang-format --version 2>/dev/null); then
+    echo "pre-commit: clang-format not found; install clang-format $required_major or newer." >&2
+    exit 1
+fi
+if [[ ! $version =~ version\ ([0-9]+) ]] || ((BASH_REMATCH[1] < required_major)); then
+    echo "pre-commit: need clang-format $required_major or newer; found: $version" >&2
+    echo "Older versions reformat code that is already correctly formatted." >&2
+    exit 1
+fi
+
 reformatted=()
 while IFS= read -r file; do
     before=$(git show ":$file" | sha256sum)
