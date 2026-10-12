@@ -3,6 +3,7 @@
 #include "NoteEditor.h"
 #include "NoteHeader.h"
 #include "NoteTree.h"
+#include "StatusLabel.h"
 #include "Theme.h"
 
 #include <QAction>
@@ -99,7 +100,7 @@ Window::Window(
     , mEmptyMessage(new QLabel(QStringLiteral("Open a folder of Markdown notes to begin.")))
     , mEmptyState(createEmptyState())
     , mHeader(new NoteHeader)
-    , mStatus(new QLabel)
+    , mStatus(new StatusLabel)
 {
     setWindowTitle(QStringLiteral("Inkstow"));
     createActions();

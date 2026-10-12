@@ -19,10 +19,12 @@ constexpr QRgb kInk = qRgb(0x24, 0x21, 0x2b);
 constexpr QRgb kPaper = qRgb(0xfa, 0xf9, 0xfc);
 constexpr QRgb kSurface = qRgb(0xff, 0xff, 0xff);
 constexpr QRgb kSelection = qRgb(0xe7, 0xde, 0xf4);
-constexpr QRgb kMutedInk = qRgb(0x6f, 0x6a, 0x7a);       // Frontmatter.
-constexpr QRgb kLinkInk = qRgb(0x5b, 0x3f, 0x9e);        // Wikilinks.
-constexpr QRgb kCodeBackground = qRgb(0xf0, 0xed, 0xf5); // Inline code and code blocks.
-constexpr QRgb kUnsavedInk = kLinkInk;                   // The unsaved-changes indicator.
+constexpr QRgb kMutedInk = qRgb(0x6f, 0x6a, 0x7a);        // Frontmatter.
+constexpr QRgb kLinkInk = qRgb(0x5b, 0x3f, 0x9e);         // Wikilinks.
+constexpr QRgb kCodeBackground = qRgb(0xf0, 0xed, 0xf5);  // Inline code and code blocks.
+constexpr QRgb kUnsavedInk = kLinkInk;                    // The unsaved-changes indicator.
+constexpr QRgb kErrorInk = qRgb(0x9b, 0x22, 0x30);        // Error status text.
+constexpr QRgb kErrorBackground = qRgb(0xff, 0xeb, 0xed); // Error status surface.
 
 // Fonts.
 constexpr int kTitlePointSize = 14;

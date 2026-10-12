@@ -13,6 +13,7 @@
 class NoteEditor;
 class NoteHeader;
 class NoteTree;
+class StatusLabel;
 class QAction;
 class QLabel;
 class QLineEdit;
@@ -100,5 +101,5 @@ private:
     QWidget *mEmptyState; // Built from mOpenVault and mEmptyMessage, so declared after them.
     QWidget *mVaultView = nullptr;
     NoteHeader *mHeader;
-    QLabel *mStatus;
+    StatusLabel *mStatus;
 };

@@ -810,6 +810,7 @@ int main(int argc, char **argv)
         CHECK(waitFor([&] { return editor->toPlainText() == QStringLiteral("outside edit"); }));
         CHECK(!save->isEnabled());
         CHECK(status->text().contains(QStringLiteral("Reloaded")));
+        CHECK(status->palette().color(QPalette::WindowText) != QColor(theme::kErrorInk));
 
         // Atomic replacement, as many editors save, drops the file from the
         // watcher; later changes must still be noticed.
@@ -920,6 +921,8 @@ int main(int argc, char **argv)
         newPath->setText(QStringLiteral("../escape"));
         create->click();
         CHECK(status->text().startsWith(QStringLiteral("Error")));
+        CHECK(status->palette().color(QPalette::WindowText) == QColor(theme::kErrorInk));
+        CHECK(status->palette().color(QPalette::Window) == QColor(theme::kErrorBackground));
         CHECK(newPath->text() == QStringLiteral("../escape"));
 
         // Rename/move asks for a destination and explicitly confirms link updates.
