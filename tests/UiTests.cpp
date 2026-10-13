@@ -192,9 +192,10 @@ static void testReadableEditorText()
     const QByteArray saved = readFile(QDir(dir.path()).filePath(QStringLiteral("note.md")));
     if (saved != "first\nsecond\nthird\nfourth\nfifth")
         qWarning(
-            "[DEBUG-clipboard] saved bytes: %s; editor bytes: %s",
+            "[DEBUG-clipboard] saved bytes: %s; editor bytes: %s; status: %s",
             saved.toHex().constData(),
-            editor->toPlainText().toUtf8().toHex().constData());
+            editor->toPlainText().toUtf8().toHex().constData(),
+            window.findChild<QLabel *>(QStringLiteral("status"))->text().toUtf8().constData());
     CHECK(saved == "first\nsecond\nthird\nfourth\nfifth");
 }
 

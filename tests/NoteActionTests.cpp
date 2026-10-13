@@ -182,10 +182,11 @@ void testShortcuts()
     const QByteArray saved = readFile(vault.filePath(QStringLiteral("a.md")));
     if (saved != "see [[b]] more")
         qWarning(
-            "[DEBUG-shortcut] saved bytes: %s; editor bytes: %s; enabled: %d",
+            "[DEBUG-shortcut] saved bytes: %s; editor bytes: %s; enabled: %d; status: %s",
             saved.toHex().constData(),
             editor->toPlainText().toUtf8().toHex().constData(),
-            vault.action(QStringLiteral("saveAction"))->isEnabled());
+            vault.action(QStringLiteral("saveAction"))->isEnabled(),
+            vault.find<QLabel>(QStringLiteral("status"))->text().toUtf8().constData());
     CHECK(saved == "see [[b]] more");
     CHECK(!vault.action(QStringLiteral("saveAction"))->isEnabled());
 
@@ -274,6 +275,10 @@ void testHeader()
     CHECK(unsaved->isVisibleTo(&window));
     CHECK(enabled() == std::tuple(true, false, false));
     save->trigger();
+    if (unsaved->isVisibleTo(&window))
+        qWarning(
+            "[DEBUG-header] save status: %s",
+            vault.find<QLabel>(QStringLiteral("status"))->text().toUtf8().constData());
     CHECK(!unsaved->isVisibleTo(&window));
     CHECK(enabled() == std::tuple(false, true, true));
     editor->insertPlainText(QStringLiteral("y"));
