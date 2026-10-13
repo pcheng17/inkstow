@@ -662,6 +662,166 @@ static void checkPromptAppearance(QWidget *bar, const QString &message)
     }
 }
 
+static void testCancelQuitKeepsEdits(int key = 0)
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    openSingleNote(window, dir, "original");
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    CHECK(editor);
+    editor->setPlainText(QStringLiteral("draft"));
+    bool offeredCancel = false;
+    QTimer::singleShot(0, [&] {
+        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!prompt) return;
+        auto *cancel = prompt->findChild<QPushButton *>(QStringLiteral("cancelQuit"));
+        offeredCancel = prompt->objectName() == QStringLiteral("quitPrompt") &&
+                        prompt->accessibleName() == QStringLiteral("Unsaved changes") && cancel &&
+                        cancel->accessibleName() == QStringLiteral("Cancel");
+        if (key)
+            pressKey(prompt, key);
+        else if (cancel)
+            cancel->click();
+        else
+            prompt->reject();
+    });
+    window.close();
+    CHECK(offeredCancel);
+    CHECK(window.isVisible());
+    CHECK(editor->toPlainText() == QStringLiteral("draft"));
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "original");
+}
+
+static void testDiscardQuitLeavesDiskUntouched()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    openSingleNote(window, dir, "original");
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    CHECK(editor);
+    editor->setPlainText(QStringLiteral("draft"));
+    bool offeredDiscard = false;
+    bool safeDefault = false;
+    QTimer::singleShot(0, [&] {
+        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!prompt) return;
+        auto *discard = prompt->findChild<QPushButton *>(QStringLiteral("discardAndQuit"));
+        offeredDiscard = discard && discard->accessibleName() == QStringLiteral("Discard and quit");
+        safeDefault = prompt->defaultButton() != discard && prompt->escapeButton() != discard;
+        if (discard)
+            discard->click();
+        else
+            prompt->reject();
+    });
+    window.close();
+    CHECK(offeredDiscard && safeDefault);
+    CHECK(!window.isVisible());
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "original");
+}
+
+static void testSaveQuit(bool conflict)
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    openSingleNote(window, dir, "original");
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    auto *conflictBar = window.findChild<QWidget *>(QStringLiteral("conflictBar"));
+    CHECK(editor && status && conflictBar);
+    editor->setPlainText(QStringLiteral("draft"));
+    const QString note = dir.filePath(QStringLiteral("note.md"));
+    if (conflict) writeFile(note, "external edit");
+    bool offeredSave = false;
+    QTimer::singleShot(0, [&] {
+        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!prompt) return;
+        auto *save = prompt->findChild<QPushButton *>(QStringLiteral("saveAndQuit"));
+        offeredSave = save && save->accessibleName() == QStringLiteral("Save and quit");
+        if (save)
+            save->click();
+        else
+            prompt->reject();
+    });
+    window.close();
+    CHECK(offeredSave);
+    CHECK(window.isVisible() == conflict);
+    CHECK(readFile(note) == (conflict ? "external edit" : "draft"));
+    if (conflict) {
+        CHECK(editor->toPlainText() == QStringLiteral("draft"));
+        CHECK(status->text().contains(QStringLiteral("Save conflict")));
+        CHECK(!conflictBar->isHidden());
+    }
+}
+
+static void testSaveQuitAfterNoteRemoved()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    openSingleNote(window, dir, "original");
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    auto *conflictBar = window.findChild<QWidget *>(QStringLiteral("conflictBar"));
+    CHECK(editor && status && conflictBar);
+    editor->setPlainText(QStringLiteral("draft"));
+    const QString note = dir.filePath(QStringLiteral("note.md"));
+    CHECK(QFile::remove(note));
+    QTimer::singleShot(0, [&] {
+        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!prompt) return;
+        auto *save = prompt->findChild<QPushButton *>(QStringLiteral("saveAndQuit"));
+        if (save)
+            save->click();
+        else
+            prompt->reject();
+    });
+    window.close();
+    CHECK(window.isVisible());
+    CHECK(editor->toPlainText() == QStringLiteral("draft"));
+    CHECK(!QFile::exists(note));
+    CHECK(status->text().startsWith(QStringLiteral("Error:")));
+    CHECK(!conflictBar->isHidden());
+}
+
+static void testCleanQuitNeedsNoPrompt()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    openSingleNote(window, dir, "original");
+    CHECK(window.close());
+    CHECK(!window.isVisible());
+    CHECK(!QApplication::activeModalWidget());
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -712,6 +872,14 @@ int main(int argc, char **argv)
             std::make_shared<MemorySettings>());
         testCurrentStyleKept(window);
         testReopeningLastVault();
+        testCancelQuitKeepsEdits();
+        testCancelQuitKeepsEdits(Qt::Key_Return);
+        testCancelQuitKeepsEdits(Qt::Key_Escape);
+        testDiscardQuitLeavesDiskUntouched();
+        testSaveQuit(false);
+        testSaveQuit(true);
+        testSaveQuitAfterNoteRemoved();
+        testCleanQuitNeedsNoPrompt();
         testMissingLastVault();
         testUnrememberedVaultIsReported();
         testNoteTree();

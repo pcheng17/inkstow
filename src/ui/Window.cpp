@@ -652,12 +652,34 @@ void Window::changeEvent(QEvent *event)
 void Window::closeEvent(QCloseEvent *event)
 {
     if (mSession.dirty()) {
-        QMessageBox::warning(
-            this,
-            QStringLiteral("Unsaved changes"),
-            QStringLiteral("Save the current note before closing."));
-        event->ignore();
-        return;
+        QMessageBox prompt(this);
+        prompt.setObjectName(QStringLiteral("quitPrompt"));
+        prompt.setAccessibleName(QStringLiteral("Unsaved changes"));
+        prompt.setWindowTitle(QStringLiteral("Unsaved changes"));
+        prompt.setText(QStringLiteral("What would you like to do with your unsaved edits?"));
+        auto *cancel = prompt.addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
+        cancel->setObjectName(QStringLiteral("cancelQuit"));
+        cancel->setAccessibleName(QStringLiteral("Cancel"));
+        auto *discard =
+            prompt.addButton(QStringLiteral("Discard and quit"), QMessageBox::DestructiveRole);
+        discard->setObjectName(QStringLiteral("discardAndQuit"));
+        discard->setAccessibleName(QStringLiteral("Discard and quit"));
+        auto *save = prompt.addButton(QStringLiteral("Save and quit"), QMessageBox::AcceptRole);
+        save->setObjectName(QStringLiteral("saveAndQuit"));
+        save->setAccessibleName(QStringLiteral("Save and quit"));
+        prompt.setDefaultButton(cancel);
+        prompt.setEscapeButton(cancel);
+        prompt.exec();
+        if (prompt.clickedButton() == save) {
+            saveNote();
+            if (mSession.dirty()) {
+                event->ignore();
+                return;
+            }
+        } else if (prompt.clickedButton() != discard) {
+            event->ignore();
+            return;
+        }
     }
     QMainWindow::closeEvent(event);
 }
