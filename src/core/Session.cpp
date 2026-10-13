@@ -19,9 +19,12 @@ QString normalizedLines(const QString &text, QString *lineEnding)
         if (ch == u'\r' || ch == u'\n') {
             const bool crlf = ch == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n';
             if (!found) {
-                *lineEnding = crlf          ? QStringLiteral("\r\n")
-                              : ch == u'\r' ? QStringLiteral("\r")
-                                            : QStringLiteral("\n");
+                if (crlf)
+                    *lineEnding = QStringLiteral("\r\n");
+                else if (ch == u'\r')
+                    *lineEnding = QStringLiteral("\r");
+                else
+                    *lineEnding = QStringLiteral("\n");
                 found = true;
             }
             result += u'\n';
