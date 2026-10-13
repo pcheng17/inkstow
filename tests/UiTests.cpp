@@ -74,6 +74,51 @@ static void checkLastVaultNotReopened(const QString &lastVault)
     CHECK(window.windowTitle() == QStringLiteral("Inkstow"));
 }
 
+static void testEditorSavesFixtureBytes()
+{
+    for (const auto &name :
+         {"crlf.md", "cr.md", "nbsp.md", "line-separator.md", "paragraph-separator.md", "mixed.md"})
+    {
+        QTemporaryDir dir;
+        CHECK(dir.isValid());
+        const QString path = QString::fromUtf8(name);
+        const QByteArray original = readFile(QDir(QString::fromUtf8(BYTE_VAULT)).filePath(path));
+        const QString note = dir.filePath(path);
+        writeFile(note, original);
+        Window window(
+            refuseTrash,
+            {},
+            [&](QWidget *) { return std::optional(dir.path()); },
+            std::make_shared<MemorySettings>());
+        auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
+        auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
+        auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+        auto *save = window.findChild<QAction *>(QStringLiteral("saveAction"));
+        CHECK(open && notes && editor && save);
+        open->click();
+        openNote(notes, path);
+        CHECK(!save->isEnabled());
+        QTextCursor cursor = editor->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        cursor.insertText(QStringLiteral("!"));
+        CHECK(save->isEnabled());
+        save->trigger();
+        QByteArray expected = original + "!";
+        if (path == QStringLiteral("mixed.md"))
+            expected = "first\r\nsecond\r\nthird\r\nfourth\r\n!";
+        CHECK(readFile(note) == expected);
+        CHECK(!save->isEnabled());
+        if (path == QStringLiteral("paragraph-separator.md")) {
+            cursor.setPosition(0);
+            cursor.insertText(QStringLiteral("prefix "));
+            CHECK(save->isEnabled());
+            save->trigger();
+            CHECK(readFile(note) == "prefix " + expected);
+            CHECK(!save->isEnabled());
+        }
+    }
+}
+
 static void testMissingLastVault()
 {
     QTemporaryDir parent;
@@ -871,6 +916,7 @@ int main(int argc, char **argv)
             },
             std::make_shared<MemorySettings>());
         testCurrentStyleKept(window);
+        testEditorSavesFixtureBytes();
         testReopeningLastVault();
         testCancelQuitKeepsEdits();
         testCancelQuitKeepsEdits(Qt::Key_Return);

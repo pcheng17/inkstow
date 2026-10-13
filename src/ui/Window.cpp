@@ -180,7 +180,7 @@ Window::Window(
     connect(confirmDelete, &QPushButton::clicked, this, [this] { trashNote(); });
     connect(cancelDelete, &QPushButton::clicked, mDeleteBar, &QWidget::hide);
     connect(mEditor, &QTextEdit::textChanged, this, [this] {
-        mSession.setContent(mEditor->toPlainText());
+        mSession.setContent(mEditor->noteText());
         refresh();
     });
     // Watch vault folders for list changes and atomic replacements, which can
@@ -505,6 +505,7 @@ void Window::reloadFromDisk()
         QTextCursor cursor(mEditor->document());
         cursor.select(QTextCursor::Document);
         cursor.insertText(mSession.content());
+        mEditor->rememberParagraphSeparators(mSession.content());
     }
     mStatus->setText(QStringLiteral("Reloaded from disk"));
     refresh();

@@ -943,7 +943,7 @@ static void renameLinksRemainResolvable()
 static void savesFixtureBytesAfterEditing()
 {
     for (const auto &name :
-         {"crlf.md", "nbsp.md", "line-separator.md", "paragraph-separator.md", "mixed.md"})
+         {"crlf.md", "cr.md", "nbsp.md", "line-separator.md", "paragraph-separator.md", "mixed.md"})
     {
         QTemporaryDir dir;
         CHECK(dir.isValid());

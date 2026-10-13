@@ -23,11 +23,33 @@ NoteEditor::NoteEditor(std::function<void()> followLink)
     setBackgroundRole(QPalette::Base);
     setAutoFillBackground(true);
     connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this] { centreText(); });
+    connect(
+        document(),
+        &QTextDocument::contentsChange,
+        this,
+        [this](int position, int removed, int added) {
+            if (mParagraphSeparators.empty()) return;
+            const QString raw = document()->toRawText();
+            // Applying paragraph formatting also emits a whole-document
+            // contentsChange, without changing any separator positions.
+            if (raw == mPreviousRaw) return;
+            mPreviousRaw = raw;
+            for (auto &separator : mParagraphSeparators) {
+                if (separator >= position && separator < position + removed)
+                    separator = -1;
+                else if (separator >= position)
+                    separator += added - removed;
+            }
+            mParagraphSeparators.erase(
+                std::remove(mParagraphSeparators.begin(), mParagraphSeparators.end(), -1),
+                mParagraphSeparators.end());
+        });
 }
 
 void NoteEditor::setNoteText(const QString &text)
 {
     setPlainText(text);
+    rememberParagraphSeparators(text);
     // New paragraphs inherit the spacing from the one they are split from.
     QTextBlockFormat spacing;
     spacing.setLineHeight(theme::kEditorLineHeightPercent, QTextBlockFormat::ProportionalHeight);
@@ -36,6 +58,24 @@ void NoteEditor::setNoteText(const QString &text)
     document()->setUndoRedoEnabled(false);
     all.mergeBlockFormat(spacing);
     document()->setUndoRedoEnabled(true);
+}
+
+void NoteEditor::rememberParagraphSeparators(const QString &text)
+{
+    mParagraphSeparators.clear();
+    for (qsizetype position = 0; position < text.size(); ++position)
+        if (text[position] == QChar::ParagraphSeparator) mParagraphSeparators.push_back(position);
+    mPreviousRaw = mParagraphSeparators.empty() ? QString() : document()->toRawText();
+}
+
+QString NoteEditor::noteText() const
+{
+    QString text = document()->toRawText();
+    for (qsizetype position = 0; position < text.size(); ++position)
+        if (text[position] == QChar::ParagraphSeparator &&
+            !std::binary_search(mParagraphSeparators.begin(), mParagraphSeparators.end(), position))
+            text[position] = u'\n';
+    return text;
 }
 
 void NoteEditor::insertFromMimeData(const QMimeData *source)
