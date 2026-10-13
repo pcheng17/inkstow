@@ -660,11 +660,17 @@ void Window::closeEvent(QCloseEvent *event)
         auto *cancel = prompt.addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
         cancel->setObjectName(QStringLiteral("cancelQuit"));
         cancel->setAccessibleName(QStringLiteral("Cancel"));
+        auto *discard =
+            prompt.addButton(QStringLiteral("Discard and quit"), QMessageBox::DestructiveRole);
+        discard->setObjectName(QStringLiteral("discardAndQuit"));
+        discard->setAccessibleName(QStringLiteral("Discard and quit"));
         prompt.setDefaultButton(cancel);
         prompt.setEscapeButton(cancel);
         prompt.exec();
-        event->ignore();
-        return;
+        if (prompt.clickedButton() != discard) {
+            event->ignore();
+            return;
+        }
     }
     QMainWindow::closeEvent(event);
 }

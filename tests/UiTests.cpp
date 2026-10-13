@@ -694,6 +694,48 @@ static void testCancelQuitKeepsEdits()
     CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "original");
 }
 
+static void testDiscardQuitLeavesDiskUntouched()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    openSingleNote(window, dir, "original");
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    CHECK(editor);
+    editor->setPlainText(QStringLiteral("draft"));
+    bool offeredDiscard = false;
+    bool safeDefault = false;
+    QTimer::singleShot(0, [&] {
+        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!prompt) return;
+        auto *discard = prompt->findChild<QPushButton *>(QStringLiteral("discardAndQuit"));
+        offeredDiscard = discard && discard->accessibleName() == QStringLiteral("Discard and quit");
+        safeDefault = prompt->defaultButton() != discard && prompt->escapeButton() != discard;
+        if (discard)
+            discard->click();
+        else
+            prompt->reject();
+    });
+    window.close();
+    CHECK(offeredDiscard && safeDefault);
+    CHECK(!window.isVisible());
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "original");
+}
+
+static void testCleanQuitNeedsNoPrompt()
+{
+    Window window(refuseTrash, {}, {}, std::make_shared<MemorySettings>());
+    window.show();
+    CHECK(window.close());
+    CHECK(!window.isVisible());
+    CHECK(!QApplication::activeModalWidget());
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -745,6 +787,8 @@ int main(int argc, char **argv)
         testCurrentStyleKept(window);
         testReopeningLastVault();
         testCancelQuitKeepsEdits();
+        testDiscardQuitLeavesDiskUntouched();
+        testCleanQuitNeedsNoPrompt();
         testMissingLastVault();
         testUnrememberedVaultIsReported();
         testNoteTree();
