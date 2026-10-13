@@ -165,6 +165,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             $testResult = $LASTEXITCODE
             Get-Content build/release/Testing/Temporary/LastTest.log
+            & build/release/tests/Release/ui-tests.exe
+            Write-Output ("Standalone ui-tests exit code: 0x{0:X8}" -f ($LASTEXITCODE -band 0xffffffff))
             exit $testResult
           }
       - name: Bundle Qt DLLs and plugins
