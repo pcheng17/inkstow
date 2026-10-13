@@ -260,12 +260,18 @@ bool Vault::saveNote(
     replacement.setDirectWriteFallback(false);
     if (!replacement.open(QIODevice::WriteOnly)) {
         *error = replacement.errorString();
+        qWarning("[DEBUG-save] open: %s", qPrintable(*error));
         return false;
     }
-    if (!replacement.setPermissions(QFileInfo(*path).permissions()) ||
-        replacement.write(content) != content.size())
-    {
+    if (!replacement.setPermissions(QFileInfo(*path).permissions())) {
         *error = replacement.errorString();
+        qWarning("[DEBUG-save] permissions: %s", qPrintable(*error));
+        replacement.cancelWriting();
+        return false;
+    }
+    if (replacement.write(content) != content.size()) {
+        *error = replacement.errorString();
+        qWarning("[DEBUG-save] write: %s", qPrintable(*error));
         replacement.cancelWriting();
         return false;
     }
@@ -279,6 +285,7 @@ bool Vault::saveNote(
     }
     if (!replacement.commit()) {
         *error = replacement.errorString();
+        qWarning("[DEBUG-save] commit: %s", qPrintable(*error));
         return false;
     }
     return true;
