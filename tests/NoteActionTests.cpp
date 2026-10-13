@@ -399,14 +399,11 @@ void testCloseBlockedWhileUnsaved()
 
 void runNoteActionTests()
 {
-    if (qEnvironmentVariableIsSet("INKSTOW_HEADER_ONLY")) {
-        testHeader();
-        return;
-    }
     testActionsInMenuBar();
     testShortcuts();
     testCtrlClickFollowsLink();
     testHeader();
+    if (qEnvironmentVariableIsSet("INKSTOW_HEADER_ONLY")) return;
     testTreeContextMenu();
     testTreeContextMenuForUnopenableNote();
     testCloseBlockedWhileUnsaved();
