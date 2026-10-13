@@ -681,7 +681,9 @@ static void testCancelQuitKeepsEdits(int key = 0)
         auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
         if (!prompt) return;
         auto *cancel = prompt->findChild<QPushButton *>(QStringLiteral("cancelQuit"));
-        offeredCancel = cancel != nullptr;
+        offeredCancel = prompt->objectName() == QStringLiteral("quitPrompt") &&
+                        prompt->accessibleName() == QStringLiteral("Unsaved changes") && cancel &&
+                        cancel->accessibleName() == QStringLiteral("Cancel");
         if (key)
             pressKey(prompt, key);
         else if (cancel)
@@ -806,8 +808,15 @@ static void testSaveQuitAfterNoteRemoved()
 
 static void testCleanQuitNeedsNoPrompt()
 {
-    Window window(refuseTrash, {}, {}, std::make_shared<MemorySettings>());
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
     window.show();
+    openSingleNote(window, dir, "original");
     CHECK(window.close());
     CHECK(!window.isVisible());
     CHECK(!QApplication::activeModalWidget());
