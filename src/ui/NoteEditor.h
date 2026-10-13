@@ -3,7 +3,6 @@
 #include <QTextEdit>
 
 #include <functional>
-#include <vector>
 
 // Edits a note's raw Markdown as plain text, in the theme's font and line
 // spacing, with padding around the text and its width capped and centred.
@@ -20,7 +19,7 @@ public:
     // Replaces the text, clearing undo history.
     void setNoteText(const QString &text);
     // QTextDocument uses U+2029 for every paragraph break, including LF.
-    // Restore LF except for U+2029 separators retained from the loaded note.
+    // Restore LF except for separators tagged as literal U+2029.
     QString noteText() const;
     void rememberParagraphSeparators(const QString &text);
 
@@ -33,6 +32,4 @@ private:
     void centreText();
 
     std::function<void()> mFollowLink;
-    std::vector<qsizetype> mParagraphSeparators;
-    QString mPreviousRaw;
 };

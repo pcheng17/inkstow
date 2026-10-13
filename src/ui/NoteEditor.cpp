@@ -6,11 +6,19 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QScrollBar>
+#include <QTextBlock>
 #include <QTextBlockFormat>
 #include <QTextCursor>
 
 #include <algorithm>
 #include <utility>
+
+namespace
+{
+// Block char formats belong to the separator immediately before the block.
+// Unlike a parallel index list, they participate in QTextDocument undo/redo.
+constexpr int kLiteralParagraphSeparator = QTextFormat::UserProperty + 1;
+} // namespace
 
 NoteEditor::NoteEditor(std::function<void()> followLink)
     : mFollowLink(std::move(followLink))
@@ -23,58 +31,45 @@ NoteEditor::NoteEditor(std::function<void()> followLink)
     setBackgroundRole(QPalette::Base);
     setAutoFillBackground(true);
     connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this] { centreText(); });
-    connect(
-        document(),
-        &QTextDocument::contentsChange,
-        this,
-        [this](int position, int removed, int added) {
-            if (mParagraphSeparators.empty()) return;
-            const QString raw = document()->toRawText();
-            // Applying paragraph formatting also emits a whole-document
-            // contentsChange, without changing any separator positions.
-            if (raw == mPreviousRaw) return;
-            mPreviousRaw = raw;
-            for (auto &separator : mParagraphSeparators) {
-                if (separator >= position && separator < position + removed)
-                    separator = -1;
-                else if (separator >= position)
-                    separator += added - removed;
-            }
-            mParagraphSeparators.erase(
-                std::remove(mParagraphSeparators.begin(), mParagraphSeparators.end(), -1),
-                mParagraphSeparators.end());
-        });
 }
 
 void NoteEditor::setNoteText(const QString &text)
 {
     setPlainText(text);
+    document()->setUndoRedoEnabled(false);
     rememberParagraphSeparators(text);
     // New paragraphs inherit the spacing from the one they are split from.
     QTextBlockFormat spacing;
     spacing.setLineHeight(theme::kEditorLineHeightPercent, QTextBlockFormat::ProportionalHeight);
     QTextCursor all(document());
     all.select(QTextCursor::Document);
-    document()->setUndoRedoEnabled(false);
     all.mergeBlockFormat(spacing);
     document()->setUndoRedoEnabled(true);
 }
 
 void NoteEditor::rememberParagraphSeparators(const QString &text)
 {
-    mParagraphSeparators.clear();
-    for (qsizetype position = 0; position < text.size(); ++position)
-        if (text[position] == QChar::ParagraphSeparator) mParagraphSeparators.push_back(position);
-    mPreviousRaw = mParagraphSeparators.empty() ? QString() : document()->toRawText();
+    for (QTextBlock block = document()->begin().next(); block.isValid(); block = block.next()) {
+        const qsizetype position = block.position() - 1;
+        const bool literal = text[position] == QChar::ParagraphSeparator;
+        if (block.charFormat().property(kLiteralParagraphSeparator).toBool() == literal) continue;
+        QTextCursor separator(document());
+        separator.setPosition(static_cast<int>(position));
+        separator.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        QTextCharFormat format;
+        format.setProperty(kLiteralParagraphSeparator, literal);
+        separator.mergeCharFormat(format);
+    }
 }
 
 QString NoteEditor::noteText() const
 {
     QString text = document()->toRawText();
-    for (qsizetype position = 0; position < text.size(); ++position)
-        if (text[position] == QChar::ParagraphSeparator &&
-            !std::binary_search(mParagraphSeparators.begin(), mParagraphSeparators.end(), position))
+    for (QTextBlock block = document()->begin().next(); block.isValid(); block = block.next()) {
+        const qsizetype position = block.position() - 1;
+        if (!block.charFormat().property(kLiteralParagraphSeparator).toBool())
             text[position] = u'\n';
+    }
     return text;
 }
 

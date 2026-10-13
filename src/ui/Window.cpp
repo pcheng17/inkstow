@@ -504,8 +504,10 @@ void Window::reloadFromDisk()
         const QSignalBlocker block(mEditor);
         QTextCursor cursor(mEditor->document());
         cursor.select(QTextCursor::Document);
+        cursor.beginEditBlock();
         cursor.insertText(mSession.content());
         mEditor->rememberParagraphSeparators(mSession.content());
+        cursor.endEditBlock();
     }
     mStatus->setText(QStringLiteral("Reloaded from disk"));
     refresh();

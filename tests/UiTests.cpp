@@ -115,6 +115,40 @@ static void testEditorSavesFixtureBytes()
             save->trigger();
             CHECK(readFile(note) == "prefix " + expected);
             CHECK(!save->isEnabled());
+            QTextCursor separator = editor->textCursor();
+            separator.setPosition(12); // After "prefix first".
+            separator.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+            separator.removeSelectedText();
+            CHECK(save->isEnabled());
+            editor->undo();
+            CHECK(!save->isEnabled()); // Undo must restore the original U+2029.
+
+            cursor.movePosition(QTextCursor::End);
+            cursor.insertText(QStringLiteral(" again"));
+            CHECK(save->isEnabled());
+            writeFile(note, "prefix first\nword\nsecond\n!");
+            save->trigger(); // Report the external change while edits are dirty.
+            auto *reload = window.findChild<QPushButton *>(QStringLiteral("reloadFromDisk"));
+            CHECK(reload);
+            CHECK(!reload->isHidden());
+            reload->click();
+            CHECK(!save->isEnabled());
+            editor->undo(); // Restore the original local version, including U+2029.
+            CHECK(save->isEnabled());
+            save->trigger();
+            CHECK(readFile(note) == "prefix " + expected + " again");
+
+            // Undoing a reload must also restore LF, not retain the reloaded U+2029.
+            const QByteArray local = "first\nword\nsecond\n!";
+            editor->setPlainText(QString::fromUtf8(local));
+            writeFile(note, original + "!");
+            save->trigger();
+            CHECK(!reload->isHidden());
+            reload->click();
+            editor->undo();
+            CHECK(save->isEnabled());
+            save->trigger();
+            CHECK(readFile(note) == local);
         }
     }
 }
