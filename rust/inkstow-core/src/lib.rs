@@ -1,7 +1,9 @@
 //! UI-independent first slice of the Inkstow vault and editing session.
 //! Paths sent by a UI are always vault-relative, never absolute disk paths.
+mod links;
 mod merge;
 mod move_note;
+use links::link_at;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
@@ -24,6 +26,7 @@ pub enum Error {
     AmbiguousLink(String),
     Trash(String),
     PartialMove(String),
+    Attachment(String),
 }
 
 impl std::fmt::Display for Error {
@@ -62,6 +65,7 @@ impl std::fmt::Display for Error {
                 f,
                 "Move partially completed; some links may need repair: {message}"
             ),
+            Self::Attachment(path) => write!(f, "Could not open attachment: {path}"),
         }
     }
 }
@@ -237,6 +241,17 @@ fn decode(bytes: &[u8]) -> Result<(String, bool)> {
         .map_err(|_| Error::InvalidUtf8)?
         .to_owned();
     Ok((text, bom))
+}
+
+/// What following the link at the caret did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Followed {
+    NoLink,
+    Unresolved,
+    /// The target note is now selected.
+    Note,
+    /// Revalidated attachment: vault-relative name and canonical path to open.
+    Attachment(String, PathBuf),
 }
 
 #[derive(Debug, Default)]
@@ -435,6 +450,32 @@ impl Session {
             }
         }
         result
+    }
+    /// Follow the link around `caret` (UTF-16 offset in `text`) from the current note.
+    /// Unsaved edits block navigation to another note or attachment; a link to the
+    /// current note keeps its edits, as in the Qt app.
+    pub fn follow_link(&mut self, text: &str, caret: usize) -> Result<Followed> {
+        let vault = self.vault.as_ref().ok_or(Error::MissingNote)?;
+        let source = self.path.as_deref().ok_or(Error::MissingNote)?;
+        let Some(link) = link_at(text, caret) else {
+            return Ok(Followed::NoLink);
+        };
+        let Some(target) = vault.resolve_link(link, source)? else {
+            return Ok(Followed::Unresolved);
+        };
+        if target.to_ascii_lowercase().ends_with(".md") {
+            if target != source {
+                self.select(&target)?;
+            }
+            return Ok(Followed::Note);
+        }
+        if self.dirty() {
+            return Err(Error::Dirty);
+        }
+        let path = vault
+            .attachment_path(&target)
+            .map_err(|_| Error::Attachment(target.clone()))?;
+        Ok(Followed::Attachment(target, path))
     }
     pub fn create(&mut self, input: &str) -> Result<()> {
         if self.dirty() {

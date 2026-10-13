@@ -1,3 +1,4 @@
+mod follow;
 use inkstow_core::{DiskChange, Error, Session};
 use serde::Serialize;
 use std::sync::Mutex;
@@ -35,6 +36,11 @@ struct SyncResult {
 struct MoveResult {
     snapshot: Snapshot,
     warning: Option<String>,
+}
+#[derive(Serialize)]
+struct FollowResult {
+    snapshot: Snapshot,
+    message: String,
 }
 type AppState = Mutex<Session>;
 #[tauri::command]
@@ -122,6 +128,19 @@ fn move_note(
     })
 }
 #[tauri::command]
+fn follow_link(
+    content: String,
+    caret: usize,
+    state: State<'_, AppState>,
+) -> Result<FollowResult, String> {
+    let mut session = state.lock().map_err(|e| e.to_string())?;
+    let message = follow::follow(&mut session, &content, caret, follow::open_with_system)?;
+    Ok(FollowResult {
+        snapshot: snapshot(&session)?,
+        message,
+    })
+}
+#[tauri::command]
 fn edit(content: String, state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.set_content(content);
@@ -151,6 +170,7 @@ fn main() {
             create_note,
             trash_note,
             move_note,
+            follow_link,
             sync_disk,
             reload_from_disk,
             keep_mine,

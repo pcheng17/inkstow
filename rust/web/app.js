@@ -28,6 +28,7 @@ function render(next, replaceText = true) {
     $('editor').setSelectionRange(Math.min(cursor, next.content.length), Math.min(cursor, next.content.length));
   }
   $('save').disabled = !next.path || !next.dirty;
+  $('follow').disabled = !next.path;
   $('rename').disabled = !next.path || next.dirty;
   $('delete').disabled = !next.path || next.dirty;
   $('notes').replaceChildren(...next.notes.map((path) => {
@@ -62,8 +63,11 @@ function run(command, args = {}, replaceText = true) {
     try {
       const result = await invoke(command, args);
       const warning = command === 'move_note' ? result.warning : null;
-      render(command === 'move_note' ? result.snapshot : result, replaceText);
-      if (command !== 'edit') {
+      const snapshot = result.snapshot ?? result;
+      // Following a link within the same note must not replace newer typing.
+      render(snapshot, replaceText && (command !== 'follow_link' || snapshot.path !== current?.path));
+      if (command === 'follow_link') $('status').textContent = result.message;
+      else if (command !== 'edit') {
         showConflict(null, false);
         if (command === 'move_note') $('move-form').hidden = true;
         if (command === 'trash_note') $('delete-bar').hidden = true;
@@ -116,6 +120,7 @@ $('delete').addEventListener('click', () => {
 $('cancel-delete').addEventListener('click', () => { $('delete-bar').hidden = true; });
 $('confirm-delete').addEventListener('click', () => run('trash_note'));
 $('save').addEventListener('click', () => run('save', {}, false));
+$('follow').addEventListener('click', installFollowLink($('editor'), (caret) => run('follow_link', { content: $('editor').value, caret })));
 $('editor').addEventListener('input', () => run('edit', { content: $('editor').value }, false));
 for (const [id, command, replace] of [
   ['reload', 'reload_from_disk', true], ['keep', 'keep_mine', false],

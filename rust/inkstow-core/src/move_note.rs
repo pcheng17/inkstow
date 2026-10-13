@@ -1,7 +1,7 @@
 //! Guarded note move with conservative wikilink rewrites. No filesystem transaction:
 //! a failure after rename may leave the moved note and some updated backlinks.
+use crate::links::{basename, eq, link_regex, resolve, visible_files};
 use crate::{markdown, Error, Result, Vault};
-use regex::Regex;
 use std::fs;
 use std::path::Path;
 
@@ -15,110 +15,6 @@ fn safe_link_path(path: &str) -> bool {
     !path
         .chars()
         .any(|c| matches!(c, '#' | '|' | '[' | ']' | '\n' | '\r'))
-}
-fn basename(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
-}
-fn eq(a: &str, b: &str) -> bool {
-    a.to_lowercase() == b.to_lowercase()
-}
-
-// Share one discovery view across every backlink, including attachments and files
-// without extensions (which can shadow extensionless Markdown links).
-fn visible_files(root: &Path) -> Result<Vec<String>> {
-    let mut files = Vec::new();
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(folder) = pending.pop() {
-        for entry in fs::read_dir(folder)? {
-            let entry = entry?;
-            let name = entry.file_name();
-            let Some(name) = name.to_str() else {
-                continue;
-            };
-            if name.starts_with('.') {
-                continue;
-            }
-            let ty = entry.file_type()?;
-            if ty.is_symlink() {
-                continue;
-            }
-            let path = entry.path();
-            if ty.is_dir() {
-                pending.push(path);
-            } else if ty.is_file() {
-                files.push(
-                    path.strip_prefix(root)
-                        .expect("descendant")
-                        .to_string_lossy()
-                        .replace('\\', "/"),
-                );
-            }
-        }
-    }
-    files.sort();
-    Ok(files)
-}
-fn resolve(link: &str, source: &str, files: &[String]) -> Option<String> {
-    let path = link.split('|').next()?.split('#').next()?;
-    let root_only = path.starts_with('/');
-    let path = if root_only { &path[1..] } else { path };
-    if path.is_empty()
-        || path.contains('\\')
-        || path.split('/').any(|p| p.is_empty() || p.starts_with('.'))
-    {
-        return None;
-    }
-    let spellings = if path.to_ascii_lowercase().ends_with(".md") {
-        vec![path.to_owned()]
-    } else {
-        vec![path.to_owned(), format!("{path}.md")]
-    };
-    let source_folder = source.rsplit_once('/').map_or("", |(folder, _)| folder);
-    let nearby = |spelling: &str| {
-        if source_folder.is_empty() {
-            spelling.to_owned()
-        } else {
-            format!("{source_folder}/{spelling}")
-        }
-    };
-    for spelling in &spellings {
-        if !root_only && files.contains(&nearby(spelling)) {
-            return Some(nearby(spelling));
-        }
-        if files.contains(spelling) {
-            return Some(spelling.clone());
-        }
-    }
-    if path.contains('/') {
-        for spelling in &spellings {
-            if !root_only {
-                if let Some(file) = files.iter().find(|f| eq(f, &nearby(spelling))) {
-                    return Some(file.clone());
-                }
-            }
-            if let Some(file) = files.iter().find(|f| eq(f, spelling)) {
-                return Some(file.clone());
-            }
-        }
-        return None;
-    }
-    if root_only {
-        return None;
-    }
-    for spelling in &spellings {
-        let mut matches: Vec<_> = files
-            .iter()
-            .filter(|file| eq(basename(file), spelling))
-            .collect();
-        matches.sort_by_key(|file| {
-            let near = source_folder.is_empty() || file.starts_with(&format!("{source_folder}/"));
-            (!near, file.chars().count(), *file)
-        });
-        if let Some(file) = matches.first() {
-            return Some((*file).clone());
-        }
-    }
-    None
 }
 fn shadowed(root: &Path, link_path: &str) -> Result<bool> {
     let path = root.join(link_path);
@@ -192,7 +88,7 @@ impl Vault {
                 return Err(Error::UnsafeLink);
             }
             let notes = self.list()?.0;
-            let links = Regex::new(r"\[\[([^\[\]\n]+)\]\]").expect("static regex");
+            let links = link_regex();
             let old_name = &basename(from)[..basename(from).len() - 3];
             let new_name = &basename(to)[..basename(to).len() - 3];
             for note in notes {

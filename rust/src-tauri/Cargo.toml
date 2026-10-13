@@ -11,3 +11,6 @@ tauri-build = { version = "2", features = [] }
 inkstow-core = { path = "../inkstow-core" }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
