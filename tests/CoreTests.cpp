@@ -192,10 +192,11 @@ static void retriesLockedWindowsDestination()
     writeFile(path, "expected");
     const HANDLE changing = lockWithoutDelete(path);
     CHECK(changing != INVALID_HANDLE_VALUE);
+    // Write before unlocking so no retry can land between the unlock and the write.
     std::thread change([changing, path] {
         std::this_thread::sleep_for(std::chrono::milliseconds(400));
-        CloseHandle(changing);
         writeFile(path, "external");
+        CloseHandle(changing);
     });
     const bool overwritten = vault->saveNote(QStringLiteral("note.md"), "expected", "mine", &error);
     change.join();
