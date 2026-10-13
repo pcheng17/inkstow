@@ -179,7 +179,14 @@ void testShortcuts()
     moveCursorTo(editor, static_cast<int>(editor->toPlainText().size()));
     QTest::keyClicks(editor, QStringLiteral(" more"));
     pressShortcut(editor, QKeySequence::Save);
-    CHECK(readFile(vault.filePath(QStringLiteral("a.md"))) == "see [[b]] more");
+    const QByteArray saved = readFile(vault.filePath(QStringLiteral("a.md")));
+    if (saved != "see [[b]] more")
+        qWarning(
+            "[DEBUG-shortcut] saved bytes: %s; editor bytes: %s; enabled: %d",
+            saved.toHex().constData(),
+            editor->toPlainText().toUtf8().toHex().constData(),
+            vault.action(QStringLiteral("saveAction"))->isEnabled());
+    CHECK(saved == "see [[b]] more");
     CHECK(!vault.action(QStringLiteral("saveAction"))->isEnabled());
 
     moveCursorTo(editor, 6);
