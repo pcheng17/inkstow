@@ -47,7 +47,7 @@ jobs:
       - name: Build app and tests
         run: cmake --build --preset release --config Release --target inkstow unit-tests ui-tests --parallel 2
       - name: Test
-        run: ctest --preset release -C Release
+        run: ctest --preset release -C Release --output-on-failure --verbose
 
   formatting:
     runs-on: ubuntu-24.04
