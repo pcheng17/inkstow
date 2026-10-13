@@ -827,6 +827,10 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     try {
         configureLightTheme(app);
+        if (qEnvironmentVariableIsSet("INKSTOW_HEADER_ONLY")) {
+            runNoteActionTests();
+            return 0;
+        }
         CHECK(app.palette().color(QPalette::Window) == QColor(QStringLiteral("#faf9fc")));
         QTemporaryDir probeDir;
         CHECK(probeDir.isValid());

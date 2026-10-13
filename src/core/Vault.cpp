@@ -288,6 +288,15 @@ bool Vault::saveNote(
         }
         if (replacement.commit()) return true;
         *error = replacement.errorString();
+#ifdef Q_OS_WIN
+        qWarning(
+            "[DEBUG-save-denial] attempt=%d error=%d destinationExists=%d writable=%d: %s",
+            attempt + 1,
+            static_cast<int>(replacement.error()),
+            QFile::exists(*path),
+            QFileInfo(*path).isWritable(),
+            qPrintable(*error));
+#endif
         if (attempt + 1 == kMaxAttempts || (replacement.error() != QFileDevice::PermissionsError &&
                                             replacement.error() != QFileDevice::RenameError))
             return false;
