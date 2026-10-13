@@ -96,7 +96,8 @@ jobs:
           test -f dist/AppDir/usr/plugins/platforms/libqxcb.so
           test -f dist/AppDir/usr/lib/libQt6Widgets.so.6
           # Inkstow loads no images, so the format plugins are dead weight.
-          rm -rf dist/AppDir/usr/plugins/imageformats
+          rm -rf dist/AppDir/usr/plugins/imageformats dist/AppDir/usr/lib/libjpeg.so.8 \
+            dist/AppDir/usr/share/doc/libjpeg-turbo8
           tar -czf artifacts/inkstow-${{ needs.validate.outputs.tag }}-linux-x86_64.tar.gz \
             -C dist --transform='s/^AppDir/inkstow/' AppDir
       - uses: actions/upload-artifact@v4
@@ -133,7 +134,8 @@ jobs:
           mkdir -p artifacts dist
           app=build/release/Inkstow.app
           "$QT_ROOT_DIR/bin/macdeployqt" "$app"
-          rm -rf "$app/Contents/PlugIns/imageformats"
+          rm -rf "$app/Contents/PlugIns/imageformats" "$app/Contents/PlugIns/iconengines" \
+            "$app/Contents/Frameworks/QtSvg.framework"
           # Official Qt frameworks are universal; keep only the arm64 slice and re-sign.
           ditto --arch arm64 "$app" dist/Inkstow.app
           codesign --force --deep --sign - dist/Inkstow.app
@@ -141,7 +143,8 @@ jobs:
           test -d dist/Inkstow.app/Contents/Frameworks/QtWidgets.framework
           test -f dist/Inkstow.app/Contents/PlugIns/platforms/libqcocoa.dylib
           # Missing libraries or plugins abort at startup, so check the bundle launches.
-          dist/Inkstow.app/Contents/MacOS/Inkstow &
+          # Unset the job's Qt plugin path so plugins load only from the bundle.
+          env -u QT_PLUGIN_PATH dist/Inkstow.app/Contents/MacOS/Inkstow &
           pid=$!
           sleep 5
           kill -0 "$pid" || { echo 'Bundled app exited at startup.' >&2; exit 1; }
@@ -191,10 +194,15 @@ jobs:
             --dir dist/inkstow dist/inkstow/inkstow.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path dist/inkstow/platforms/qwindows.dll)) { throw 'Missing Qt Windows platform plugin' }
-          # Missing DLLs or plugins abort at startup, so check the bundle launches.
+          # Missing DLLs or plugins stop the window from appearing, so check the bundle
+          # opens one without the job's Qt install on PATH or the plugin path.
+          $env:QT_PLUGIN_PATH = $null
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
           $app = Start-Process dist/inkstow/inkstow.exe -PassThru
           Start-Sleep -Seconds 5
+          $app.Refresh()
           if ($app.HasExited) { throw "Bundled app exited at startup with code $($app.ExitCode)" }
+          if ($app.MainWindowHandle -eq 0) { throw 'Bundled app started but showed no window' }
           Stop-Process -Id $app.Id
           Compress-Archive -Path dist/inkstow -DestinationPath "artifacts/inkstow-${{ needs.validate.outputs.tag }}-windows-x86_64.zip"
       - uses: actions/upload-artifact@v4
