@@ -2,7 +2,8 @@ add_executable(core-tests EXCLUDE_FROM_ALL CoreTests.cpp)
 target_link_libraries(core-tests PRIVATE core inkstow-warnings)
 target_compile_definitions(core-tests
                            PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample"
-                                   LINKS_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/links")
+                                   LINKS_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/links"
+                                   BYTE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/byte-fidelity")
 add_test(NAME core-tests COMMAND core-tests)
 
 add_executable(highlighter-tests EXCLUDE_FROM_ALL HighlighterTests.cpp
@@ -30,5 +31,6 @@ add_executable(ui-tests EXCLUDE_FROM_ALL UiTests.cpp NoteActionTests.cpp
                         ${PROJECT_SOURCE_DIR}/src/ui/Window.cpp)
 target_include_directories(ui-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/ui)
 target_link_libraries(ui-tests PRIVATE core Qt6::Widgets Qt6::Test inkstow-warnings)
+target_compile_definitions(ui-tests PRIVATE BYTE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/byte-fidelity")
 add_test(NAME ui-tests COMMAND ui-tests)
 set_tests_properties(ui-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

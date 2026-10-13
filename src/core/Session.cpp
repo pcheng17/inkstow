@@ -9,6 +9,30 @@
 
 namespace
 {
+QString normalizedLines(const QString &text, QString *lineEnding)
+{
+    QString result;
+    result.reserve(text.size());
+    bool found = false;
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        const QChar ch = text[i];
+        if (ch == u'\r' || ch == u'\n') {
+            const bool crlf = ch == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n';
+            if (!found) {
+                *lineEnding = crlf          ? QStringLiteral("\r\n")
+                              : ch == u'\r' ? QStringLiteral("\r")
+                                            : QStringLiteral("\n");
+                found = true;
+            }
+            result += u'\n';
+            if (crlf) ++i;
+        } else {
+            result += ch;
+        }
+    }
+    return result;
+}
+
 struct Change
 {
     qsizetype mStart;
@@ -195,8 +219,7 @@ bool Session::write(const QByteArray &expected, QString *error)
 {
     const Vault *vault = requireNote(error);
     if (!vault) return false;
-    const QByteArray bytes =
-        (mHasBom ? QByteArray::fromHex("efbbbf") : QByteArray()) + mContent.toUtf8();
+    const QByteArray bytes = encodedContent();
     if (!vault->saveNote(mPath, expected, bytes, error)) return false;
     mSavedContent = mContent;
     mSavedBytes = bytes;
@@ -269,9 +292,12 @@ bool Session::mergeOutsideChanges(QString *error)
         *error = QStringLiteral("Note is too large for the line merge; edits are unchanged.");
         return false;
     }
+    QString lineEnding = QStringLiteral("\n");
+    outside = normalizedLines(outside, &lineEnding);
     const QString merged = threeWayMerge(mSavedContent, mContent, outside);
     mSavedBytes = current;
     mSavedContent = outside;
+    mLineEnding = lineEnding;
     mHasBom = current.startsWith("\xEF\xBB\xBF");
     mContent = merged;
     mConflictBytes.reset();
@@ -287,8 +313,7 @@ bool Session::saveAsNewNote(QString *error)
         *error = QStringLiteral("Note still exists; Save as new note cannot replace it.");
         return false;
     }
-    const QByteArray bytes =
-        (mHasBom ? QByteArray::fromHex("efbbbf") : QByteArray()) + mContent.toUtf8();
+    const QByteArray bytes = encodedContent();
     if (!vault->createNoteWithContent(mPath, bytes, error)) return false;
     mSavedContent = mContent;
     mSavedBytes = bytes;
@@ -395,6 +420,7 @@ void Session::clearNote()
     mSavedBytes.clear();
     mConflictBytes.reset();
     mHasBom = false;
+    mLineEnding = QStringLiteral("\n");
 }
 
 bool Session::requireClean(QString *error) const
@@ -428,12 +454,21 @@ bool Session::decode(const QByteArray &bytes, QString *text, QString *error)
     return true;
 }
 
+QByteArray Session::encodedContent() const
+{
+    if (mContent == mSavedContent) return mSavedBytes;
+    QString text = mContent;
+    text.replace(QStringLiteral("\n"), mLineEnding);
+    return (mHasBom ? QByteArray::fromHex("efbbbf") : QByteArray()) + text.toUtf8();
+}
+
 void Session::load(const QString &path, const QByteArray &bytes, const QString &text)
 {
     mPath = path;
     mHasBom = bytes.startsWith("\xEF\xBB\xBF");
-    mContent = text;
-    mSavedContent = text;
+    mLineEnding = QStringLiteral("\n");
+    mContent = normalizedLines(text, &mLineEnding);
+    mSavedContent = mContent;
     mSavedBytes = bytes;
     mConflictBytes.reset();
 }

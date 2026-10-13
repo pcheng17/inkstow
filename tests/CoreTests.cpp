@@ -940,11 +940,42 @@ static void renameLinksRemainResolvable()
     CHECK(!QFile::exists(dir.filePath(QStringLiteral("Double.md.md"))));
 }
 
+static void savesFixtureBytesAfterEditing()
+{
+    for (const auto &name :
+         {"crlf.md", "nbsp.md", "line-separator.md", "paragraph-separator.md", "mixed.md"})
+    {
+        QTemporaryDir dir;
+        CHECK(dir.isValid());
+        const QString path = QString::fromUtf8(name);
+        const QByteArray original = readFile(QDir(QString::fromUtf8(BYTE_VAULT)).filePath(path));
+        const QString note = dir.filePath(path);
+        writeFile(note, original);
+        Session session;
+        QString error;
+        CHECK(session.openVault(dir.path(), &error));
+        CHECK(session.selectNote(path, &error));
+        CHECK(!session.dirty());
+        CHECK(session.save(&error));
+        CHECK(readFile(note) == original);
+        CHECK(!session.dirty());
+        session.setContent(session.content() + QStringLiteral("!"));
+        CHECK(session.dirty());
+        CHECK(session.save(&error));
+        QByteArray expected = original + "!";
+        if (path == QStringLiteral("mixed.md"))
+            expected = "first\r\nsecond\r\nthird\r\nfourth\r\n!";
+        CHECK(readFile(note) == expected);
+        CHECK(!session.dirty());
+    }
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     try {
         fixtureDiscovery();
+        savesFixtureBytesAfterEditing();
         resolvesFixtureLinks();
         savesAndRejectsConflicts();
 #ifdef Q_OS_WIN

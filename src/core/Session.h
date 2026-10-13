@@ -79,6 +79,7 @@ private:
     bool write(const QByteArray &expected, QString *error);
     static bool decode(const QByteArray &bytes, QString *text, QString *error);
     void load(const QString &path, const QByteArray &bytes, const QString &text);
+    QByteArray encodedContent() const;
 
     TrashFunction mTrash;
     std::optional<Vault> mVault;
@@ -90,4 +91,5 @@ private:
     QByteArray mSavedBytes;
     std::optional<QByteArray> mConflictBytes;
     bool mHasBom = false;
+    QString mLineEnding = QStringLiteral("\n");
 };
