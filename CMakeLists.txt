@@ -25,6 +25,9 @@ add_executable(inkstow src/main.cpp src/ui/MarkdownHighlighter.cpp src/ui/NoteEd
                        src/ui/Theme.cpp src/ui/Window.cpp)
 target_include_directories(inkstow PRIVATE src/ui)
 target_link_libraries(inkstow PRIVATE core Qt6::Widgets inkstow-warnings)
+if(APPLE)
+  set_target_properties(inkstow PROPERTIES MACOSX_BUNDLE TRUE OUTPUT_NAME Inkstow)
+endif()
 
 include(CTest)
 if(BUILD_TESTING)
