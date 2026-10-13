@@ -95,9 +95,10 @@ jobs:
           test -x dist/AppDir/AppRun
           test -f dist/AppDir/usr/plugins/platforms/libqxcb.so
           test -f dist/AppDir/usr/lib/libQt6Widgets.so.6
-          # Inkstow loads no images, so the format plugins are dead weight.
-          rm -rf dist/AppDir/usr/plugins/imageformats dist/AppDir/usr/lib/libjpeg.so.8 \
-            dist/AppDir/usr/share/doc/libjpeg-turbo8
+          # Ship JPEG and GIF; PNG and BMP are built into QtGui.
+          rm -f dist/AppDir/usr/plugins/imageformats/libqico.so
+          test -f dist/AppDir/usr/plugins/imageformats/libqjpeg.so
+          test -f dist/AppDir/usr/plugins/imageformats/libqgif.so
           tar -czf artifacts/inkstow-${{ needs.validate.outputs.tag }}-linux-x86_64.tar.gz \
             -C dist --transform='s/^AppDir/inkstow/' AppDir
       - uses: actions/upload-artifact@v4
@@ -134,14 +135,18 @@ jobs:
           mkdir -p artifacts dist
           app=build/release/Inkstow.app
           "$QT_ROOT_DIR/bin/macdeployqt" "$app"
-          rm -rf "$app/Contents/PlugIns/imageformats" "$app/Contents/PlugIns/iconengines" \
-            "$app/Contents/Frameworks/QtSvg.framework"
+          # Ship JPEG and GIF; PNG and BMP are built into QtGui.
+          find "$app/Contents/PlugIns/imageformats" -type f \
+            ! -name libqjpeg.dylib ! -name libqgif.dylib -delete
+          rm -rf "$app/Contents/PlugIns/iconengines" "$app/Contents/Frameworks/QtSvg.framework"
           # Official Qt frameworks are universal; keep only the arm64 slice and re-sign.
           ditto --arch arm64 "$app" dist/Inkstow.app
           codesign --force --deep --sign - dist/Inkstow.app
           codesign --verify --deep --strict dist/Inkstow.app
           test -d dist/Inkstow.app/Contents/Frameworks/QtWidgets.framework
           test -f dist/Inkstow.app/Contents/PlugIns/platforms/libqcocoa.dylib
+          test -f dist/Inkstow.app/Contents/PlugIns/imageformats/libqjpeg.dylib
+          test -f dist/Inkstow.app/Contents/PlugIns/imageformats/libqgif.dylib
           # Missing libraries or plugins abort at startup, so check the bundle launches.
           # Unset the job's Qt plugin path so plugins load only from the bundle.
           env -u QT_PLUGIN_PATH dist/Inkstow.app/Contents/MacOS/Inkstow &
@@ -187,13 +192,16 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force artifacts, dist/inkstow | Out-Null
           Copy-Item build/release/Release/inkstow.exe dist/inkstow/
-          # A Widgets app needs no software OpenGL, shader compiler, image formats,
-          # SVG icons, or the networking plugins that would pull in Qt6Network.
+          # A Widgets app needs no software OpenGL, shader compiler, SVG, or the
+          # networking plugins that would pull in Qt6Network. Ship JPEG and GIF;
+          # PNG and BMP are built into QtGui.
           & windeployqt --release --no-translations --no-opengl-sw --no-system-d3d-compiler `
-            --skip-plugin-types imageformats,iconengines,tls,networkinformation,generic `
-            --dir dist/inkstow dist/inkstow/inkstow.exe
+            --skip-plugin-types iconengines,tls,networkinformation,generic `
+            --exclude-plugins qico,qsvg --dir dist/inkstow dist/inkstow/inkstow.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path dist/inkstow/platforms/qwindows.dll)) { throw 'Missing Qt Windows platform plugin' }
+          foreach ($plugin in 'platforms/qwindows.dll', 'imageformats/qjpeg.dll', 'imageformats/qgif.dll') {
+            if (-not (Test-Path "dist/inkstow/$plugin")) { throw "Missing Qt plugin $plugin" }
+          }
           # Missing DLLs or plugins stop the window from appearing, so check the bundle
           # opens one without the job's Qt install on PATH or the plugin path.
           $env:QT_PLUGIN_PATH = $null
