@@ -662,6 +662,38 @@ static void checkPromptAppearance(QWidget *bar, const QString &message)
     }
 }
 
+static void testCancelQuitKeepsEdits()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget *) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    window.show();
+    openSingleNote(window, dir, "original");
+    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    CHECK(editor);
+    editor->setPlainText(QStringLiteral("draft"));
+    bool offeredCancel = false;
+    QTimer::singleShot(0, [&] {
+        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!prompt) return;
+        auto *cancel = prompt->findChild<QPushButton *>(QStringLiteral("cancelQuit"));
+        offeredCancel = cancel != nullptr;
+        if (cancel)
+            cancel->click();
+        else
+            prompt->reject();
+    });
+    window.close();
+    CHECK(offeredCancel);
+    CHECK(window.isVisible());
+    CHECK(editor->toPlainText() == QStringLiteral("draft"));
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "original");
+}
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -712,6 +744,7 @@ int main(int argc, char **argv)
             std::make_shared<MemorySettings>());
         testCurrentStyleKept(window);
         testReopeningLastVault();
+        testCancelQuitKeepsEdits();
         testMissingLastVault();
         testUnrememberedVaultIsReported();
         testNoteTree();

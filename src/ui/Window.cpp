@@ -652,10 +652,17 @@ void Window::changeEvent(QEvent *event)
 void Window::closeEvent(QCloseEvent *event)
 {
     if (mSession.dirty()) {
-        QMessageBox::warning(
-            this,
-            QStringLiteral("Unsaved changes"),
-            QStringLiteral("Save the current note before closing."));
+        QMessageBox prompt(this);
+        prompt.setObjectName(QStringLiteral("quitPrompt"));
+        prompt.setAccessibleName(QStringLiteral("Unsaved changes"));
+        prompt.setWindowTitle(QStringLiteral("Unsaved changes"));
+        prompt.setText(QStringLiteral("What would you like to do with your unsaved edits?"));
+        auto *cancel = prompt.addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
+        cancel->setObjectName(QStringLiteral("cancelQuit"));
+        cancel->setAccessibleName(QStringLiteral("Cancel"));
+        prompt.setDefaultButton(cancel);
+        prompt.setEscapeButton(cancel);
+        prompt.exec();
         event->ignore();
         return;
     }
