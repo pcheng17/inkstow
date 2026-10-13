@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QThread>
 #include <QRegularExpression>
 #include <QStringDecoder>
 
@@ -249,46 +250,57 @@ bool Vault::saveNote(
 {
     const auto path = notePath(relative, error);
     if (!path) return false;
-    QByteArray current;
-    if (!readBytes(*path, &current, error)) return false;
-    if (current != expected) {
-        conflict(error);
-        return false;
-    }
+#ifdef Q_OS_WIN
+    // A transient Windows lock (for example from an indexer) can reject the
+    // atomic rename. Stage a new file and recheck the expected bytes each time.
+    constexpr int kMaxAttempts = 5;
+#else
+    constexpr int kMaxAttempts = 1;
+#endif
+    for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+        QByteArray current;
+        if (!readBytes(*path, &current, error)) return false;
+        if (current != expected) {
+            conflict(error);
+            return false;
+        }
 
-    QSaveFile replacement(*path);
-    replacement.setDirectWriteFallback(false);
-    if (!replacement.open(QIODevice::WriteOnly)) {
+        QSaveFile replacement(*path);
+        replacement.setDirectWriteFallback(false);
+        if (!replacement.open(QIODevice::WriteOnly)) {
+            *error = replacement.errorString();
+            return false;
+        }
+        if (!replacement.setPermissions(QFileInfo(*path).permissions()) ||
+            replacement.write(content) != content.size())
+        {
+            *error = replacement.errorString();
+            replacement.cancelWriting();
+            return false;
+        }
+        const auto stillThere = notePath(relative, error);
+        if (!stillThere || *stillThere != *path || !readBytes(*path, &current, error) ||
+            current != expected)
+        {
+            conflict(error);
+            replacement.cancelWriting();
+            return false;
+        }
+        if (replacement.commit()) return true;
         *error = replacement.errorString();
-        qWarning("[DEBUG-save] open: %s", qPrintable(*error));
-        return false;
+#ifdef Q_OS_WIN
+        qWarning(
+            "[DEBUG-save] commit attempt %d: %s (error %d)",
+            attempt + 1,
+            qPrintable(*error),
+            static_cast<int>(replacement.error()));
+#endif
+        if (attempt + 1 == kMaxAttempts || (replacement.error() != QFileDevice::PermissionsError &&
+                                            replacement.error() != QFileDevice::RenameError))
+            return false;
+        QThread::msleep(static_cast<unsigned long>(10 << attempt));
     }
-    if (!replacement.setPermissions(QFileInfo(*path).permissions())) {
-        *error = replacement.errorString();
-        qWarning("[DEBUG-save] permissions: %s", qPrintable(*error));
-        replacement.cancelWriting();
-        return false;
-    }
-    if (replacement.write(content) != content.size()) {
-        *error = replacement.errorString();
-        qWarning("[DEBUG-save] write: %s", qPrintable(*error));
-        replacement.cancelWriting();
-        return false;
-    }
-    const auto stillThere = notePath(relative, error);
-    if (!stillThere || *stillThere != *path || !readBytes(*path, &current, error) ||
-        current != expected)
-    {
-        conflict(error);
-        replacement.cancelWriting();
-        return false;
-    }
-    if (!replacement.commit()) {
-        *error = replacement.errorString();
-        qWarning("[DEBUG-save] commit: %s", qPrintable(*error));
-        return false;
-    }
-    return true;
+    return false;
 }
 
 bool Vault::createNote(const QString &relative, QString *error) const
