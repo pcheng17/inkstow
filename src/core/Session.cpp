@@ -461,7 +461,7 @@ QByteArray Session::encodedContent() const
 {
     if (mContent == mSavedContent) return mSavedBytes;
     QString text = mContent;
-    text.replace(QStringLiteral("\n"), mLineEnding);
+    text.replace(u'\n', mLineEnding);
     return (mHasBom ? QByteArray::fromHex("efbbbf") : QByteArray()) + text.toUtf8();
 }
 
