@@ -288,17 +288,10 @@ bool Vault::saveNote(
         }
         if (replacement.commit()) return true;
         *error = replacement.errorString();
-#ifdef Q_OS_WIN
-        qWarning(
-            "[DEBUG-save] commit attempt %d: %s (error %d)",
-            attempt + 1,
-            qPrintable(*error),
-            static_cast<int>(replacement.error()));
-#endif
         if (attempt + 1 == kMaxAttempts || (replacement.error() != QFileDevice::PermissionsError &&
                                             replacement.error() != QFileDevice::RenameError))
             return false;
-        QThread::msleep(static_cast<unsigned long>(10 << attempt));
+        QThread::msleep(10UL << attempt);
     }
     return false;
 }

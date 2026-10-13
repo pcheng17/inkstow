@@ -189,14 +189,9 @@ static void testReadableEditorText()
     CHECK(linePitch(editor, 2) >= roomy);
     CHECK(linePitch(editor, 3) >= roomy);
     save->trigger();
-    const QByteArray saved = readFile(QDir(dir.path()).filePath(QStringLiteral("note.md")));
-    if (saved != "first\nsecond\nthird\nfourth\nfifth")
-        qWarning(
-            "[DEBUG-clipboard] saved bytes: %s; editor bytes: %s; status: %s",
-            saved.toHex().constData(),
-            editor->toPlainText().toUtf8().toHex().constData(),
-            window.findChild<QLabel *>(QStringLiteral("status"))->text().toUtf8().constData());
-    CHECK(saved == "first\nsecond\nthird\nfourth\nfifth");
+    CHECK(
+        readFile(QDir(dir.path()).filePath(QStringLiteral("note.md"))) ==
+        "first\nsecond\nthird\nfourth\nfifth");
 }
 
 // The area the editor's characters occupy, in the editor's own coordinates.

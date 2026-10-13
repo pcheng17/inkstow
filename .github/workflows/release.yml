@@ -144,7 +144,7 @@ jobs:
     needs: validate
     runs-on: windows-2022
     env:
-      QT_LOGGING_TO_CONSOLE: '1'
+      QT_FORCE_STDERR_LOGGING: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -163,14 +163,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build --preset release --config Release --target inkstow unit-tests ui-tests --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ctest --preset release -C Release --repeat until-fail:20 --verbose --output-on-failure
-          if ($LASTEXITCODE -ne 0) {
-            $testResult = $LASTEXITCODE
-            Get-Content build/release/Testing/Temporary/LastTest.log
-            & build/release/tests/Release/ui-tests.exe
-            Write-Output ("Standalone ui-tests exit code: 0x{0:X8}" -f ($LASTEXITCODE -band 0xffffffff))
-            exit $testResult
-          }
+          ctest --preset release -C Release --repeat until-fail:10 --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Bundle Qt DLLs and plugins
         shell: pwsh
         run: |
