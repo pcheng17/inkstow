@@ -25,11 +25,14 @@ public:
 
 protected:
     void insertFromMimeData(const QMimeData *source) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void inputMethodEvent(QInputMethodEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
 private:
     void centreText();
+    void insertNoteText(const QString &inserted);
 
     std::function<void()> mFollowLink;
 };

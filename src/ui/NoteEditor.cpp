@@ -3,6 +3,8 @@
 #include "MarkdownHighlighter.h"
 #include "Theme.h"
 
+#include <QInputMethodEvent>
+#include <QKeyEvent>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QScrollBar>
@@ -18,6 +20,13 @@ namespace
 // Block char formats belong to the separator immediately before the block.
 // Unlike a parallel index list, they participate in QTextDocument undo/redo.
 constexpr int kLiteralParagraphSeparator = QTextFormat::UserProperty + 1;
+
+QString editorLineBreaks(QString text)
+{
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    text.replace(u'\r', u'\n');
+    return text;
+}
 } // namespace
 
 NoteEditor::NoteEditor(std::function<void()> followLink)
@@ -73,13 +82,63 @@ QString NoteEditor::noteText() const
     return text;
 }
 
+void NoteEditor::insertNoteText(const QString &inserted)
+{
+    QTextCursor cursor = textCursor();
+    if (inserted.contains(QChar::ParagraphSeparator)) {
+        const QString before = noteText();
+        const int start = cursor.selectionStart();
+        const int end = cursor.selectionEnd();
+        const QString normalized = editorLineBreaks(inserted);
+        cursor.beginEditBlock();
+        cursor.insertText(inserted);
+        rememberParagraphSeparators(before.left(start) + normalized + before.mid(end));
+        cursor.endEditBlock();
+    } else {
+        cursor.insertText(inserted);
+    }
+    setTextCursor(cursor);
+    ensureCursorVisible();
+}
+
 void NoteEditor::insertFromMimeData(const QMimeData *source)
 {
     // Inserted like typing so new paragraphs keep the line spacing; a pasted
     // fragment would bring default paragraph formats with it.
-    if (!source->hasText()) return;
-    textCursor().insertText(source->text());
-    ensureCursorVisible();
+    if (source->hasText()) insertNoteText(source->text());
+}
+
+void NoteEditor::keyPressEvent(QKeyEvent *event)
+{
+    if (event->text().contains(QChar::ParagraphSeparator) &&
+        !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)))
+    {
+        insertNoteText(event->text());
+        event->accept();
+        return;
+    }
+    QTextEdit::keyPressEvent(event);
+}
+
+void NoteEditor::inputMethodEvent(QInputMethodEvent *event)
+{
+    const QString committed = event->commitString();
+    if (!committed.contains(QChar::ParagraphSeparator)) {
+        QTextEdit::inputMethodEvent(event);
+        return;
+    }
+    QTextCursor group = textCursor();
+    group.beginEditBlock();
+    QTextEdit::inputMethodEvent(event); // Let Qt handle composition and replacement ranges.
+    const QString normalized = editorLineBreaks(committed);
+    QString text = noteText();
+    const qsizetype start = textCursor().position() - normalized.size();
+    for (qsizetype index = 0; index < normalized.size(); ++index)
+        if (normalized[index] == QChar::ParagraphSeparator && start + index >= 0 &&
+            start + index < text.size())
+            text[start + index] = QChar::ParagraphSeparator;
+    rememberParagraphSeparators(text);
+    group.endEditBlock();
 }
 
 void NoteEditor::mouseReleaseEvent(QMouseEvent *event)

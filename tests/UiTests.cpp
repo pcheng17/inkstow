@@ -21,6 +21,7 @@
 #include <QFontMetrics>
 #include <QFontMetricsF>
 #include <QKeyEvent>
+#include <QInputMethodEvent>
 #include <QMouseEvent>
 #include <QEvent>
 #include <QLabel>
@@ -108,6 +109,52 @@ static void testEditorSavesFixtureBytes()
             expected = "first\r\nsecond\r\nthird\r\nfourth\r\n!";
         CHECK(readFile(note) == expected);
         CHECK(!save->isEnabled());
+        if (path == QStringLiteral("crlf.md")) {
+            editor->moveCursor(QTextCursor::End);
+            QApplication::clipboard()->setText(QStringLiteral("paste\u2029next"));
+            editor->paste();
+            CHECK(save->isEnabled());
+            save->trigger();
+            CHECK(readFile(note) == expected + QStringLiteral("paste\u2029next").toUtf8());
+            QKeyEvent typedSeparator(
+                QEvent::KeyPress,
+                Qt::Key_unknown,
+                Qt::NoModifier,
+                QStringLiteral("\u2029"));
+            QApplication::sendEvent(editor, &typedSeparator);
+            CHECK(save->isEnabled());
+            save->trigger();
+            CHECK(readFile(note) == expected + QStringLiteral("paste\u2029next\u2029").toUtf8());
+            QInputMethodEvent composed;
+            composed.setCommitString(QStringLiteral("\u2029"));
+            QApplication::sendEvent(editor, &composed);
+            CHECK(save->isEnabled());
+            save->trigger();
+            CHECK(
+                readFile(note) ==
+                expected + QStringLiteral("paste\u2029next\u2029\u2029").toUtf8());
+        }
+        if (path == QStringLiteral("nbsp.md")) {
+            editor->moveCursor(QTextCursor::End);
+            QKeyEvent typedSeparator(
+                QEvent::KeyPress,
+                Qt::Key_unknown,
+                Qt::NoModifier,
+                QStringLiteral("\u2029"));
+            QApplication::sendEvent(editor, &typedSeparator);
+            CHECK(save->isEnabled());
+            save->trigger();
+            CHECK(readFile(note) == expected + QStringLiteral("\u2029").toUtf8());
+        }
+        if (path == QStringLiteral("cr.md")) {
+            editor->moveCursor(QTextCursor::End);
+            QInputMethodEvent composed;
+            composed.setCommitString(QStringLiteral("\u2029"));
+            QApplication::sendEvent(editor, &composed);
+            CHECK(save->isEnabled());
+            save->trigger();
+            CHECK(readFile(note) == expected + QStringLiteral("\u2029").toUtf8());
+        }
         if (path == QStringLiteral("paragraph-separator.md")) {
             cursor.setPosition(0);
             cursor.insertText(QStringLiteral("prefix "));
