@@ -1,4 +1,6 @@
 build/
+rust/target/
+rust/src-tauri/gen/
 .DS_Store
 *.swp
 .claude/worktrees/

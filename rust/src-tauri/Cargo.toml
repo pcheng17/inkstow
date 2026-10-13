@@ -1,0 +1,13 @@
+[package]
+name = "inkstow-tauri"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+inkstow-core = { path = "../inkstow-core" }
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
