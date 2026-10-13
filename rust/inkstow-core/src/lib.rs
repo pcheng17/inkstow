@@ -2,6 +2,7 @@
 //! Paths sent by a UI are always vault-relative, never absolute disk paths.
 mod merge;
 mod move_note;
+pub mod watch;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};

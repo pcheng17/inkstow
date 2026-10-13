@@ -18,14 +18,17 @@ function render(next, replaceText = true) {
     $('move-form').hidden = true;
     $('delete-bar').hidden = true;
   }
+  $('watch-warning').hidden = next.watching;
   current = next;
   $('vault').value = next.root ?? $('vault').value;
   $('title').textContent = (next.path ?? 'No note selected') + (next.dirty ? ' ●' : '');
   $('editor').disabled = !next.path;
   if (replaceText) {
-    const cursor = $('editor').selectionStart;
+    const { selectionStart, selectionEnd, scrollTop } = $('editor');
+    const length = next.content.length;
     $('editor').value = next.content;
-    $('editor').setSelectionRange(Math.min(cursor, next.content.length), Math.min(cursor, next.content.length));
+    $('editor').setSelectionRange(Math.min(selectionStart, length), Math.min(selectionEnd, length));
+    $('editor').scrollTop = scrollTop;
   }
   $('save').disabled = !next.path || !next.dirty;
   $('rename').disabled = !next.path || next.dirty;
@@ -132,9 +135,11 @@ document.addEventListener('keydown', (event) => {
     $('rename').click();
   }
 });
-// Polling also catches atomic file replacement, which can drop a file watcher.
-// Throttle while the window is hidden; recheck immediately on return.
-setInterval(() => { if (!document.hidden) poll(); }, 900);
+// Native watch events are debounced in the backend; queue them behind edits.
+window.__TAURI__.event.listen('disk-changed', poll);
+// Fall back to bounded polling while watches are incomplete (e.g. OS limits).
+setInterval(() => { if (!document.hidden && current && !current.watching) poll(); }, 2000);
+// Activation also catches anything a watcher missed.
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 window.addEventListener('focus', poll);
 run('view');

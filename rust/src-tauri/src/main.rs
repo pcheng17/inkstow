@@ -1,7 +1,9 @@
+use inkstow_core::watch::{self, DiskWatch};
 use inkstow_core::{DiskChange, Error, Session};
 use serde::Serialize;
+use std::ops::{Deref, DerefMut};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 
 #[derive(Serialize)]
 struct Snapshot {
@@ -11,12 +13,20 @@ struct Snapshot {
     path: Option<String>,
     content: String,
     dirty: bool,
+    /// False when the UI must poll because native watches are incomplete.
+    watching: bool,
 }
-fn snapshot(session: &Session) -> Result<Snapshot, String> {
-    let (notes, folders) = match session.vault() {
-        Some(vault) => vault.list().map_err(|e| e.to_string())?,
-        None => (vec![], vec![]),
+/// Every command rescans, so reconcile watches with the new view of the disk.
+fn snapshot(app: &mut App) -> Result<Snapshot, String> {
+    let listed = match app.session.vault() {
+        Some(vault) => vault.list(),
+        None => Ok((vec![], vec![])),
     };
+    // Reconcile even if the vault folder vanished, so its ancestor reports its return.
+    let folders = listed.as_ref().map_or(&[][..], |(_, folders)| folders);
+    let watching = app.watch.reconcile(&watch::targets(&app.session, folders));
+    let (notes, folders) = listed.map_err(|e| e.to_string())?;
+    let session = &app.session;
     Ok(Snapshot {
         root: session.vault().map(|v| v.root().display().to_string()),
         notes,
@@ -24,6 +34,7 @@ fn snapshot(session: &Session) -> Result<Snapshot, String> {
         path: session.path().map(str::to_owned),
         content: session.content().to_owned(),
         dirty: session.dirty(),
+        watching,
     })
 }
 #[derive(Serialize)]
@@ -36,7 +47,22 @@ struct MoveResult {
     snapshot: Snapshot,
     warning: Option<String>,
 }
-type AppState = Mutex<Session>;
+struct App {
+    session: Session,
+    watch: DiskWatch,
+}
+impl Deref for App {
+    type Target = Session;
+    fn deref(&self) -> &Session {
+        &self.session
+    }
+}
+impl DerefMut for App {
+    fn deref_mut(&mut self) -> &mut Session {
+        &mut self.session
+    }
+}
+type AppState = Mutex<App>;
 #[tauri::command]
 fn sync_disk(state: State<'_, AppState>) -> Result<SyncResult, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
@@ -47,7 +73,7 @@ fn sync_disk(state: State<'_, AppState>) -> Result<SyncResult, String> {
         DiskChange::Missing => "missing",
     };
     Ok(SyncResult {
-        snapshot: snapshot(&session)?,
+        snapshot: snapshot(&mut session)?,
         change,
     })
 }
@@ -55,54 +81,54 @@ fn sync_disk(state: State<'_, AppState>) -> Result<SyncResult, String> {
 fn reload_from_disk(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.reload_from_disk().map_err(|e| e.to_string())?;
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn keep_mine(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.overwrite_disk().map_err(|e| e.to_string())?;
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn merge_outside(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.merge_outside_changes().map_err(|e| e.to_string())?;
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn save_as_new(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.save_as_new_note().map_err(|e| e.to_string())?;
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn discard_edits(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.discard_edits();
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn view(state: State<'_, AppState>) -> Result<Snapshot, String> {
-    let session = state.lock().map_err(|e| e.to_string())?;
-    snapshot(&session)
+    let mut session = state.lock().map_err(|e| e.to_string())?;
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn open_vault(folder: String, state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.open_vault(folder).map_err(|e| e.to_string())?;
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn select_note(path: String, state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.select(&path).map_err(|e| e.to_string())?;
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn trash_note(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.trash_note().map_err(|e| e.to_string())?;
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn move_note(
@@ -117,7 +143,7 @@ fn move_note(
         Err(error) => return Err(error.to_string()),
     };
     Ok(MoveResult {
-        snapshot: snapshot(&session)?,
+        snapshot: snapshot(&mut session)?,
         warning,
     })
 }
@@ -125,23 +151,33 @@ fn move_note(
 fn edit(content: String, state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.set_content(content);
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn save(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.save().map_err(|e| e.to_string())?;
-    snapshot(&session)
+    snapshot(&mut session)
 }
 #[tauri::command]
 fn create_note(path: String, state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut session = state.lock().map_err(|e| e.to_string())?;
     session.create(&path).map_err(|e| e.to_string())?;
-    snapshot(&session)
+    snapshot(&mut session)
 }
 fn main() {
     tauri::Builder::default()
-        .manage(Mutex::new(Session::new()))
+        .setup(|app| {
+            let handle = app.handle().clone();
+            let watch = watch::native(move || {
+                let _ = handle.emit("disk-changed", ());
+            });
+            app.manage(Mutex::new(App {
+                session: Session::new(),
+                watch,
+            }));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             view,
             open_vault,
