@@ -1,3 +1,4 @@
+mod close;
 use inkstow_core::{DiskChange, Error, Session};
 use serde::Serialize;
 use std::sync::Mutex;
@@ -142,6 +143,7 @@ fn create_note(path: String, state: State<'_, AppState>) -> Result<Snapshot, Str
 fn main() {
     tauri::Builder::default()
         .manage(Mutex::new(Session::new()))
+        .manage(close::GuardState::default())
         .invoke_handler(tauri::generate_handler![
             view,
             open_vault,
@@ -156,8 +158,10 @@ fn main() {
             keep_mine,
             merge_outside,
             save_as_new,
-            discard_edits
+            discard_edits,
+            close::close_app
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Inkstow Rust preview");
+        .build(tauri::generate_context!())
+        .expect("failed to build Inkstow Rust preview")
+        .run(|app, event| close::on_run_event(app, &event));
 }

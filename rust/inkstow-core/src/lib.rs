@@ -1,7 +1,9 @@
 //! UI-independent first slice of the Inkstow vault and editing session.
 //! Paths sent by a UI are always vault-relative, never absolute disk paths.
+mod close;
 mod merge;
 mod move_note;
+pub use close::{CloseAction, CloseGuard, CloseOutcome};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};

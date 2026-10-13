@@ -137,4 +137,13 @@ document.addEventListener('keydown', (event) => {
 setInterval(() => { if (!document.hidden) poll(); }, 900);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
 window.addEventListener('focus', poll);
+installQuitGuard({
+  enqueue: (task) => (queue = queue.catch(() => {}).then(task)),
+  editorText: () => $('editor').value,
+  // A conflict or missing note then shows its warning and actions, like a failed Save.
+  onSaveFailed: (error) => {
+    $('status').textContent = `Error: ${error}`;
+    poll();
+  }
+});
 run('view');
