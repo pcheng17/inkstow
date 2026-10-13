@@ -17,8 +17,8 @@ jobs:
         run: sudo ./scripts/install --system
       - name: Configure
         run: cmake --preset debug
-      - name: Build
-        run: cmake --build --preset debug --parallel 2
+      - name: Build app and tests
+        run: cmake --build --preset debug --target inkstow unit-tests ui-tests --parallel 2
       - name: Test
         run: ctest --preset debug
 

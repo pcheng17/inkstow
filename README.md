@@ -9,7 +9,8 @@ On Debian/Ubuntu Linux (macOS notes follow):
 ```sh
 sudo ./scripts/install --system   # Qt 6 development libraries, CMake, and C++ compiler
 cmake --preset debug      # or: release
-cmake --build --preset debug --parallel
+cmake --build --preset debug --parallel   # app and its core library only
+cmake --build --preset debug --target unit-tests ui-tests --parallel
 ctest --preset debug
 ./build/debug/inkstow     # run the desktop app on a graphical machine
 ```
@@ -38,7 +39,7 @@ git config core.hooksPath .githooks
 
 ## Headless tests
 
-The build and test commands above build the C++ core, CLI, and Qt Widgets app, then run filesystem and session tests plus an offscreen UI smoke test. The tests also check note discovery against the fixture vault. No graphical display is required. Run `./build/debug/vault-inspect tests/fixtures/sample` to inspect the fixture, or pass another throwaway vault path without opening a window.
+The default build compiles `inkstow` and its `core` dependency. Build `unit-tests` (the `core-tests` and `highlighter-tests` executables) and `ui-tests` explicitly before running CTest; CTest runs all three registered tests without a graphical display. The core tests use filesystem fixtures, the highlighter tests use a headless `QGuiApplication`, and the UI tests use an offscreen `QApplication` to exercise the window. These names describe build/runtime grouping, not a strict unit-versus-end-to-end split. To inspect the fixture vault, build `vault-inspect` explicitly with `cmake --build --preset debug --target vault-inspect`, then run `./build/debug/vault-inspect tests/fixtures/sample` or pass another throwaway vault path.
 
 ## Boundaries and limitations
 
@@ -48,4 +49,8 @@ This is an early prototype, **not** a safe replacement for Obsidian on valuable 
 
 Inkstow compares a note's disk bytes with the last loaded or saved bytes before saving, then compares again just before committing the staged replacement. If either comparison finds different bytes, the save is refused and your unsaved edits stay in the editor. This is best-effort conflict detection, **not** a guarantee that outside changes cannot be lost: another program (including another Inkstow instance) can write after the final comparison and before the replacement, and its write may be overwritten. Atomic replacement keeps Inkstow from leaving a partially written note, but does not make the comparison and replacement atomic together. Inkstow does not coordinate saves with other processes or guarantee recovery of a write lost in that window. Use independent backups for valuable vaults.
 
-Filesystem operations live in `src/Vault.*` and UI-independent session state in `src/Session.*`. The Qt Widgets window is in `src/Window.*`. AppImage static research is in `docs/obsidian-appimage-inspection.md`. Verified link and rename trials with disposable Obsidian vaults are in `docs/obsidian-runtime-observations.md`; use the project-local `/skill:obsidian-behavior` (at `.agents/skills/obsidian-behavior/SKILL.md`) to investigate further. To launch Inkstow on a headless display, drive it, and capture screenshots, use `scripts/inkstow-headless.sh` as described in `.agents/skills/inkstow-ui/SKILL.md`. Project skills are also exposed to Claude Code through the `.claude/skills` symlink.
+## Source and test layout
+
+Keep vault filesystem operations and UI-independent session state in `src/core/` (`Vault` and `Session`), which depends on Qt Core but not Qt Widgets. Keep editor presentation, highlighting, window widgets, settings adapter, and theme in `src/ui/`; this module can depend on `core`. Entry points remain at `src/main.cpp` and `src/VaultInspect.cpp`. Place new files by responsibility, not by which test executable covers them: the highlighter belongs to `ui/` even though its tests run without a window. Add core/session coverage to `core-tests`, standalone document-format coverage to `highlighter-tests`, and window interaction coverage to `ui-tests`; preserve their respective `QCoreApplication`, `QGuiApplication`, and `QApplication` runtimes. Build test executables with their explicit targets before CTest.
+
+AppImage static research is in `docs/obsidian-appimage-inspection.md`. Verified link and rename trials with disposable Obsidian vaults are in `docs/obsidian-runtime-observations.md`; use the project-local `/skill:obsidian-behavior` (at `.agents/skills/obsidian-behavior/SKILL.md`) to investigate further. To launch Inkstow on a headless display, drive it, and capture screenshots, use `scripts/inkstow-headless.sh` as described in `.agents/skills/inkstow-ui/SKILL.md`. Project skills are also exposed to Claude Code through the `.claude/skills` symlink.
