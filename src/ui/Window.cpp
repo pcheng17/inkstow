@@ -672,16 +672,14 @@ void Window::closeEvent(QCloseEvent *event)
         prompt.exec();
         if (prompt.clickedButton() == save) {
             saveNote();
-            if (!mSession.dirty()) {
-                QMainWindow::closeEvent(event);
+            if (mSession.dirty()) {
+                event->ignore();
                 return;
             }
-        } else if (prompt.clickedButton() == discard) {
-            QMainWindow::closeEvent(event);
+        } else if (prompt.clickedButton() != discard) {
+            event->ignore();
             return;
         }
-        event->ignore();
-        return;
     }
     QMainWindow::closeEvent(event);
 }
