@@ -161,8 +161,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build --preset release --config Release --target inkstow unit-tests ui-tests --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ctest --preset release -C Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --preset release -C Release --verbose --output-on-failure
+          if ($LASTEXITCODE -ne 0) {
+            $testResult = $LASTEXITCODE
+            Get-Content build/release/Testing/Temporary/LastTest.log
+            exit $testResult
+          }
       - name: Bundle Qt DLLs and plugins
         shell: pwsh
         run: |
