@@ -143,6 +143,8 @@ jobs:
   windows:
     needs: validate
     runs-on: windows-2022
+    env:
+      QT_LOGGING_TO_CONSOLE: '1'
     steps:
       - uses: actions/checkout@v4
         with:
