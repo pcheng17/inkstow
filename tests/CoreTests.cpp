@@ -185,7 +185,6 @@ static void retriesLockedWindowsDestination()
     });
     const bool saved = vault->saveNote(QStringLiteral("note.md"), "original", "updated", &error);
     release.join();
-    if (!saved) qWarning("[DEBUG-win-lock] save error: %s", qPrintable(error));
     CHECK(saved);
     CHECK(readFile(path) == "updated");
 

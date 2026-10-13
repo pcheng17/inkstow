@@ -271,10 +271,6 @@ void testHeader()
     CHECK(unsaved->isVisibleTo(&window));
     CHECK(enabled() == std::tuple(true, false, false));
     save->trigger();
-    if (unsaved->isVisibleTo(&window))
-        qWarning(
-            "[DEBUG-save-denial] header status: %s",
-            vault.find<QLabel>(QStringLiteral("status"))->text().toUtf8().constData());
     CHECK(!unsaved->isVisibleTo(&window));
     CHECK(enabled() == std::tuple(false, true, true));
     editor->insertPlainText(QStringLiteral("y"));
@@ -403,7 +399,6 @@ void runNoteActionTests()
     testShortcuts();
     testCtrlClickFollowsLink();
     testHeader();
-    if (qEnvironmentVariableIsSet("INKSTOW_HEADER_ONLY")) return;
     testTreeContextMenu();
     testTreeContextMenuForUnopenableNote();
     testCloseBlockedWhileUnsaved();

@@ -889,10 +889,6 @@ int main(int argc, char **argv)
         testReloadKeepsPlace();
         testEditorHighlightsMarkdown();
         testLongNoteStaysResponsive();
-        if (qEnvironmentVariableIsSet("INKSTOW_HEADER_ONLY")) {
-            runNoteActionTests();
-            return 0;
-        }
         runNoteActionTests();
         auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
         auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
