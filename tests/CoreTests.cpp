@@ -8,6 +8,14 @@
 
 #include <stdexcept>
 
+#ifdef Q_OS_WIN
+#define NOMINMAX
+#include <windows.h>
+
+#include <chrono>
+#include <thread>
+#endif
+
 #ifdef Q_OS_UNIX
 #include <sys/stat.h>
 #endif
@@ -146,6 +154,38 @@ static void savesAndRejectsConflicts()
     CHECK(!vault->saveNote(QStringLiteral("note.md"), "external\n", "local\n", &error));
     CHECK(!QFile::exists(path));
 }
+
+#ifdef Q_OS_WIN
+static void retriesLockedWindowsDestination()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("note.md"));
+    writeFile(path, "original");
+    const QString nativePath = QDir::toNativeSeparators(path);
+    const HANDLE locked = CreateFileW(
+        reinterpret_cast<const wchar_t *>(nativePath.utf16()),
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+    CHECK(locked != INVALID_HANDLE_VALUE);
+    std::thread release([locked] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        CloseHandle(locked);
+    });
+    QString error;
+    const auto vault = Vault::open(dir.path(), &error);
+    CHECK(vault.has_value());
+    const bool saved = vault->saveNote(QStringLiteral("note.md"), "original", "updated", &error);
+    release.join();
+    if (!saved) qWarning("[DEBUG-win-lock] save error: %s", qPrintable(error));
+    CHECK(saved);
+    CHECK(readFile(path) == "updated");
+}
+#endif
 
 static void rejectsEscapesAndSymlinks()
 {
@@ -881,6 +921,9 @@ int main(int argc, char **argv)
         fixtureDiscovery();
         resolvesFixtureLinks();
         savesAndRejectsConflicts();
+#ifdef Q_OS_WIN
+        retriesLockedWindowsDestination();
+#endif
         rejectsEscapesAndSymlinks();
         preservesUtf8BomWhenEditing();
         rejectsInvalidUtf8AndKeepsPriorVaultOnFailure();
