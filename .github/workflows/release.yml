@@ -95,6 +95,10 @@ jobs:
           test -x dist/AppDir/AppRun
           test -f dist/AppDir/usr/plugins/platforms/libqxcb.so
           test -f dist/AppDir/usr/lib/libQt6Widgets.so.6
+          # Ship JPEG and GIF; PNG and BMP are built into QtGui.
+          rm -f dist/AppDir/usr/plugins/imageformats/libqico.so
+          test -f dist/AppDir/usr/plugins/imageformats/libqjpeg.so
+          test -f dist/AppDir/usr/plugins/imageformats/libqgif.so
           tar -czf artifacts/inkstow-${{ needs.validate.outputs.tag }}-linux-x86_64.tar.gz \
             -C dist --transform='s/^AppDir/inkstow/' AppDir
       - uses: actions/upload-artifact@v4
@@ -110,21 +114,47 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Install dependencies
-        run: ./scripts/install --system
+      # Homebrew's Qt links ICU and ships plugins that pull QtQuick and OpenSSL into
+      # the bundle; the official qtbase build keeps the app much smaller.
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: mac
+          target: desktop
+          arch: clang_64
+          cache: true
       - name: Configure, build and test
         run: |
-          cmake --preset release
+          cmake --preset release -DQt6_DIR="$QT_ROOT_DIR/lib/cmake/Qt6"
           cmake --build --preset release --target inkstow unit-tests ui-tests --parallel 2
           ctest --preset release
       - name: Bundle Qt in the app
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts
-          "$(brew --prefix qt)/bin/macdeployqt" build/release/Inkstow.app
-          test -d build/release/Inkstow.app/Contents/Frameworks/QtWidgets.framework
-          ditto -c -k --sequesterRsrc --keepParent build/release/Inkstow.app \
+          mkdir -p artifacts dist
+          app=build/release/Inkstow.app
+          "$QT_ROOT_DIR/bin/macdeployqt" "$app"
+          # Ship JPEG and GIF; PNG and BMP are built into QtGui.
+          find "$app/Contents/PlugIns/imageformats" -type f \
+            ! -name libqjpeg.dylib ! -name libqgif.dylib -delete
+          rm -rf "$app/Contents/PlugIns/iconengines" "$app/Contents/Frameworks/QtSvg.framework"
+          # Official Qt frameworks are universal; keep only the arm64 slice and re-sign.
+          ditto --arch arm64 "$app" dist/Inkstow.app
+          codesign --force --deep --sign - dist/Inkstow.app
+          codesign --verify --deep --strict dist/Inkstow.app
+          test -d dist/Inkstow.app/Contents/Frameworks/QtWidgets.framework
+          test -f dist/Inkstow.app/Contents/PlugIns/platforms/libqcocoa.dylib
+          test -f dist/Inkstow.app/Contents/PlugIns/imageformats/libqjpeg.dylib
+          test -f dist/Inkstow.app/Contents/PlugIns/imageformats/libqgif.dylib
+          # Missing libraries or plugins abort at startup, so check the bundle launches.
+          # Unset the job's Qt plugin path so plugins load only from the bundle.
+          env -u QT_PLUGIN_PATH dist/Inkstow.app/Contents/MacOS/Inkstow &
+          pid=$!
+          sleep 5
+          kill -0 "$pid" || { echo 'Bundled app exited at startup.' >&2; exit 1; }
+          kill "$pid"
+          ditto -c -k --sequesterRsrc --keepParent dist/Inkstow.app \
             "artifacts/inkstow-${{ needs.validate.outputs.tag }}-macos-arm64.zip"
       - uses: actions/upload-artifact@v4
         with:
@@ -162,9 +192,26 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force artifacts, dist/inkstow | Out-Null
           Copy-Item build/release/Release/inkstow.exe dist/inkstow/
-          & windeployqt --release --no-translations --dir dist/inkstow dist/inkstow/inkstow.exe
+          # A Widgets app needs no software OpenGL, shader compiler, SVG, or the
+          # networking plugins that would pull in Qt6Network. Ship JPEG and GIF;
+          # PNG and BMP are built into QtGui.
+          & windeployqt --release --no-translations --no-opengl-sw --no-system-d3d-compiler `
+            --skip-plugin-types iconengines,tls,networkinformation,generic `
+            --exclude-plugins qico,qsvg --dir dist/inkstow dist/inkstow/inkstow.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path dist/inkstow/platforms/qwindows.dll)) { throw 'Missing Qt Windows platform plugin' }
+          foreach ($plugin in 'platforms/qwindows.dll', 'imageformats/qjpeg.dll', 'imageformats/qgif.dll') {
+            if (-not (Test-Path "dist/inkstow/$plugin")) { throw "Missing Qt plugin $plugin" }
+          }
+          # Missing DLLs or plugins stop the window from appearing, so check the bundle
+          # opens one without the job's Qt install on PATH or the plugin path.
+          $env:QT_PLUGIN_PATH = $null
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $app = Start-Process dist/inkstow/inkstow.exe -PassThru
+          Start-Sleep -Seconds 5
+          $app.Refresh()
+          if ($app.HasExited) { throw "Bundled app exited at startup with code $($app.ExitCode)" }
+          if ($app.MainWindowHandle -eq 0) { throw 'Bundled app started but showed no window' }
+          Stop-Process -Id $app.Id
           Compress-Archive -Path dist/inkstow -DestinationPath "artifacts/inkstow-${{ needs.validate.outputs.tag }}-windows-x86_64.zip"
       - uses: actions/upload-artifact@v4
         with:
