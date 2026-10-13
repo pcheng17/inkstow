@@ -400,6 +400,7 @@ void testCloseBlockedWhileUnsaved()
 void runNoteActionTests()
 {
     if (qEnvironmentVariableIsSet("INKSTOW_HEADER_ONLY")) {
+        testShortcuts();
         testHeader();
         return;
     }
