@@ -22,33 +22,6 @@ jobs:
       - name: Test
         run: ctest --preset debug
 
-  cross-platform-tests:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-15-intel, macos-15, windows-2022]
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        run: ./scripts/install --system
-      - name: Install Windows Qt
-        if: runner.os == 'Windows'
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.8.3'
-          host: windows
-          target: desktop
-          arch: win64_msvc2022_64
-          cache: true
-      - name: Configure
-        run: cmake --preset release
-      - name: Build app and tests
-        run: cmake --build --preset release --config Release --target inkstow unit-tests ui-tests --parallel 2
-      - name: Test
-        run: ctest --preset release -C Release --output-on-failure --verbose
-
   formatting:
     runs-on: ubuntu-24.04
     steps:

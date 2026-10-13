@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       version:
@@ -13,7 +14,7 @@ permissions:
 
 # A second dispatch must not create the same tag or race the publishing job.
 concurrency:
-  group: inkstow-release
+  group: inkstow-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -33,10 +34,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF" == refs/heads/main ]] || {
-            echo 'Run releases from main only.' >&2
-            exit 1
-          }
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            # Exercise the complete packaging pipeline on PRs, without tagging.
+            VERSION=$(grep -E '^project\(Inkstow VERSION [0-9]+\.[0-9]+\.[0-9]+ LANGUAGES CXX\)$' CMakeLists.txt | cut -d ' ' -f3)
+          else
+            [[ "$GITHUB_REF" == refs/heads/main ]] || {
+              echo 'Run releases from main only.' >&2
+              exit 1
+            }
+          fi
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
             echo 'Enter a SemVer core version such as 0.1.0.' >&2
             exit 1
@@ -46,7 +52,8 @@ jobs:
             exit 1
           }
           tag="v$VERSION"
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] && \
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
             echo "Tag $tag already exists; releases are immutable." >&2
             exit 1
           fi
@@ -172,6 +179,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: github.event_name == 'workflow_dispatch'
     needs: [validate, linux, macos, windows]
     runs-on: ubuntu-24.04
     permissions:
