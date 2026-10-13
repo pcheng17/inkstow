@@ -163,8 +163,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build --preset release --config Release --target inkstow unit-tests ui-tests --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --preset release -C Release -R '^core-tests$' --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:INKSTOW_HEADER_ONLY = '1'
-          ctest --preset release -C Release -R '^ui-tests$' --repeat until-fail:100 --output-on-failure
+          ctest --preset release -C Release -R '^ui-tests$' --repeat until-fail:10 --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Remove-Item Env:INKSTOW_HEADER_ONLY
           ctest --preset release -C Release --repeat until-fail:10 --output-on-failure

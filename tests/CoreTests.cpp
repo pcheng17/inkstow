@@ -162,28 +162,55 @@ static void retriesLockedWindowsDestination()
     CHECK(dir.isValid());
     const QString path = dir.filePath(QStringLiteral("note.md"));
     writeFile(path, "original");
-    const QString nativePath = QDir::toNativeSeparators(path);
-    const HANDLE locked = CreateFileW(
-        reinterpret_cast<const wchar_t *>(nativePath.utf16()),
-        GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
+    QString error;
+    const auto vault = Vault::open(dir.path(), &error);
+    CHECK(vault.has_value());
+    const auto lockWithoutDelete = [](const QString &filePath) {
+        const QString nativePath = QDir::toNativeSeparators(filePath);
+        return CreateFileW(
+            reinterpret_cast<const wchar_t *>(nativePath.utf16()),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+    };
+    // The lock allows reads but denies the delete/replace operation used by QSaveFile.
+    const HANDLE locked = lockWithoutDelete(path);
     CHECK(locked != INVALID_HANDLE_VALUE);
     std::thread release([locked] {
         std::this_thread::sleep_for(std::chrono::milliseconds(400));
         CloseHandle(locked);
     });
-    QString error;
-    const auto vault = Vault::open(dir.path(), &error);
-    CHECK(vault.has_value());
     const bool saved = vault->saveNote(QStringLiteral("note.md"), "original", "updated", &error);
     release.join();
     if (!saved) qWarning("[DEBUG-win-lock] save error: %s", qPrintable(error));
     CHECK(saved);
     CHECK(readFile(path) == "updated");
+
+    // A newer external write during the wait must still win over the editor.
+    writeFile(path, "expected");
+    const HANDLE changing = lockWithoutDelete(path);
+    CHECK(changing != INVALID_HANDLE_VALUE);
+    std::thread change([changing, path] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        CloseHandle(changing);
+        writeFile(path, "external");
+    });
+    const bool overwritten = vault->saveNote(QStringLiteral("note.md"), "expected", "mine", &error);
+    change.join();
+    CHECK(!overwritten);
+    CHECK(error.contains(QStringLiteral("Save conflict")));
+    CHECK(readFile(path) == "external");
+
+    // A persistent lock leaves both the original file and unsaved text intact.
+    const HANDLE permanent = lockWithoutDelete(path);
+    CHECK(permanent != INVALID_HANDLE_VALUE);
+    const bool replaced = vault->saveNote(QStringLiteral("note.md"), "external", "mine", &error);
+    CloseHandle(permanent);
+    CHECK(!replaced);
+    CHECK(readFile(path) == "external");
 }
 #endif
 

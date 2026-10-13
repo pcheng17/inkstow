@@ -253,7 +253,7 @@ bool Vault::saveNote(
 #ifdef Q_OS_WIN
     // A transient Windows lock (for example from an indexer) can reject the
     // atomic rename. Stage a new file and recheck the expected bytes each time.
-    constexpr int kMaxAttempts = 5;
+    constexpr int kMaxAttempts = 7;
 #else
     constexpr int kMaxAttempts = 1;
 #endif
