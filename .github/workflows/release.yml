@@ -202,6 +202,19 @@ jobs:
           foreach ($plugin in 'platforms/qwindows.dll', 'imageformats/qjpeg.dll', 'imageformats/qgif.dll') {
             if (-not (Test-Path "dist/inkstow/$plugin")) { throw "Missing Qt plugin $plugin" }
           }
+          # windeployqt skips the MSVC runtime without VCINSTALLDIR, and users may lack the
+          # VC++ redistributable, so copy each runtime DLL the bundle imports next to it.
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory | Sort-Object FullName | Select-Object -Last 1
+          $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Sort-Object FullName | Select-Object -Last 1
+          if (-not $crt -or -not $dumpbin) { throw 'Missing MSVC redistributable or dumpbin' }
+          $runtime = Get-ChildItem dist/inkstow -Recurse -Include *.exe, *.dll |
+            ForEach-Object { & $dumpbin.FullName /nologo /dependents $_.FullName } |
+            ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^(msvcp|vcruntime|concrt)[\w]*\.dll$' } |
+            ForEach-Object { $_.ToLowerInvariant() } | Sort-Object -Unique
+          if ('vcruntime140.dll' -notin $runtime) { throw 'Expected the bundle to import vcruntime140.dll' }
+          foreach ($dll in $runtime) { Copy-Item -ErrorAction Stop (Join-Path $crt.FullName $dll) dist/inkstow/ }
+          Write-Output "Bundled MSVC runtime from $($crt.FullName): $($runtime -join ', ')"
           # Missing DLLs or plugins stop the window from appearing, so check the bundle
           # opens one without the job's Qt install on PATH or the plugin path.
           $env:QT_PLUGIN_PATH = $null
