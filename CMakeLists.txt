@@ -13,15 +13,17 @@ endif()
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets)
 include(cmake/CompilerOptions.cmake)
 
-add_library(core src/Vault.cpp src/Session.cpp)
-target_include_directories(core PUBLIC src)
+add_library(core src/core/Vault.cpp src/core/Session.cpp)
+target_include_directories(core PUBLIC src/core)
 target_link_libraries(core PUBLIC Qt6::Core PRIVATE inkstow-warnings)
 
-add_executable(vault-inspect src/VaultInspect.cpp)
+add_executable(vault-inspect EXCLUDE_FROM_ALL src/VaultInspect.cpp)
 target_link_libraries(vault-inspect PRIVATE core inkstow-warnings)
 
-add_executable(inkstow src/main.cpp src/MarkdownHighlighter.cpp src/NoteEditor.cpp src/NoteHeader.cpp
-                       src/NoteTree.cpp src/SettingsStore.cpp src/Theme.cpp src/Window.cpp)
+add_executable(inkstow src/main.cpp src/ui/MarkdownHighlighter.cpp src/ui/NoteEditor.cpp
+                       src/ui/NoteHeader.cpp src/ui/NoteTree.cpp src/ui/SettingsStore.cpp
+                       src/ui/Theme.cpp src/ui/Window.cpp)
+target_include_directories(inkstow PRIVATE src/ui)
 target_link_libraries(inkstow PRIVATE core Qt6::Widgets inkstow-warnings)
 
 include(CTest)
