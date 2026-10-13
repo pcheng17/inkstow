@@ -1,0 +1,212 @@
+name: Release
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version already merged in CMakeLists.txt (for example, 0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# A second dispatch must not create the same tag or race the publishing job.
+concurrency:
+  group: inkstow-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check the reviewed version and unused tag
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            # Exercise the complete packaging pipeline on PRs, without tagging.
+            VERSION=$(grep -E '^project\(Inkstow VERSION [0-9]+\.[0-9]+\.[0-9]+ LANGUAGES CXX\)$' CMakeLists.txt | cut -d ' ' -f3)
+          else
+            [[ "$GITHUB_REF" == refs/heads/main ]] || {
+              echo 'Run releases from main only.' >&2
+              exit 1
+            }
+          fi
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+            echo 'Enter a SemVer core version such as 0.1.0.' >&2
+            exit 1
+          }
+          grep -Fxq "project(Inkstow VERSION $VERSION LANGUAGES CXX)" CMakeLists.txt || {
+            echo 'First merge a PR updating the version in CMakeLists.txt.' >&2
+            exit 1
+          }
+          tag="v$VERSION"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]] && \
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists; releases are immutable." >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  linux:
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: sudo ./scripts/install --system
+      - name: Configure, build and test
+        run: |
+          cmake --preset release
+          cmake --build --preset release --target inkstow unit-tests ui-tests --parallel 2
+          ctest --preset release
+      - name: Bundle Qt and its runtime libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tools dist artifacts
+          gh release download 1-alpha-20251107-1 -R linuxdeploy/linuxdeploy \
+            -p linuxdeploy-x86_64.AppImage -D tools
+          gh release download 1-alpha-20250213-1 -R linuxdeploy/linuxdeploy-plugin-qt \
+            -p linuxdeploy-plugin-qt-x86_64.AppImage -D tools
+          echo 'c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d  tools/linuxdeploy-x86_64.AppImage' | sha256sum -c -
+          echo '15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724  tools/linuxdeploy-plugin-qt-x86_64.AppImage' | sha256sum -c -
+          chmod +x tools/*.AppImage
+          tools/linuxdeploy-x86_64.AppImage --appdir dist/AppDir \
+            --executable build/release/inkstow \
+            --desktop-file packaging/inkstow.desktop \
+            --icon-file packaging/inkstow.svg --plugin qt
+          test -x dist/AppDir/AppRun
+          test -f dist/AppDir/usr/plugins/platforms/libqxcb.so
+          test -f dist/AppDir/usr/lib/libQt6Widgets.so.6
+          tar -czf artifacts/inkstow-${{ needs.validate.outputs.tag }}-linux-x86_64.tar.gz \
+            -C dist --transform='s/^AppDir/inkstow/' AppDir
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: artifacts/*
+          if-no-files-found: error
+
+  macos:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x86_64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: ./scripts/install --system
+      - name: Configure, build and test
+        run: |
+          cmake --preset release
+          cmake --build --preset release --target inkstow unit-tests ui-tests --parallel 2
+          ctest --preset release
+      - name: Bundle Qt in the app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          "$(brew --prefix qt)/bin/macdeployqt" build/release/Inkstow.app
+          test -d build/release/Inkstow.app/Contents/Frameworks/QtWidgets.framework
+          ditto -c -k --sequesterRsrc --keepParent build/release/Inkstow.app \
+            "artifacts/inkstow-${{ needs.validate.outputs.tag }}-macos-${{ matrix.arch }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  windows:
+    needs: validate
+    runs-on: windows-2022
+    env:
+      QT_FORCE_STDERR_LOGGING: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+      - name: Configure, build and test
+        shell: pwsh
+        run: |
+          cmake --preset release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build --preset release --config Release --target inkstow unit-tests ui-tests --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --preset release -C Release --repeat until-fail:10 --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Bundle Qt DLLs and plugins
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts, dist/inkstow | Out-Null
+          Copy-Item build/release/Release/inkstow.exe dist/inkstow/
+          & windeployqt --release --no-translations --dir dist/inkstow dist/inkstow/inkstow.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path dist/inkstow/platforms/qwindows.dll)) { throw 'Missing Qt Windows platform plugin' }
+          Compress-Archive -Path dist/inkstow -DestinationPath "artifacts/inkstow-${{ needs.validate.outputs.tag }}-windows-x86_64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: artifacts/*
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [validate, linux, macos, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*'
+          merge-multiple: true
+          path: dist
+      - name: Check artifacts and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for platform in linux-x86_64.tar.gz macos-x86_64.zip macos-arm64.zip windows-x86_64.zip; do
+            test -s "dist/inkstow-$TAG-$platform"
+          done
+          cd dist
+          sha256sum inkstow-* > SHA256SUMS
+          # Create an immutable version tag only after every platform passes.
+          # Keep the release private until all uploads succeed.
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Inkstow $TAG" --generate-notes --draft \
+            inkstow-* SHA256SUMS
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

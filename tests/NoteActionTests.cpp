@@ -97,6 +97,10 @@ private:
 void pressShortcut(QWidget *widget, const QKeySequence &shortcut)
 {
     CHECK(shortcut.count() == 1);
+    widget->window()->activateWindow();
+    CHECK(waitFor([&] { return widget->window()->isActiveWindow(); }));
+    widget->setFocus();
+    CHECK(widget->hasFocus());
     const QKeyCombination key = shortcut[0];
     QTest::keyClick(widget, key.key(), key.keyboardModifiers());
 }
