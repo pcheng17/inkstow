@@ -664,13 +664,24 @@ void Window::closeEvent(QCloseEvent *event)
             prompt.addButton(QStringLiteral("Discard and quit"), QMessageBox::DestructiveRole);
         discard->setObjectName(QStringLiteral("discardAndQuit"));
         discard->setAccessibleName(QStringLiteral("Discard and quit"));
+        auto *save = prompt.addButton(QStringLiteral("Save and quit"), QMessageBox::AcceptRole);
+        save->setObjectName(QStringLiteral("saveAndQuit"));
+        save->setAccessibleName(QStringLiteral("Save and quit"));
         prompt.setDefaultButton(cancel);
         prompt.setEscapeButton(cancel);
         prompt.exec();
-        if (prompt.clickedButton() != discard) {
-            event->ignore();
+        if (prompt.clickedButton() == save) {
+            saveNote();
+            if (!mSession.dirty()) {
+                QMainWindow::closeEvent(event);
+                return;
+            }
+        } else if (prompt.clickedButton() == discard) {
+            QMainWindow::closeEvent(event);
             return;
         }
+        event->ignore();
+        return;
     }
     QMainWindow::closeEvent(event);
 }
