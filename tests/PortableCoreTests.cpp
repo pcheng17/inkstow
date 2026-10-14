@@ -166,6 +166,38 @@ void dirtyOutsideChangeRetainsEditsAndReportsSnapshot()
     CHECK(session.getPath() == "Note.md" && session.getContent() == "mine again");
 }
 
+void resolutionRequiresReportedOutsideVersion()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "original");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("mine");
+    CHECK(!session.overwriteDisk(&error));
+    write(note, "outside A");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    write(note, "outside B");
+    CHECK(!session.overwriteDisk(&error));
+    CHECK(read(note) == "outside B" && session.getContent() == "mine");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.overwriteDisk(&error));
+    CHECK(read(note) == "mine");
+    session.setContent("new mine");
+    write(note, "new outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.reloadFromDisk(&error));
+    CHECK(session.getContent() == "new outside" && !session.isDirty());
+    CHECK(!session.overwriteDisk(&error));
+    session.setContent("unsaved");
+    CHECK(fs::remove(note));
+    CHECK(!session.reloadFromDisk(&error));
+    CHECK(!session.overwriteDisk(&error));
+    CHECK(session.getContent() == "unsaved");
+}
+
 void recoveryCreatesMissingNoteInExistingFolder()
 {
     TempVault temp;
@@ -341,6 +373,7 @@ int main()
         editingAndEncoding();
         cleanOutsideChangeReloadsAndPreservesBom();
         dirtyOutsideChangeRetainsEditsAndReportsSnapshot();
+        resolutionRequiresReportedOutsideVersion();
         recoveryCreatesMissingNoteInExistingFolder();
         recoveryNeverOverwritesReappearedNote();
         recoveryRejectsInvalidPathsAndMissingParent();

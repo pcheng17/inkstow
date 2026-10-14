@@ -80,6 +80,16 @@ DiskChange Session::syncWithDisk(std::string* error)
     return load(mPath, std::move(bytes), error) ? DiskChange::Reloaded : DiskChange::Conflict;
 }
 
+bool Session::reloadFromDisk(std::string* error)
+{
+    if (!mVault || mPath.empty()) {
+        *error = "No note selected.";
+        return false;
+    }
+    std::string bytes;
+    return mVault->readNote(mPath, &bytes, error) && load(mPath, std::move(bytes), error);
+}
+
 bool Session::overwriteDisk(std::string* error)
 {
     if (!mVault || mPath.empty()) {
