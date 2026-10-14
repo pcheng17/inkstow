@@ -282,6 +282,24 @@ bool Session::mergeOutsideChanges(std::string* error)
     return true;
 }
 
+bool Session::saveAsNewNote(std::string* error)
+{
+    if (!mVault || mPath.empty()) {
+        *error = "No note selected.";
+        return false;
+    }
+    if (!detail::validUtf8(mContent)) {
+        *error = "Markdown must be valid UTF-8.";
+        return false;
+    }
+    const std::string bytes = (mHasBom ? std::string(kBom) : std::string()) + mContent;
+    if (!mVault->createNoteWithContent(mPath, bytes, error)) return false;
+    mSavedBytes = bytes;
+    mSavedContent = mContent;
+    mConflictBytes.reset();
+    return true;
+}
+
 bool Session::overwriteDisk(std::string* error)
 {
     if (!mVault || mPath.empty()) {

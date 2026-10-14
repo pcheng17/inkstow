@@ -255,6 +255,34 @@ void mergeReportedOutsideChanges()
     CHECK(read(note) == "a\nb\nc\nY\nd\ne");
 }
 
+void missingNoteRecoveryRefusesReappearingPath()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "Folder"));
+    const fs::path note = temp.mPath / "Folder" / "Note.md";
+    write(
+        note,
+        "\xEF\xBB\xBF"
+        "old");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Folder/Note.md", &error));
+    session.setContent("recovered");
+    CHECK(fs::remove(note));
+    CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+    write(note, "reappeared");
+    CHECK(!session.saveAsNewNote(&error));
+    CHECK(read(note) == "reappeared" && session.getContent() == "recovered");
+    CHECK(fs::remove(note));
+    CHECK(session.saveAsNewNote(&error));
+    CHECK(
+        read(note) == "\xEF\xBB\xBF"
+                      "recovered");
+    CHECK(!session.isDirty());
+    CHECK(session.syncWithDisk(&error) == DiskChange::None);
+}
+
 void recoveryCreatesMissingNoteInExistingFolder()
 {
     TempVault temp;
@@ -432,6 +460,7 @@ int main()
         dirtyOutsideChangeRetainsEditsAndReportsSnapshot();
         resolutionRequiresReportedOutsideVersion();
         mergeReportedOutsideChanges();
+        missingNoteRecoveryRefusesReappearingPath();
         recoveryCreatesMissingNoteInExistingFolder();
         recoveryNeverOverwritesReappearedNote();
         recoveryRejectsInvalidPathsAndMissingParent();
