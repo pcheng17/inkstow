@@ -48,6 +48,18 @@ if(INKSTOW_BUILD_WEBVIEW)
       add_test(NAME webview-native-navigation-tests
                COMMAND "${XVFB_RUN_EXECUTABLE}" -a $<TARGET_FILE:webview-native-navigation-tests>)
       add_dependencies(unit-tests webview-native-navigation-tests)
+      add_executable(webview-conflict-window-tests EXCLUDE_FROM_ALL
+                     WebviewConflictWindowTests.cpp
+                     ${PROJECT_SOURCE_DIR}/src/webview/NavigationPolicyLinux.cpp)
+      add_dependencies(webview-conflict-window-tests webview-assets)
+      target_include_directories(webview-conflict-window-tests PRIVATE
+                                 ${PROJECT_SOURCE_DIR}/src/webview
+                                 "${PROJECT_BINARY_DIR}/generated")
+      target_link_libraries(webview-conflict-window-tests PRIVATE webview-bridge
+                            webview::core_static inkstow-warnings)
+      add_test(NAME webview-conflict-window-tests
+               COMMAND "${XVFB_RUN_EXECUTABLE}" -a $<TARGET_FILE:webview-conflict-window-tests>)
+      add_dependencies(unit-tests webview-conflict-window-tests)
     endif()
   endif()
 endif()
