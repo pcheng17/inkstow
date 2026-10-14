@@ -25,7 +25,7 @@ NoteEditor::NoteEditor(std::function<void()> followLink)
     connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this] { centreText(); });
 }
 
-void NoteEditor::setNoteText(const QString &text)
+void NoteEditor::setNoteText(const QString& text)
 {
     setPlainText(text);
     // New paragraphs inherit the spacing from the one they are split from.
@@ -38,7 +38,7 @@ void NoteEditor::setNoteText(const QString &text)
     document()->setUndoRedoEnabled(true);
 }
 
-void NoteEditor::insertFromMimeData(const QMimeData *source)
+void NoteEditor::insertFromMimeData(const QMimeData* source)
 {
     // Inserted like typing so new paragraphs keep the line spacing; a pasted
     // fragment would bring default paragraph formats with it.
@@ -47,7 +47,7 @@ void NoteEditor::insertFromMimeData(const QMimeData *source)
     ensureCursorVisible();
 }
 
-void NoteEditor::mouseReleaseEvent(QMouseEvent *event)
+void NoteEditor::mouseReleaseEvent(QMouseEvent* event)
 {
     QTextEdit::mouseReleaseEvent(event);
     // Qt reports Cmd as the control modifier on macOS. A drag selects instead.
@@ -58,7 +58,7 @@ void NoteEditor::mouseReleaseEvent(QMouseEvent *event)
     mFollowLink();
 }
 
-void NoteEditor::resizeEvent(QResizeEvent *event)
+void NoteEditor::resizeEvent(QResizeEvent* event)
 {
     centreText();
     QTextEdit::resizeEvent(event);
@@ -72,7 +72,7 @@ void NoteEditor::centreText()
     const int spare =
         contentsRect().width() - theme::kEditorMaxTextWidth - (2 * theme::kEditorPadding);
     const int side = std::max(0, spare / 2);
-    const QScrollBar *scrollBar = verticalScrollBar();
+    const QScrollBar* scrollBar = verticalScrollBar();
     const int scrollBarWidth = scrollBar->maximum() > 0 ? scrollBar->sizeHint().width() : 0;
     setViewportMargins(side, 0, std::max(0, side - scrollBarWidth), 0);
 }

@@ -26,14 +26,14 @@
             throw std::runtime_error("Failed: " #value " at line " + std::to_string(__LINE__));    \
     } while (false)
 
-static void writeFile(const QString &path, const QByteArray &bytes)
+static void writeFile(const QString& path, const QByteArray& bytes)
 {
     QFile file(path);
     CHECK(file.open(QIODevice::WriteOnly));
     CHECK(file.write(bytes) == bytes.size());
 }
 
-static QByteArray readFile(const QString &path)
+static QByteArray readFile(const QString& path)
 {
     QFile file(path);
     CHECK(file.open(QIODevice::ReadOnly));
@@ -41,9 +41,9 @@ static QByteArray readFile(const QString &path)
 }
 
 // Stands in for the system trash so tests don't fill the real one.
-static TrashFunction trashInto(const QString &folder)
+static TrashFunction trashInto(const QString& folder)
 {
-    return [folder](const QString &path, QString *error) {
+    return [folder](const QString& path, QString* error) {
         if (QFile::rename(path, QDir(folder).filePath(QFileInfo(path).fileName()))) return true;
         *error = QStringLiteral("Fake trash failed.");
         return false;
@@ -70,7 +70,7 @@ static void resolvesFixtureLinks()
     const auto vault = Vault::open(QString::fromUtf8(LINKS_VAULT), &error);
     CHECK(vault.has_value());
     const QString source = QStringLiteral("A/Source.md");
-    const auto check = [&](const QString &link, const QString &expected) {
+    const auto check = [&](const QString& link, const QString& expected) {
         CHECK(vault->resolveWikilink(link, source) == std::optional<QString>(expected));
     };
     check(QStringLiteral("Twin"), QStringLiteral("A/Twin.md"));
@@ -165,10 +165,10 @@ static void retriesLockedWindowsDestination()
     QString error;
     const auto vault = Vault::open(dir.path(), &error);
     CHECK(vault.has_value());
-    const auto lockWithoutDelete = [](const QString &filePath) {
+    const auto lockWithoutDelete = [](const QString& filePath) {
         const QString nativePath = QDir::toNativeSeparators(filePath);
         return CreateFileW(
-            reinterpret_cast<const wchar_t *>(nativePath.utf16()),
+            reinterpret_cast<const wchar_t*>(nativePath.utf16()),
             GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             nullptr,
@@ -223,7 +223,7 @@ static void rejectsEscapesAndSymlinks()
     QString error;
     auto vault = Vault::open(dir.path(), &error);
     CHECK(vault.has_value());
-    for (const QString &path :
+    for (const QString& path :
          {QStringLiteral("../note.md"),
           QStringLiteral("/tmp/note.md"),
           QStringLiteral("note.md/.."),
@@ -525,7 +525,7 @@ static void createsNotesSafely()
     CHECK(error.contains(QStringLiteral("exists")));
     CHECK(readFile(dir.filePath(QStringLiteral("Folder/Sub/New.md"))) == "kept");
 
-    for (const QString &path :
+    for (const QString& path :
          {QStringLiteral("../escape.md"),
           QStringLiteral("/tmp/absolute.md"),
           QStringLiteral(".hidden.md"),
@@ -547,7 +547,7 @@ static void createsNotesSafely()
     CHECK(empty.isValid());
     const auto fresh = Vault::open(empty.path(), &error);
     CHECK(fresh.has_value());
-    for (const QString &path :
+    for (const QString& path :
          {QStringLiteral("x.md/.md"),
           QStringLiteral("Folder/.md"),
           QStringLiteral("A/B//c.md"),
@@ -711,7 +711,7 @@ static void trashesNotes()
     CHECK(!vault->trashNote(QStringLiteral("note.md"), trashInto(trash.path()), &error));
     CHECK(!vault->trashNote(QStringLiteral("../x.md"), trashInto(trash.path()), &error));
 
-    const TrashFunction failing = [](const QString &, QString *trashError) {
+    const TrashFunction failing = [](const QString&, QString* trashError) {
         *trashError = QStringLiteral("No trash here.");
         return false;
     };
@@ -940,7 +940,7 @@ static void renameLinksRemainResolvable()
     CHECK(!QFile::exists(dir.filePath(QStringLiteral("Double.md.md"))));
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
     try {
@@ -970,7 +970,7 @@ int main(int argc, char **argv)
         movesNotesAndGuardsLinks();
         moveResolvesSharedDiscoveryAcrossSources();
         renameLinksRemainResolvable();
-    } catch (const std::exception &error) {
+    } catch (const std::exception& error) {
         qCritical("%s", error.what());
         return 1;
     }

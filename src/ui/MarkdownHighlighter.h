@@ -12,23 +12,23 @@
 class MarkdownHighlighter : public QSyntaxHighlighter
 {
 public:
-    explicit MarkdownHighlighter(QTextDocument *document);
+    explicit MarkdownHighlighter(QTextDocument* document);
 
 protected:
-    void highlightBlock(const QString &text) override;
+    void highlightBlock(const QString& text) override;
 
 private:
-    void continueFrontmatter(const QString &text);
-    void continueFence(const QString &text, int state);
-    void highlightInline(const QString &text);
-    void highlightEmphasis(const QString &plain, const std::vector<bool> &inCode);
+    void continueFrontmatter(const QString& text);
+    void continueFence(const QString& text, int state);
+    void highlightInline(const QString& text);
+    void highlightEmphasis(const QString& plain, const std::vector<bool>& inCode);
     // Replaces the whole line's formatting with format.
-    void formatLine(const QString &text, const QTextCharFormat &format);
+    void formatLine(const QString& text, const QTextCharFormat& format);
     // Adds a format to the existing formatting of length characters from
     // start, skipping characters marked in skip, if given.
     void layer(
         int start,
         int length,
-        const QTextCharFormat &added,
-        const std::vector<bool> *skip = nullptr);
+        const QTextCharFormat& added,
+        const std::vector<bool>* skip = nullptr);
 };

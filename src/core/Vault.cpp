@@ -14,14 +14,14 @@
 
 namespace
 {
-void conflict(QString *error)
+void conflict(QString* error)
 {
     *error = QStringLiteral(
         "Save conflict: note changed on disk. Your edits remain "
         "in the editor.");
 }
 
-bool readBytes(const QString &path, QByteArray *content, QString *error)
+bool readBytes(const QString& path, QByteArray* content, QString* error)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -37,7 +37,7 @@ bool readBytes(const QString &path, QByteArray *content, QString *error)
 }
 // A move shares one snapshot for all of its link lookups. Standalone lookups
 // still discover the current vault contents on each call.
-QStringList discoverWikilinkFiles(const QString &root)
+QStringList discoverWikilinkFiles(const QString& root)
 {
     // Discover only ordinary visible files. Never traverse symlinked folders or
     // return linked files, even if they point back into this vault.
@@ -47,7 +47,7 @@ QStringList discoverWikilinkFiles(const QString &root)
         QDir dir(pending.takeLast());
         const QFileInfoList entries = dir.entryInfoList(
             QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
-        for (const QFileInfo &entry : entries) {
+        for (const QFileInfo& entry : entries) {
             if (entry.fileName().startsWith(u'.') || entry.isSymLink()) continue;
             if (entry.isDir())
                 pending.append(entry.filePath());
@@ -59,13 +59,13 @@ QStringList discoverWikilinkFiles(const QString &root)
 }
 
 std::optional<QString> resolveWikilinkInFiles(
-    const QString &link, const QString &source, const QStringList &files)
+    const QString& link, const QString& source, const QStringList& files)
 {
     QString path = link.section(u'|', 0, 0).section(u'#', 0, 0);
     const bool rootOnly = path.startsWith(u'/');
     if (rootOnly) path.remove(0, 1);
     if (path.isEmpty() || path.contains(u'\\')) return std::nullopt;
-    for (const QString &part : path.split(u'/')) {
+    for (const QString& part : path.split(u'/')) {
         if (part.isEmpty() || part.startsWith(u'.') || part == QStringLiteral(".."))
             return std::nullopt;
     }
@@ -75,20 +75,20 @@ std::optional<QString> resolveWikilinkInFiles(
                                       : QStringList{path, path + QStringLiteral(".md")};
     const QString sourceFolder =
         source.contains(u'/') ? source.left(source.lastIndexOf(u'/')) + u'/' : QString();
-    for (const QString &spelling : spellings) {
+    for (const QString& spelling : spellings) {
         if (!rootOnly && files.contains(sourceFolder + spelling)) return sourceFolder + spelling;
         if (files.contains(spelling)) return spelling;
     }
     // A qualified path must match in full: never send a miss in one folder
     // to an unrelated file with the same basename elsewhere.
     if (path.contains(u'/')) {
-        for (const QString &spelling : spellings) {
+        for (const QString& spelling : spellings) {
             if (!rootOnly) {
-                for (const QString &file : files)
+                for (const QString& file : files)
                     if (file.compare(sourceFolder + spelling, Qt::CaseInsensitive) == 0)
                         return file;
             }
-            for (const QString &file : files)
+            for (const QString& file : files)
                 if (file.compare(spelling, Qt::CaseInsensitive) == 0) return file;
         }
         return std::nullopt;
@@ -97,10 +97,10 @@ std::optional<QString> resolveWikilinkInFiles(
 
     // Basename lookup is case-insensitive. Prefer nearby files, then shorter
     // paths, then a stable lexical order for equally ranked duplicates.
-    for (const QString &spelling : spellings) {
+    for (const QString& spelling : spellings) {
         const QString name = spelling.section(u'/', -1);
         QStringList matches;
-        for (const QString &file : files) {
+        for (const QString& file : files) {
             if (file.section(u'/', -1).compare(name, Qt::CaseInsensitive) == 0)
                 matches.append(file);
         }
@@ -108,7 +108,7 @@ std::optional<QString> resolveWikilinkInFiles(
         std::sort(
             matches.begin(),
             matches.end(),
-            [&sourceFolder](const QString &a, const QString &b) {
+            [&sourceFolder](const QString& a, const QString& b) {
                 const bool aNear = a.startsWith(sourceFolder);
                 const bool bNear = b.startsWith(sourceFolder);
                 if (aNear != bNear) return aNear;
@@ -121,14 +121,14 @@ std::optional<QString> resolveWikilinkInFiles(
 }
 } // namespace
 
-bool moveToSystemTrash(const QString &path, QString *error)
+bool moveToSystemTrash(const QString& path, QString* error)
 {
     if (QFile::moveToTrash(path)) return true;
     *error = QStringLiteral("Could not move the note to the trash, so it was not deleted.");
     return false;
 }
 
-std::optional<Vault> Vault::open(const QString &folder, QString *error)
+std::optional<Vault> Vault::open(const QString& folder, QString* error)
 {
     QFileInfo info(folder);
     if (!info.isDir()) {
@@ -143,7 +143,7 @@ std::optional<Vault> Vault::open(const QString &folder, QString *error)
     return Vault(root);
 }
 
-bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) const
+bool Vault::listNotes(QStringList* notes, QString* error, QStringList* folders) const
 {
     QStringList found;
     QStringList discoveredFolders;
@@ -158,7 +158,7 @@ bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) 
         if (folder != u'.') discoveredFolders.append(folder);
         const QFileInfoList entries = dir.entryInfoList(
             QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
-        for (const QFileInfo &entry : entries) {
+        for (const QFileInfo& entry : entries) {
             if (entry.fileName().startsWith(u'.') || entry.isSymLink()) continue;
             if (entry.isDir()) {
                 pending.append(entry.filePath());
@@ -177,7 +177,7 @@ bool Vault::listNotes(QStringList *notes, QString *error, QStringList *folders) 
     return true;
 }
 
-std::optional<QString> Vault::notePath(const QString &relative, QString *error) const
+std::optional<QString> Vault::notePath(const QString& relative, QString* error) const
 {
     if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
         !relative.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
@@ -186,7 +186,7 @@ std::optional<QString> Vault::notePath(const QString &relative, QString *error) 
         return std::nullopt;
     }
     QString walked = mRoot;
-    for (const QString &segment : relative.split(u'/')) {
+    for (const QString& segment : relative.split(u'/')) {
         if (segment.isEmpty() || segment == QStringLiteral(".") || segment == QStringLiteral(".."))
         {
             *error = QStringLiteral("Expected a relative Markdown path.");
@@ -211,20 +211,20 @@ std::optional<QString> Vault::notePath(const QString &relative, QString *error) 
     return resolved;
 }
 
-std::optional<QString> Vault::resolveWikilink(const QString &link, const QString &source) const
+std::optional<QString> Vault::resolveWikilink(const QString& link, const QString& source) const
 {
     QString error;
     if (!notePath(source, &error)) return std::nullopt;
     return resolveWikilinkInFiles(link, source, discoverWikilinkFiles(mRoot));
 }
 
-std::optional<QString> Vault::attachmentPath(const QString &relative) const
+std::optional<QString> Vault::attachmentPath(const QString& relative) const
 {
     if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
         relative.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
         return std::nullopt;
     QString walked = mRoot;
-    for (const QString &segment : relative.split(u'/')) {
+    for (const QString& segment : relative.split(u'/')) {
         if (segment.isEmpty() || segment.startsWith(u'.')) return std::nullopt;
         walked = QDir(walked).filePath(segment);
         if (QFileInfo(walked).isSymLink()) return std::nullopt;
@@ -236,17 +236,17 @@ std::optional<QString> Vault::attachmentPath(const QString &relative) const
     return canonical;
 }
 
-bool Vault::readNote(const QString &relative, QByteArray *content, QString *error) const
+bool Vault::readNote(const QString& relative, QByteArray* content, QString* error) const
 {
     const auto path = notePath(relative, error);
     return path && readBytes(*path, content, error);
 }
 
 bool Vault::saveNote(
-    const QString &relative,
-    const QByteArray &expected,
-    const QByteArray &content,
-    QString *error) const
+    const QString& relative,
+    const QByteArray& expected,
+    const QByteArray& content,
+    QString* error) const
 {
     const auto path = notePath(relative, error);
     if (!path) return false;
@@ -296,13 +296,13 @@ bool Vault::saveNote(
     return false;
 }
 
-bool Vault::createNote(const QString &relative, QString *error) const
+bool Vault::createNote(const QString& relative, QString* error) const
 {
     return createNoteWithContent(relative, QByteArray(), error);
 }
 
 bool Vault::createNoteWithContent(
-    const QString &relative, const QByteArray &content, QString *error) const
+    const QString& relative, const QByteArray& content, QString* error) const
 {
     if (relative.isEmpty() || QDir::isAbsolutePath(relative) || relative.contains(u'\\') ||
         !relative.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive))
@@ -312,7 +312,7 @@ bool Vault::createNoteWithContent(
     }
     const QStringList segments = relative.split(u'/');
     // Checked up front so a rejected path creates no folders. Covers "." and "..".
-    for (const QString &segment : segments) {
+    for (const QString& segment : segments) {
         if (segment.isEmpty() || segment.startsWith(u'.')) {
             *error = QStringLiteral("Note and folder names can't be empty or start with '.'.");
             return false;
@@ -320,7 +320,7 @@ bool Vault::createNoteWithContent(
     }
     QString walked = mRoot;
     QStringList created;
-    const auto fail = [&created, error](const QString &message) {
+    const auto fail = [&created, error](const QString& message) {
         for (auto folder = created.crbegin(); folder != created.crend(); ++folder)
             QDir().rmdir(*folder);
         *error = message;
@@ -354,11 +354,11 @@ bool Vault::createNoteWithContent(
 }
 
 bool Vault::moveNote(
-    const QString &from,
-    const QString &to,
-    const QByteArray &expected,
+    const QString& from,
+    const QString& to,
+    const QByteArray& expected,
     bool updateLinks,
-    QString *error) const
+    QString* error) const
 {
     const auto source = notePath(from, error);
     if (!source) return false;
@@ -368,7 +368,7 @@ bool Vault::moveNote(
         std::any_of(
             parts.begin(),
             parts.end(),
-            [](const QString &part) { return part.isEmpty() || part.startsWith(u'.'); }) ||
+            [](const QString& part) { return part.isEmpty() || part.startsWith(u'.'); }) ||
         from == to)
     {
         *error = QStringLiteral("Expected a different visible relative Markdown path.");
@@ -402,7 +402,7 @@ bool Vault::moveNote(
     std::vector<Rewrite> rewrites;
     std::optional<QStringList> wikilinkFiles;
     if (updateLinks) {
-        const auto safeLinkPath = [](const QString &path) {
+        const auto safeLinkPath = [](const QString& path) {
             return !path.contains(u'#') && !path.contains(u'|') && !path.contains(u'[') &&
                    !path.contains(u']') && !path.contains(u'\n') && !path.contains(u'\r');
         };
@@ -418,7 +418,7 @@ bool Vault::moveNote(
         const QRegularExpression links(QStringLiteral(R"(\[\[([^\[\]\n]+)\]\])"));
         const QString oldName = QFileInfo(from).completeBaseName();
         const QString newName = QFileInfo(to).completeBaseName();
-        for (const QString &note : notes) {
+        for (const QString& note : notes) {
             QByteArray bytes;
             if (!readNote(note, &bytes, error)) return false;
             QStringDecoder decoder(QStringDecoder::Utf8);
@@ -488,7 +488,7 @@ bool Vault::moveNote(
                     QDir(shadow.absolutePath())
                         .entryInfoList(
                             QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
-                for (const QFileInfo &sibling : siblings) {
+                for (const QFileInfo& sibling : siblings) {
                     if (sibling.fileName().compare(shadow.fileName(), Qt::CaseInsensitive) == 0 &&
                         (sibling.isFile() || sibling.isSymLink()))
                     {
@@ -518,7 +518,7 @@ bool Vault::moveNote(
     }
     // Recheck every file slated for modification before the first mutation.
     const bool unchanged =
-        std::all_of(rewrites.begin(), rewrites.end(), [&](const Rewrite &rewrite) {
+        std::all_of(rewrites.begin(), rewrites.end(), [&](const Rewrite& rewrite) {
             QByteArray bytes;
             return readNote(rewrite.mPath, &bytes, error) && bytes == rewrite.mBefore;
         });
@@ -543,7 +543,7 @@ bool Vault::moveNote(
         *error = QStringLiteral("Could not move note (destination may have appeared).");
         return false;
     }
-    const bool saved = std::all_of(rewrites.begin(), rewrites.end(), [&](const Rewrite &rewrite) {
+    const bool saved = std::all_of(rewrites.begin(), rewrites.end(), [&](const Rewrite& rewrite) {
         const QString path = rewrite.mPath == from ? to : rewrite.mPath;
         return saveNote(path, rewrite.mBefore, rewrite.mAfter, error);
     });
@@ -553,7 +553,7 @@ bool Vault::moveNote(
     return saved;
 }
 
-bool Vault::trashNote(const QString &relative, const TrashFunction &trash, QString *error) const
+bool Vault::trashNote(const QString& relative, const TrashFunction& trash, QString* error) const
 {
     const auto path = notePath(relative, error);
     return path && trash(*path, error);

@@ -79,4 +79,4 @@ constexpr int kHeadingLevelProperty = QTextFormat::UserProperty + 2;
 QTextCharFormat markdownFormat(MarkdownKind kind, int headingLevel = 1);
 } // namespace theme
 
-void configureLightTheme(QApplication &app);
+void configureLightTheme(QApplication& app);

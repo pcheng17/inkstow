@@ -21,14 +21,14 @@
             throw std::runtime_error("Failed: " #value " at line " + std::to_string(__LINE__));    \
     } while (false)
 
-inline void writeFile(const QString &path, const QByteArray &bytes)
+inline void writeFile(const QString& path, const QByteArray& bytes)
 {
     QFile file(path);
     CHECK(file.open(QIODevice::WriteOnly));
     CHECK(file.write(bytes) == bytes.size());
 }
 
-inline QByteArray readFile(const QString &path)
+inline QByteArray readFile(const QString& path)
 {
     QFile file(path);
     CHECK(file.open(QIODevice::ReadOnly));
@@ -52,7 +52,7 @@ class MemorySettings : public SettingsStore
 {
 public:
     QString lastVault() const override { return mLastVault; }
-    bool setLastVault(const QString &path) override
+    bool setLastVault(const QString& path) override
     {
         mLastVault = path;
         return true;
@@ -62,13 +62,13 @@ private:
     QString mLastVault;
 };
 
-inline bool refuseTrash(const QString & /*path*/, QString * /*error*/)
+inline bool refuseTrash(const QString& /*path*/, QString* /*error*/)
 {
     return false;
 }
 
 // Finds the tree item holding a vault-relative note or folder path.
-inline QTreeWidgetItem *treeItem(QTreeWidget *tree, const QString &path)
+inline QTreeWidgetItem* treeItem(QTreeWidget* tree, const QString& path)
 {
     for (QTreeWidgetItemIterator it(tree); *it; ++it) {
         if ((*it)->data(0, NoteTree::kPathRole).toString() == path) return *it;
@@ -76,13 +76,13 @@ inline QTreeWidgetItem *treeItem(QTreeWidget *tree, const QString &path)
     return nullptr;
 }
 
-inline QString currentPath(const QTreeWidget *tree)
+inline QString currentPath(const QTreeWidget* tree)
 {
-    const QTreeWidgetItem *item = tree->currentItem();
+    const QTreeWidgetItem* item = tree->currentItem();
     return item ? item->data(0, NoteTree::kPathRole).toString() : QString();
 }
 
-inline QStringList notePaths(QTreeWidget *tree)
+inline QStringList notePaths(QTreeWidget* tree)
 {
     QStringList paths;
     for (QTreeWidgetItemIterator it(tree); *it; ++it) {
@@ -92,7 +92,7 @@ inline QStringList notePaths(QTreeWidget *tree)
     return paths;
 }
 
-inline void pressKey(QWidget *widget, int key)
+inline void pressKey(QWidget* widget, int key)
 {
     QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
     QCoreApplication::sendEvent(widget, &press);
@@ -101,7 +101,7 @@ inline void pressKey(QWidget *widget, int key)
 }
 
 // Presses and releases the left button at point in a widget, with modifiers held.
-inline void clickAt(QWidget *widget, QPointF point, Qt::KeyboardModifiers modifiers = {})
+inline void clickAt(QWidget* widget, QPointF point, Qt::KeyboardModifiers modifiers = {})
 {
     const QPointF global = widget->mapToGlobal(point);
     QMouseEvent
@@ -112,7 +112,7 @@ inline void clickAt(QWidget *widget, QPointF point, Qt::KeyboardModifiers modifi
     QCoreApplication::sendEvent(widget, &release);
 }
 
-inline void clickItem(QTreeWidget *tree, QTreeWidgetItem *item)
+inline void clickItem(QTreeWidget* tree, QTreeWidgetItem* item)
 {
     CHECK(item);
     tree->scrollToItem(item);
@@ -120,9 +120,9 @@ inline void clickItem(QTreeWidget *tree, QTreeWidgetItem *item)
 }
 
 // Moves to a note with the keyboard and presses Enter, as a user would.
-inline void openNote(QTreeWidget *tree, const QString &path)
+inline void openNote(QTreeWidget* tree, const QString& path)
 {
-    QTreeWidgetItem *item = treeItem(tree, path);
+    QTreeWidgetItem* item = treeItem(tree, path);
     CHECK(item);
     tree->setCurrentItem(item);
     pressKey(tree, Qt::Key_Return);

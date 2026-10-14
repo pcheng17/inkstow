@@ -30,7 +30,7 @@ BraceWrapping:
   SplitEmptyRecord: true
   SplitEmptyNamespace: true
 ColumnLimit: 100
-DerivePointerAlignment: true
+DerivePointerAlignment: false
 IndentWidth: 4
 IndentCaseLabels: false
 FixNamespaceComments: true

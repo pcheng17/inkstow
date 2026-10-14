@@ -35,7 +35,7 @@
 
 namespace
 {
-std::optional<QString> pickFolderWithDialog(QWidget *parent)
+std::optional<QString> pickFolderWithDialog(QWidget* parent)
 {
     QString folder = QFileDialog::getExistingDirectory(parent, QStringLiteral("Open vault"));
     if (folder.isEmpty()) return std::nullopt;
@@ -43,15 +43,15 @@ std::optional<QString> pickFolderWithDialog(QWidget *parent)
 }
 
 // Explains the editor area when no note is open.
-QWidget *createNoNoteState()
+QWidget* createNoNoteState()
 {
-    auto *noNoteState = new QWidget;
+    auto* noNoteState = new QWidget;
     noNoteState->setObjectName(QStringLiteral("noNoteState"));
-    auto *layout = new QVBoxLayout(noNoteState);
+    auto* layout = new QVBoxLayout(noNoteState);
     layout->setSpacing(theme::kEmptyStateSpacing);
-    auto *heading = new QLabel(QStringLiteral("No note open"));
+    auto* heading = new QLabel(QStringLiteral("No note open"));
     heading->setFont(theme::titleFont(heading->font()));
-    auto *message =
+    auto* message =
         new QLabel(QStringLiteral("Select a note in the sidebar, or create a new one."));
     message->setObjectName(QStringLiteral("noNoteMessage"));
     message->setWordWrap(true);
@@ -64,7 +64,7 @@ QWidget *createNoNoteState()
 }
 
 void describeAction(
-    QAction *action, const QString &name, const QString &toolTip, const QKeySequence &shortcut)
+    QAction* action, const QString& name, const QString& toolTip, const QKeySequence& shortcut)
 {
     action->setObjectName(name);
     action->setToolTip(toolTip);
@@ -74,7 +74,7 @@ void describeAction(
 
 Window::Window(
     TrashFunction trash,
-    std::function<bool(const QUrl &)> openAttachment,
+    std::function<bool(const QUrl&)> openAttachment,
     FolderPicker pickFolder,
     std::shared_ptr<SettingsStore> settings)
     : mSession(std::move(trash))
@@ -83,7 +83,7 @@ Window::Window(
     , mSettings(settings ? std::move(settings) : std::make_shared<AppSettingsStore>())
     , mWatcher(new QFileSystemWatcher(this))
     , mSyncTimer(new QTimer(this))
-    , mNotes(new NoteTree([this](const QString &path) { openNote(path); }))
+    , mNotes(new NoteTree([this](const QString& path) { openNote(path); }))
     , mEditor(new NoteEditor([this] { mFollowLink->trigger(); }))
     , mNoNoteState(createNoNoteState())
     , mEditorPages(new QStackedWidget)
@@ -102,20 +102,20 @@ Window::Window(
     setWindowTitle(QStringLiteral("Inkstow"));
     createActions();
     resize(theme::kWindowWidth, theme::kWindowHeight);
-    auto *central = new QWidget(this);
-    auto *page = new QVBoxLayout(central);
-    auto *title = new QLabel(QStringLiteral("Inkstow"));
+    auto* central = new QWidget(this);
+    auto* page = new QVBoxLayout(central);
+    auto* title = new QLabel(QStringLiteral("Inkstow"));
     title->setObjectName(QStringLiteral("appTitle"));
     title->setFont(theme::titleFont(title->font()));
     page->addWidget(title);
 
-    auto *splitter = new QSplitter;
+    auto* splitter = new QSplitter;
     mNotes->setObjectName(QStringLiteral("notes"));
     mNotes->setAccessibleName(QStringLiteral("Notes"));
     mEditor->setObjectName(QStringLiteral("editor"));
     mEditor->setAccessibleName(QStringLiteral("Note text"));
-    auto *right = new QWidget;
-    auto *rightLayout = new QVBoxLayout(right);
+    auto* right = new QWidget;
+    auto* rightLayout = new QVBoxLayout(right);
     rightLayout->addWidget(mHeader);
     mReload = new QPushButton(QStringLiteral("Reload from disk"));
     mReload->setObjectName(QStringLiteral("reloadFromDisk"));
@@ -131,9 +131,9 @@ Window::Window(
     mConflictBar->setObjectName(QStringLiteral("conflictBar"));
     mConflictBar->hide();
     rightLayout->addWidget(mConflictBar);
-    auto *confirmDelete = new QPushButton(QStringLiteral("Move to trash"));
+    auto* confirmDelete = new QPushButton(QStringLiteral("Move to trash"));
     confirmDelete->setObjectName(QStringLiteral("confirmDelete"));
-    auto *cancelDelete = new QPushButton(QStringLiteral("Cancel"));
+    auto* cancelDelete = new QPushButton(QStringLiteral("Cancel"));
     cancelDelete->setObjectName(QStringLiteral("cancelDelete"));
     mDeleteBar = new PromptBanner({confirmDelete, cancelDelete});
     mDeleteBar->setObjectName(QStringLiteral("deleteBar"));
@@ -142,10 +142,10 @@ Window::Window(
     mEditorPages->addWidget(mNoNoteState);
     mEditorPages->addWidget(mEditor);
     rightLayout->addWidget(mEditorPages, 1);
-    auto *left = new QWidget;
-    auto *leftLayout = new QVBoxLayout(left);
+    auto* left = new QWidget;
+    auto* leftLayout = new QVBoxLayout(left);
     leftLayout->setContentsMargins(theme::kFlushMargins);
-    auto *newNote = new QHBoxLayout;
+    auto* newNote = new QHBoxLayout;
     mNewPath->setObjectName(QStringLiteral("newNotePath"));
     mNewPath->setPlaceholderText(QStringLiteral("Folder/New note"));
     mCreate = new QPushButton(QStringLiteral("Create"));
@@ -236,18 +236,18 @@ void Window::createActions()
     connect(mDelete, &QAction::triggered, this, [this] { askToDelete(); });
 }
 
-QWidget *Window::createEmptyState()
+QWidget* Window::createEmptyState()
 {
-    auto *emptyState = new QWidget;
+    auto* emptyState = new QWidget;
     emptyState->setObjectName(QStringLiteral("emptyState"));
-    auto *layout = new QVBoxLayout(emptyState);
+    auto* layout = new QVBoxLayout(emptyState);
     layout->setSpacing(theme::kEmptyStateSpacing);
-    auto *heading = new QLabel(QStringLiteral("No vault open"));
+    auto* heading = new QLabel(QStringLiteral("No vault open"));
     heading->setFont(theme::titleFont(heading->font()));
     mEmptyMessage->setObjectName(QStringLiteral("emptyStateMessage"));
     mEmptyMessage->setWordWrap(true);
     mEmptyMessage->setAlignment(Qt::AlignHCenter);
-    auto *open = new QPushButton(QStringLiteral("Open vault…"));
+    auto* open = new QPushButton(QStringLiteral("Open vault…"));
     open->setObjectName(QStringLiteral("openVault"));
     open->setAccessibleName(QStringLiteral("Open vault"));
     open->setDefault(true);
@@ -273,10 +273,10 @@ void Window::refresh()
     mMove->setEnabled(selected && !mSession.dirty());
     mCreate->setEnabled(mSession.hasVault() && !mSession.dirty());
     mEditor->setEnabled(selected);
-    mEditorPages->setCurrentWidget(selected ? static_cast<QWidget *>(mEditor) : mNoNoteState);
+    mEditorPages->setCurrentWidget(selected ? static_cast<QWidget*>(mEditor) : mNoNoteState);
 }
 
-void Window::replaceEditor(const QString &text)
+void Window::replaceEditor(const QString& text)
 {
     const QSignalBlocker block(mEditor);
     mEditor->setNoteText(text);
@@ -295,7 +295,7 @@ void Window::openVault()
     if (!openVaultFolder(*folder, &error)) mStatus->setText(QStringLiteral("Error: ") + error);
 }
 
-bool Window::openVaultFolder(const QString &folder, QString *error)
+bool Window::openVaultFolder(const QString& folder, QString* error)
 {
     if (!mSession.openVault(folder, error)) return false;
     const bool remembered = mSettings->setLastVault(folder);
@@ -320,7 +320,7 @@ void Window::reopenLastVault()
         mEmptyMessage->setText(QStringLiteral("Could not reopen %1: %2").arg(folder, error));
 }
 
-void Window::selectNote(const QString &path)
+void Window::selectNote(const QString& path)
 {
     QString error;
     if (!mSession.selectNote(path, &error)) {
@@ -333,7 +333,7 @@ void Window::selectNote(const QString &path)
     mStatus->setText(QStringLiteral("Opened ") + path);
 }
 
-void Window::openNote(const QString &path)
+void Window::openNote(const QString& path)
 {
     if (path != mSession.path()) selectNote(path); // Session refuses to abandon unsaved changes.
     if (mSession.path() != path) return;
@@ -398,7 +398,7 @@ void Window::updateWatches()
     if (mSession.hasVault()) {
         const QDir root(mSession.vaultRoot());
         folders.append(root.path());
-        for (const QString &folder : mSession.folders())
+        for (const QString& folder : mSession.folders())
             folders.append(root.filePath(folder));
     }
     const QString path = mSession.notePath();
@@ -413,15 +413,15 @@ void Window::updateWatches()
             !folders.contains(folder))
             folders.append(folder);
     }
-    for (const QString &watched : mWatcher->directories()) {
+    for (const QString& watched : mWatcher->directories()) {
         if (!folders.contains(watched)) mWatcher->removePath(watched);
     }
-    for (const QString &folder : folders) {
+    for (const QString& folder : folders) {
         if (QFileInfo(folder).isDir() && !QFileInfo(folder).isSymLink() &&
             !mWatcher->directories().contains(folder))
             mWatcher->addPath(folder);
     }
-    for (const QString &watched : mWatcher->files()) {
+    for (const QString& watched : mWatcher->files()) {
         if (watched != path) mWatcher->removePath(watched);
     }
     if (!path.isEmpty() && QFileInfo(path).isFile() && !QFileInfo(path).isSymLink() &&
@@ -594,12 +594,12 @@ void Window::moveNote()
     confirmation.setText(QStringLiteral("Update links when moving this note?"));
     confirmation.setInformativeText(QStringLiteral(
         "Updating is safest. Don't update can leave links pointing to the old path."));
-    auto *update = confirmation.addButton(QStringLiteral("Update links"), QMessageBox::AcceptRole);
+    auto* update = confirmation.addButton(QStringLiteral("Update links"), QMessageBox::AcceptRole);
     confirmation.addButton(
         QStringLiteral("Don't update (links may break)"),
         QMessageBox::DestructiveRole);
     confirmation.addButton(QMessageBox::Cancel);
-    confirmation.setDefaultButton(qobject_cast<QPushButton *>(update));
+    confirmation.setDefaultButton(qobject_cast<QPushButton*>(update));
     confirmation.exec();
     if (!confirmation.clickedButton() ||
         confirmation.clickedButton() == confirmation.button(QMessageBox::Cancel))
@@ -642,14 +642,14 @@ void Window::trashNote()
     mStatus->setText(QStringLiteral("Moved %1 to the trash").arg(path));
 }
 
-void Window::changeEvent(QEvent *event)
+void Window::changeEvent(QEvent* event)
 {
     // Catches changes the watcher missed while the app was in the background.
     if (event->type() == QEvent::ActivationChange && isActiveWindow()) syncWithDisk();
     QMainWindow::changeEvent(event);
 }
 
-void Window::closeEvent(QCloseEvent *event)
+void Window::closeEvent(QCloseEvent* event)
 {
     if (mSession.dirty()) {
         QMessageBox prompt(this);
@@ -657,14 +657,14 @@ void Window::closeEvent(QCloseEvent *event)
         prompt.setAccessibleName(QStringLiteral("Unsaved changes"));
         prompt.setWindowTitle(QStringLiteral("Unsaved changes"));
         prompt.setText(QStringLiteral("What would you like to do with your unsaved edits?"));
-        auto *cancel = prompt.addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
+        auto* cancel = prompt.addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
         cancel->setObjectName(QStringLiteral("cancelQuit"));
         cancel->setAccessibleName(QStringLiteral("Cancel"));
-        auto *discard =
+        auto* discard =
             prompt.addButton(QStringLiteral("Discard and quit"), QMessageBox::DestructiveRole);
         discard->setObjectName(QStringLiteral("discardAndQuit"));
         discard->setAccessibleName(QStringLiteral("Discard and quit"));
-        auto *save = prompt.addButton(QStringLiteral("Save and quit"), QMessageBox::AcceptRole);
+        auto* save = prompt.addButton(QStringLiteral("Save and quit"), QMessageBox::AcceptRole);
         save->setObjectName(QStringLiteral("saveAndQuit"));
         save->setAccessibleName(QStringLiteral("Save and quit"));
         prompt.setDefaultButton(cancel);

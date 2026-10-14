@@ -17,12 +17,12 @@ public:
     explicit NoteEditor(std::function<void()> followLink);
 
     // Replaces the text, clearing undo history.
-    void setNoteText(const QString &text);
+    void setNoteText(const QString& text);
 
 protected:
-    void insertFromMimeData(const QMimeData *source) override;
-    void mouseReleaseEvent(QMouseEvent *event) override;
-    void resizeEvent(QResizeEvent *event) override;
+    void insertFromMimeData(const QMimeData* source) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void centreText();

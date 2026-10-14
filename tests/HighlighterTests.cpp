@@ -37,7 +37,7 @@ struct Span
     int mKinds;
     int mLevel = 0;
 
-    bool operator==(const Span &other) const
+    bool operator==(const Span& other) const
     {
         return mStart == other.mStart && mLength == other.mLength && mKinds == other.mKinds &&
                mLevel == other.mLevel;
@@ -54,7 +54,7 @@ Span run(int start, int length, int kinds, int level = 0)
 // A document with a highlighter attached before the text arrives, so it is
 // highlighted at once, as in the editor. Like the editor's, it has a layout:
 // without one the document reports no changes and nothing is re-highlighted.
-std::unique_ptr<QTextDocument> highlighted(const QString &text)
+std::unique_ptr<QTextDocument> highlighted(const QString& text)
 {
     auto document = std::make_unique<QTextDocument>();
     document->documentLayout();
@@ -63,26 +63,26 @@ std::unique_ptr<QTextDocument> highlighted(const QString &text)
     return document;
 }
 
-Spans spans(const QTextDocument &document, int blockNumber)
+Spans spans(const QTextDocument& document, int blockNumber)
 {
     const QTextBlock block = document.findBlockByNumber(blockNumber);
     CHECK(block.isValid());
     Spans found;
-    for (const QTextLayout::FormatRange &range : block.layout()->formats()) {
+    for (const QTextLayout::FormatRange& range : block.layout()->formats()) {
         found.push_back(
             {range.start,
              range.length,
              range.format.intProperty(theme::kMarkdownKindsProperty),
              range.format.intProperty(theme::kHeadingLevelProperty)});
     }
-    std::sort(found.begin(), found.end(), [](const Span &a, const Span &b) {
+    std::sort(found.begin(), found.end(), [](const Span& a, const Span& b) {
         return a.mStart < b.mStart;
     });
     return found;
 }
 
 // The whole of each listed block has exactly `kinds`.
-void checkWholeBlocks(const QTextDocument &document, const std::vector<int> &blocks, int kinds)
+void checkWholeBlocks(const QTextDocument& document, const std::vector<int>& blocks, int kinds)
 {
     for (const int number : blocks) {
         const int length = static_cast<int>(document.findBlockByNumber(number).text().size());
@@ -93,7 +93,7 @@ void checkWholeBlocks(const QTextDocument &document, const std::vector<int> &blo
 }
 
 // No block has any formatting.
-void checkPlain(const QTextDocument &document)
+void checkPlain(const QTextDocument& document)
 {
     for (int number = 0; number < document.blockCount(); ++number) {
         if (!spans(document, number).empty())
@@ -272,8 +272,8 @@ void testTextUnchanged()
         "A [[Note|alias]] and ![[embed.png]] and [[unclosed\n```js\nlet a = `b`;\n```\n"
         "```\nunclosed fence\n");
     const auto document = highlighted(text);
-    auto *highlighter = dynamic_cast<MarkdownHighlighter *>(
-        document->findChild<QSyntaxHighlighter *>(QStringLiteral("markdownHighlighter")));
+    auto* highlighter = dynamic_cast<MarkdownHighlighter*>(
+        document->findChild<QSyntaxHighlighter*>(QStringLiteral("markdownHighlighter")));
     CHECK(highlighter);
     document->setModified(false);
     highlighter->rehighlight();
@@ -305,7 +305,7 @@ void testFormatsFromTheme()
 }
 } // namespace
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     QGuiApplication app(argc, argv);
     try {
@@ -318,7 +318,7 @@ int main(int argc, char **argv)
         testEditingCarriesState();
         testTextUnchanged();
         testFormatsFromTheme();
-    } catch (const std::exception &error) {
+    } catch (const std::exception& error) {
         qCritical("%s", error.what());
         return 1;
     }

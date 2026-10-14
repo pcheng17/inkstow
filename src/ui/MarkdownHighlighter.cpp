@@ -52,7 +52,7 @@ int fenceLength(int state)
 }
 
 // Obsidian only accepts --- around frontmatter, not YAML's ... end marker.
-bool isFrontmatterDelimiter(const QString &text)
+bool isFrontmatterDelimiter(const QString& text)
 {
     static const QRegularExpression pattern(QStringLiteral(R"(^---[ \t]*$)"));
     return pattern.match(text).hasMatch();
@@ -60,7 +60,7 @@ bool isFrontmatterDelimiter(const QString &text)
 
 // Up to three spaces, three or more backticks, then an info string without
 // backticks. Returns the fence's length. Tildes do not open a fence.
-std::optional<int> openingFence(const QString &text)
+std::optional<int> openingFence(const QString& text)
 {
     static const QRegularExpression pattern(QStringLiteral(R"(^ {0,3}(`{3,})[^`]*$)"));
     const QRegularExpressionMatch match = pattern.match(text);
@@ -70,14 +70,14 @@ std::optional<int> openingFence(const QString &text)
 
 // A closing fence has at least as many backticks as the opening one, with
 // nothing after it but whitespace.
-bool closesFence(const QString &text, int length)
+bool closesFence(const QString& text, int length)
 {
     static const QRegularExpression pattern(QStringLiteral(R"(^ {0,3}(`{3,})[ \t]*$)"));
     const QRegularExpressionMatch match = pattern.match(text);
     return match.hasMatch() && match.capturedLength(1) >= length;
 }
 
-int backtickRun(const QString &text, int from)
+int backtickRun(const QString& text, int from)
 {
     int end = from;
     while (end < text.size() && text[end] == u'`')
@@ -86,13 +86,13 @@ int backtickRun(const QString &text, int from)
 }
 
 // Position of the next backtick at or after from, or -1.
-int nextBacktick(const QString &text, int from)
+int nextBacktick(const QString& text, int from)
 {
     return static_cast<int>(text.indexOf(u'`', from));
 }
 
 // Start of the next run of exactly length backticks, or -1.
-int findBacktickRun(const QString &text, int from, int length)
+int findBacktickRun(const QString& text, int from, int length)
 {
     for (int at = nextBacktick(text, from); at >= 0;) {
         const int run = backtickRun(text, at);
@@ -104,7 +104,7 @@ int findBacktickRun(const QString &text, int from, int length)
 
 // A run of backticks opens a code span that closes at the next run of the
 // same length; a run with no match is literal text.
-std::vector<Span> codeSpans(const QString &text)
+std::vector<Span> codeSpans(const QString& text)
 {
     std::vector<Span> spans;
     for (int at = nextBacktick(text, 0); at >= 0;) {
@@ -120,14 +120,14 @@ std::vector<Span> codeSpans(const QString &text)
     return spans;
 }
 
-QString masked(QString text, const std::vector<Span> &spans)
+QString masked(QString text, const std::vector<Span>& spans)
 {
-    for (const Span &span : spans)
+    for (const Span& span : spans)
         std::fill_n(text.begin() + span.mStart, span.mLength, kMask);
     return text;
 }
 
-std::vector<Span> matches(const QRegularExpression &pattern, const QString &text)
+std::vector<Span> matches(const QRegularExpression& pattern, const QString& text)
 {
     std::vector<Span> spans;
     QRegularExpressionMatchIterator found = pattern.globalMatch(text);
@@ -140,7 +140,7 @@ std::vector<Span> matches(const QRegularExpression &pattern, const QString &text
 }
 
 // The ! of an embed stays plain; only the [[...]] is a link.
-const QRegularExpression &wikilinkPattern()
+const QRegularExpression& wikilinkPattern()
 {
     static const QRegularExpression pattern(QStringLiteral(R"(\[\[[^\[\]\x{FFFC}]+\]\])"));
     return pattern;
@@ -163,7 +163,7 @@ QRegularExpression emphasisPattern(QChar marker, int count)
 }
 
 // Longest runs first, so ***x*** is bold and italic rather than a stray *.
-const std::array<EmphasisRule, 6> &emphasisRules()
+const std::array<EmphasisRule, 6>& emphasisRules()
 {
     static const std::array<EmphasisRule, 6> rules{
         {
@@ -179,13 +179,13 @@ const std::array<EmphasisRule, 6> &emphasisRules()
 }
 } // namespace
 
-MarkdownHighlighter::MarkdownHighlighter(QTextDocument *document)
+MarkdownHighlighter::MarkdownHighlighter(QTextDocument* document)
     : QSyntaxHighlighter(document)
 {
     setObjectName(QStringLiteral("markdownHighlighter"));
 }
 
-void MarkdownHighlighter::highlightBlock(const QString &text)
+void MarkdownHighlighter::highlightBlock(const QString& text)
 {
     const int previous = previousBlockState();
     if (previous == kFrontmatter) {
@@ -211,13 +211,13 @@ void MarkdownHighlighter::highlightBlock(const QString &text)
     highlightInline(text);
 }
 
-void MarkdownHighlighter::continueFrontmatter(const QString &text)
+void MarkdownHighlighter::continueFrontmatter(const QString& text)
 {
     formatLine(text, theme::markdownFormat(MarkdownKind::Frontmatter));
     setCurrentBlockState(isFrontmatterDelimiter(text) ? kNormal : kFrontmatter);
 }
 
-void MarkdownHighlighter::continueFence(const QString &text, int state)
+void MarkdownHighlighter::continueFence(const QString& text, int state)
 {
     formatLine(text, theme::markdownFormat(MarkdownKind::CodeBlock));
     setCurrentBlockState(closesFence(text, fenceLength(state)) ? kNormal : state);
@@ -226,7 +226,7 @@ void MarkdownHighlighter::continueFence(const QString &text, int state)
 // A heading styles its whole line; code spans, then wikilinks, then emphasis
 // layer on top. Text inside code spans is hidden from the later rules, and
 // text inside wikilinks from emphasis.
-void MarkdownHighlighter::highlightInline(const QString &text)
+void MarkdownHighlighter::highlightInline(const QString& text)
 {
     static const QRegularExpression heading(QStringLiteral(R"(^ {0,3}(#{1,6})(?:[ \t]|$))"));
     const QRegularExpressionMatch match = heading.match(text);
@@ -236,37 +236,37 @@ void MarkdownHighlighter::highlightInline(const QString &text)
     }
     const std::vector<Span> code = codeSpans(text);
     std::vector<bool> inCode(static_cast<std::size_t>(text.size()), false);
-    for (const Span &span : code) {
+    for (const Span& span : code) {
         layer(span.mStart, span.mLength, theme::markdownFormat(MarkdownKind::InlineCode));
         std::fill_n(inCode.begin() + span.mStart, span.mLength, true);
     }
     const QString withoutCode = masked(text, code);
     const std::vector<Span> links = matches(wikilinkPattern(), withoutCode);
-    for (const Span &span : links)
+    for (const Span& span : links)
         layer(span.mStart, span.mLength, theme::markdownFormat(MarkdownKind::Wikilink));
     highlightEmphasis(masked(withoutCode, links), inCode);
 }
 
 // Emphasis spans may contain code spans but do not style them.
-void MarkdownHighlighter::highlightEmphasis(const QString &plain, const std::vector<bool> &inCode)
+void MarkdownHighlighter::highlightEmphasis(const QString& plain, const std::vector<bool>& inCode)
 {
     const QTextCharFormat bold = theme::markdownFormat(MarkdownKind::Bold);
     const QTextCharFormat italic = theme::markdownFormat(MarkdownKind::Italic);
-    for (const EmphasisRule &rule : emphasisRules()) {
-        for (const Span &span : matches(rule.mPattern, plain)) {
+    for (const EmphasisRule& rule : emphasisRules()) {
+        for (const Span& span : matches(rule.mPattern, plain)) {
             if (rule.mBold) layer(span.mStart, span.mLength, bold, &inCode);
             if (rule.mItalic) layer(span.mStart, span.mLength, italic, &inCode);
         }
     }
 }
 
-void MarkdownHighlighter::formatLine(const QString &text, const QTextCharFormat &format)
+void MarkdownHighlighter::formatLine(const QString& text, const QTextCharFormat& format)
 {
     setFormat(0, static_cast<int>(text.size()), format);
 }
 
 void MarkdownHighlighter::layer(
-    int start, int length, const QTextCharFormat &added, const std::vector<bool> *skip)
+    int start, int length, const QTextCharFormat& added, const std::vector<bool>* skip)
 {
     const int kinds = added.intProperty(theme::kMarkdownKindsProperty);
     for (int at = start; at < start + length; ++at) {

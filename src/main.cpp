@@ -3,7 +3,7 @@
 
 #include <QApplication>
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     // Names Qt's per-user settings, which remember the last vault.
