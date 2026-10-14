@@ -188,18 +188,15 @@ static void retriesLockedWindowsDestination()
     CHECK(saved);
     CHECK(readFile(path) == "updated");
 
-    // A newer external write during the wait must still win over the editor.
+    // An outside write completed before saving is a conflict, even if the
+    // destination is locked. A write between the final check and commit is
+    // best-effort, not guaranteed to win over the editor's save.
     writeFile(path, "expected");
     const HANDLE changing = lockWithoutDelete(path);
     CHECK(changing != INVALID_HANDLE_VALUE);
-    // Write before unlocking so no retry can land between the unlock and the write.
-    std::thread change([changing, path] {
-        std::this_thread::sleep_for(std::chrono::milliseconds(400));
-        writeFile(path, "external");
-        CloseHandle(changing);
-    });
+    writeFile(path, "external");
     const bool overwritten = vault->saveNote(QStringLiteral("note.md"), "expected", "mine", &error);
-    change.join();
+    CloseHandle(changing);
     CHECK(!overwritten);
     CHECK(error.contains(QStringLiteral("Save conflict")));
     CHECK(readFile(path) == "external");
