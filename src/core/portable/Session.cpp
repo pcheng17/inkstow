@@ -347,7 +347,10 @@ bool Session::createNote(const std::string& relative, std::string* error)
     if (!mVault->createNote(path, error)) return false;
     std::string refreshError;
     const bool refreshed = refreshNotes(&refreshError);
-    if (!refreshed && std::ranges::find(mNotes, path) == mNotes.end()) mNotes.push_back(path);
+    if (!refreshed && std::ranges::find(mNotes, path) == mNotes.end()) {
+        mNotes.push_back(path);
+        std::sort(mNotes.begin(), mNotes.end());
+    }
     const auto selected = refreshed ? discoveredPath(*mVault, mNotes, path) : path;
     std::string bytes;
     if (!mVault->readNote(selected, &bytes, error) || !load(selected, std::move(bytes), error)) {
@@ -385,6 +388,7 @@ bool Session::moveNote(const std::string& to, bool updateLinks, std::string* err
     if (!refreshed) {
         std::erase(mNotes, oldPath);
         if (std::ranges::find(mNotes, path) == mNotes.end()) mNotes.push_back(path);
+        std::sort(mNotes.begin(), mNotes.end());
     }
     const auto selected = refreshed ? discoveredPath(*mVault, mNotes, path) : path;
     std::string current;
