@@ -61,10 +61,8 @@ void NoteEditor::setNoteText(const QString& text)
 QString NoteEditor::rawNoteText() const
 {
     QString text = document()->toRawText();
-    for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
-        if (!block.next().isValid()) break;
+    for (QTextBlock block = document()->firstBlock(); block.next().isValid(); block = block.next())
         text[block.position() + block.length() - 1] = block.next().userData() ? u'\u2029' : u'\n';
-    }
     return text;
 }
 
@@ -73,6 +71,7 @@ void NoteEditor::insertNoteText(const QString& text)
     QTextCursor cursor = textCursor();
     const int start = cursor.selectionStart();
     cursor.insertText(text);
+    if (!text.contains(u'\u2029')) return;
     int position = start;
     for (qsizetype i = 0; i < text.size(); ++i) {
         if (text[i] == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n') ++i;
@@ -81,7 +80,7 @@ void NoteEditor::insertNoteText(const QString& text)
             document()->findBlock(position).setUserData(new ParagraphSeparator);
     }
     // insertText emits textChanged before the separator tags can be applied.
-    if (text.contains(u'\u2029')) emit textChanged();
+    emit textChanged();
 }
 
 void NoteEditor::insertFromMimeData(const QMimeData* source)
