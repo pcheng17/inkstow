@@ -283,6 +283,26 @@ void missingNoteRecoveryRefusesReappearingPath()
     CHECK(session.syncWithDisk(&error) == DiskChange::None);
 }
 
+void discardEditsDoesNotRecreateDeletedNote()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "original");
+    write(temp.mPath / "Other.md", "other");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("unsaved");
+    CHECK(fs::remove(note));
+    CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+    session.discardEdits();
+    CHECK(!session.isDirty() && session.getContent() == "original");
+    CHECK(!fs::exists(note));
+    CHECK(session.selectNote("Other.md", &error));
+    CHECK(!fs::exists(note));
+}
+
 void recoveryCreatesMissingNoteInExistingFolder()
 {
     TempVault temp;
@@ -461,6 +481,7 @@ int main()
         resolutionRequiresReportedOutsideVersion();
         mergeReportedOutsideChanges();
         missingNoteRecoveryRefusesReappearingPath();
+        discardEditsDoesNotRecreateDeletedNote();
         recoveryCreatesMissingNoteInExistingFolder();
         recoveryNeverOverwritesReappearedNote();
         recoveryRejectsInvalidPathsAndMissingParent();
