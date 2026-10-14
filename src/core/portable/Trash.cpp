@@ -26,10 +26,11 @@ bool Vault::trashNote(const std::string& relative, std::string* error) const
                     nullptr,
                     CLSCTX_INPROC_SERVER,
                     IID_PPV_ARGS(&operation));
+                // Let the Windows shell show its normal confirmation, including a warning
+                // when it cannot recycle the note and would delete it permanently.
                 if (SUCCEEDED(result))
                     result = operation->SetOperationFlags(
-                        FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOFX_RECYCLEONDELETE |
-                        FOFX_EARLYFAILURE);
+                        FOF_WANTNUKEWARNING | FOFX_RECYCLEONDELETE | FOFX_EARLYFAILURE);
                 if (SUCCEEDED(result))
                     result =
                         SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&item));
@@ -53,7 +54,12 @@ bool Vault::trashNote(const std::string& relative, std::string* error) const
             g_object_unref(file);
             if (moved) return true;
 #endif
+#ifdef _WIN32
+            *reason =
+                "Windows did not complete the delete operation; check whether the note remains.";
+#else
             *reason = "Could not move the note to the system trash, so it was not deleted.";
+#endif
             return false;
         },
         error);

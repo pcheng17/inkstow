@@ -453,7 +453,9 @@ bool Session::followWikilink(const std::string& link, std::string* error)
         *error = "Select a note first.";
         return false;
     }
-    const auto target = mVault->resolveWikilink(link, mPath);
+    error->clear();
+    const auto target = mVault->resolveWikilink(link, mPath, error);
+    if (!error->empty()) return false;
     if (!target || !markdownExtension(*target)) {
         *error = "Link does not point to a supported Markdown note.";
         return false;
@@ -471,7 +473,9 @@ std::optional<std::filesystem::path> Session::followAttachment(
         return std::nullopt;
     }
     if (!requireClean(error)) return std::nullopt;
-    const auto target = mVault->resolveWikilink(link, mPath);
+    error->clear();
+    const auto target = mVault->resolveWikilink(link, mPath, error);
+    if (!error->empty()) return std::nullopt;
     if (target) {
         if (auto path = attachmentPath(*target)) return path;
     }

@@ -67,9 +67,9 @@ std::string basename(const std::string& path)
     return path.substr(
         path.find_last_of('/') == std::string::npos ? 0 : path.find_last_of('/') + 1);
 }
-std::vector<std::string> files(const fs::path& root)
+bool files(const fs::path& root, std::vector<std::string>* found, std::string* error)
 {
-    std::vector<std::string> found;
+    found->clear();
     std::error_code ec;
     fs::recursive_directory_iterator it(root, fs::directory_options::none, ec);
     while (!ec && it != fs::recursive_directory_iterator{}) {
@@ -79,12 +79,16 @@ std::vector<std::string> files(const fs::path& root)
         if (name.empty() || name[0] == '.' || linkedPath(it->path(), status))
             it.disable_recursion_pending();
         else if (fs::is_regular_file(status))
-            found.push_back(bytes(it->path().lexically_relative(root)));
+            found->push_back(bytes(it->path().lexically_relative(root)));
         it.increment(ec);
     }
-    if (ec) return {};
-    std::sort(found.begin(), found.end());
-    return found;
+    if (ec) {
+        *error = "Cannot discover vault files: " + ec.message();
+        found->clear();
+        return false;
+    }
+    std::sort(found->begin(), found->end());
+    return true;
 }
 std::optional<std::string> resolve(
     const std::string& link, const std::string& source, const std::vector<std::string>& found)
@@ -197,11 +201,13 @@ bool Vault::createNote(const std::string& relative, std::string* error) const
 }
 
 std::optional<std::string> Vault::resolveWikilink(
-    const std::string& link, const std::string& source) const
+    const std::string& link, const std::string& source, std::string* error) const
 {
-    std::string error;
-    if (!notePath(source, &error)) return std::nullopt;
-    return resolve(link, source, files(mRoot));
+    error->clear();
+    if (!notePath(source, error)) return std::nullopt;
+    std::vector<std::string> found;
+    if (!files(mRoot, &found, error)) return std::nullopt;
+    return resolve(link, source, found);
 }
 
 std::optional<fs::path> Vault::attachmentPath(const std::string& relative) const
@@ -268,7 +274,7 @@ bool Vault::moveNote(
             *error = "Destination cannot be represented by an extensionless wikilink.";
             return false;
         }
-        snapshot = files(mRoot);
+        if (!files(mRoot, &snapshot, error)) return false;
         std::vector<std::string> notes;
         if (!listNotes(&notes, error)) return false;
         for (const auto& note : notes) {
@@ -355,9 +361,10 @@ bool Vault::moveNote(
         *error = "Save conflict: note changed on disk.";
         return false;
     }
-    if (!readNote(from, &current, error) || current != expected ||
-        (updateLinks && files(mRoot) != snapshot))
-    {
+    if (!readNote(from, &current, error)) return false;
+    std::vector<std::string> latest;
+    if (updateLinks && !files(mRoot, &latest, error)) return false;
+    if (current != expected || (updateLinks && latest != snapshot)) {
         *error = "Vault files or note changed while preparing link updates; retry the move.";
         return false;
     }

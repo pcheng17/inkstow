@@ -19,8 +19,9 @@ public:
     const std::filesystem::path& root() const { return mRoot; }
     bool listNotes(std::vector<std::string>* notes, std::string* error) const;
     bool readNote(const std::string& relative, std::string* bytes, std::string* error) const;
+    // An absent target with an empty error is unresolved; a nonempty error is a vault failure.
     std::optional<std::string> resolveWikilink(
-        const std::string& link, const std::string& source) const;
+        const std::string& link, const std::string& source, std::string* error) const;
     std::optional<std::filesystem::path> attachmentPath(const std::string& relative) const;
     bool moveNote(
         const std::string& from,
