@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && ln -s /usr/bin/clang-tidy-18 /usr/local/bin/clang-tidy \
   && rm -rf /var/lib/apt/lists/*
 ARG CLANG_FORMAT_VERSION=22.1.3
-RUN pip3 install --no-cache-dir --break-system-packages clang-format==${CLANG_FORMAT_VERSION}
+ARG UV_VERSION=0.11.6
+RUN pip3 install --no-cache-dir --break-system-packages clang-format==${CLANG_FORMAT_VERSION} uv==${UV_VERSION}
 
 # Ubuntu 24.04's apt Node (18) is too old for Pi (>=22.19).
 ARG NODE_VERSION=22.19.0
@@ -39,17 +40,16 @@ RUN groupmod -o -g "$AGENT_GID" -n agent ubuntu \
 ENV HOME=/home/agent
 USER ${AGENT_UID}:${AGENT_GID}
 
-# Pin canonical skills directly: do not install harness-kit's Pi package/agents or
-# pi-subagents extension. Pi discovers user skills under ~/.agents/skills.
-ARG HARNESS_KIT_REF=c99723d3e63fd683224975ac03c895ee5e7abbcb
+# Install the pinned Harness Kit checkout, including its Pi package and agent dependencies.
+ARG HARNESS_KIT_REF=251529b0bda6b3a85ee76a736a0ed03e557c5532
 RUN git init -q /home/agent/harness-kit \
   && cd /home/agent/harness-kit \
   && git fetch -q --depth 1 https://github.com/pcheng17/harness-kit.git "$HARNESS_KIT_REF" \
   && git checkout -q FETCH_HEAD \
-  && for skill in tdd code-simplification code-review diagnosing-bugs codebase-design dod pr; do \
-       test -f "content/skills/$skill/SKILL.md" \
-       && ln -s "/home/agent/harness-kit/content/skills/$skill" "/home/agent/.agents/skills/$skill" || exit 1; \
-     done
+  && uv run --locked harness-kit install --harness pi \
+  && mkdir -p /home/agent/.pi/sandcastle-profile \
+  && ln -s /home/agent/.pi/sandcastle-profile/auth.json /home/agent/.pi/agent/auth.json \
+  && ln -s /home/agent/.pi/sandcastle-profile/models-store.json /home/agent/.pi/agent/models-store.json
 
 WORKDIR /home/agent
 # Sandcastle bind-mounts the worktree at /home/agent/workspace at container start.

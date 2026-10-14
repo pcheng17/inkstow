@@ -3,7 +3,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { MountConfig } from '@ai-hero/sandcastle';
 
-export const SANDBOX_PI_AGENT_PATH = '/home/agent/.pi/agent';
+// Mount credentials separately so the image's installed Pi package/settings stay visible.
+export const SANDBOX_PI_PROFILE_PATH = '/home/agent/.pi/sandcastle-profile';
 // Pi's OpenAI OAuth login registers the model under `openai` in this image.
 export const SANDBOX_PI_MODEL = 'openai/gpt-6-sol';
 
@@ -20,7 +21,7 @@ export function ensureSandboxPiProfile(home = homedir()): string {
 }
 
 export function sandboxPiMount(profile: string): MountConfig {
-  return { hostPath: profile, sandboxPath: SANDBOX_PI_AGENT_PATH };
+  return { hostPath: profile, sandboxPath: SANDBOX_PI_PROFILE_PATH };
 }
 
 type SandboxAuthExecutor = {
@@ -56,7 +57,7 @@ export function sandboxPiLoginCommand(profile: string, imageName: string, uid: n
     command: 'docker',
     args: [
       'run', '--rm', '-it', '--user', `${uid}:${gid}`,
-      '--mount', `type=bind,src=${profile},dst=${SANDBOX_PI_AGENT_PATH}`,
+      '--mount', `type=bind,src=${profile},dst=${SANDBOX_PI_PROFILE_PATH}`,
       '--workdir', '/home/agent', '--entrypoint', 'pi', imageName,
       '--model', SANDBOX_PI_MODEL, '--no-session',
     ],
@@ -72,7 +73,7 @@ export function sandboxPiAuthCheckCommand(profile: string, imageName: string, ui
     command: 'docker',
     args: [
       'run', '--rm', '--user', `${uid}:${gid}`,
-      '--mount', `type=bind,src=${profile},dst=${SANDBOX_PI_AGENT_PATH}`,
+      '--mount', `type=bind,src=${profile},dst=${SANDBOX_PI_PROFILE_PATH}`,
       '--workdir', '/home/agent', '--entrypoint', 'pi', imageName,
       'auth', 'check', '--model', SANDBOX_PI_MODEL, '--json',
     ],

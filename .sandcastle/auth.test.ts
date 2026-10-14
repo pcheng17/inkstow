@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   ensureSandboxPiProfile, preflightSandboxPiAuth, sandboxPiAuthCheckCommand, sandboxPiLoginCommand, sandboxPiMount,
-  SANDBOX_PI_AGENT_PATH,
+  SANDBOX_PI_PROFILE_PATH,
 } from './auth.js';
 
 test('ensureSandboxPiProfile creates a private persistent directory outside the repository', () => {
@@ -20,7 +20,7 @@ test('ensureSandboxPiProfile creates a private persistent directory outside the 
     assert.equal(lstatSync(profile).mode & 0o777, 0o700);
     assert.equal(readFileSync(join(profile, 'sentinel'), 'utf8'), 'preserved');
     assert.deepEqual(sandboxPiMount(profile), {
-      hostPath: profile, sandboxPath: SANDBOX_PI_AGENT_PATH,
+      hostPath: profile, sandboxPath: SANDBOX_PI_PROFILE_PATH,
     });
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -44,7 +44,7 @@ test('sandboxPiLoginCommand runs an isolated interactive container with the same
   assert.equal(command.command, 'docker');
   assert.deepEqual(command.args, [
     'run', '--rm', '-it', '--user', '1234:2345',
-    '--mount', `type=bind,src=/tmp/private pi,dst=${SANDBOX_PI_AGENT_PATH}`,
+    '--mount', `type=bind,src=/tmp/private pi,dst=${SANDBOX_PI_PROFILE_PATH}`,
     '--workdir', '/home/agent', '--entrypoint', 'pi', 'inkstow-pi:test',
     '--model', 'openai/gpt-6-sol', '--no-session',
   ]);
@@ -56,7 +56,7 @@ test('sandboxPiAuthCheckCommand captures JSON without requiring an interactive T
   assert.equal(check.command, 'docker');
   assert.deepEqual(check.args, [
     'run', '--rm', '--user', '1234:2345',
-    '--mount', `type=bind,src=/tmp/private pi,dst=${SANDBOX_PI_AGENT_PATH}`,
+    '--mount', `type=bind,src=/tmp/private pi,dst=${SANDBOX_PI_PROFILE_PATH}`,
     '--workdir', '/home/agent', '--entrypoint', 'pi', 'inkstow-pi:test',
     'auth', 'check', '--model', 'openai/gpt-6-sol', '--json',
   ]);
