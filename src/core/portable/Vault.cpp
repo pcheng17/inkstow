@@ -67,8 +67,7 @@ bool markdownPath(const std::string &relative)
     size_t start = 0;
     while (start < relative.size()) {
         const size_t end = relative.find('/', start);
-        const std::string segment = relative.substr(start, end - start);
-        if (segment.empty() || segment[0] == '.') return false;
+        if (end == start || relative[start] == '.') return false;
         if (end == std::string::npos) break;
         start = end + 1;
         if (start == relative.size()) return false;
