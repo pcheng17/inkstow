@@ -9,8 +9,7 @@
 #elif defined(__linux__)
 #include <fcntl.h>
 #include <linux/fs.h>
-#include <sys/syscall.h>
-#include <unistd.h>
+#include <stdio.h>
 #elif defined(__APPLE__)
 #include <stdio.h>
 #endif
@@ -304,13 +303,19 @@ bool Vault::moveNote(
                         *error = "Cannot inspect link target in " + note;
                         return false;
                     }
-                    for (const auto& sibling : siblings) {
-                        if (lower(bytes(sibling.path().filename())) ==
+                    const fs::directory_iterator siblingsEnd;
+                    while (!shadowError && siblings != siblingsEnd) {
+                        if (lower(bytes(siblings->path().filename())) ==
                             lower(bytes(shadow.filename())))
                         {
                             *error = "Cannot write an unambiguous extensionless link in " + note;
                             return false;
                         }
+                        siblings.increment(shadowError);
+                    }
+                    if (shadowError) {
+                        *error = "Cannot inspect link target in " + note;
+                        return false;
                     }
                     output += "[[/" + linkPath + "]]";
                 } else
@@ -357,14 +362,9 @@ bool Vault::moveNote(
     const bool moved = MoveFileW(source->c_str(), destination.c_str()) != 0;
 #elif defined(__linux__)
     // renameat2 refuses a destination created after the preflight check.
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) -- Linux renameat2 syscall
-    const bool moved = ::syscall(
-                           SYS_renameat2,
-                           AT_FDCWD,
-                           source->c_str(),
-                           AT_FDCWD,
-                           destination.c_str(),
-                           RENAME_NOREPLACE) == 0;
+    const bool moved =
+        ::renameat2(AT_FDCWD, source->c_str(), AT_FDCWD, destination.c_str(), RENAME_NOREPLACE) ==
+        0;
 #elif defined(__APPLE__)
     const bool moved = renamex_np(source->c_str(), destination.c_str(), RENAME_EXCL) == 0;
 #endif
