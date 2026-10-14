@@ -399,7 +399,9 @@ bool Session::moveNote(const std::string& to, bool updateLinks, std::string* err
     std::string current;
     if (!mVault->readNote(selected, &current, error) || !load(selected, std::move(current), error))
     {
-        *error = "Move partially completed; check the moved note: " + *error;
+        const std::string reloadFailure = "check the moved note: " + *error;
+        *error =
+            partial ? failure + "; " + reloadFailure : "Move partially completed; " + reloadFailure;
         return false;
     }
     if (!refreshed) {
