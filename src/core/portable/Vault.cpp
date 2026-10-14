@@ -279,6 +279,120 @@ bool Vault::readNote(const std::string& relative, std::string* bytes, std::strin
     return path && readBytes(*path, bytes, error);
 }
 
+bool Vault::createNoteWithContent(
+    const std::string& relative, const std::string& bytes, std::string* error) const
+{
+    if (!markdownPath(relative)) {
+        *error = "Expected a visible relative Markdown path.";
+        return false;
+    }
+    const fs::path path = pathFromUtf8(relative);
+#ifdef _WIN32
+    // Existing portable path checks are best-effort against concurrent parent swaps.
+    fs::path parent = mRoot;
+    std::error_code ec;
+    for (const auto& component : path.parent_path()) {
+        parent /= component;
+        const auto status = fs::symlink_status(parent, ec);
+        if (ec || !fs::is_directory(status)) {
+            *error = "Note parent folder is missing or not a directory.";
+            return false;
+        }
+        const DWORD attributes = GetFileAttributesW(parent.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            *error = "Note parent folder is a reparse point or inaccessible.";
+            return false;
+        }
+    }
+    const auto resolved = fs::canonical(parent, ec);
+    if (ec || (resolved != mRoot && !inside(mRoot, resolved))) {
+        *error = "Note parent folder is outside the vault.";
+        return false;
+    }
+    const fs::path destination = parent / path.filename();
+    HANDLE file = CreateFileW(
+        destination.c_str(),
+        GENERIC_WRITE,
+        0,
+        nullptr,
+        CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        const DWORD code = GetLastError();
+        *error = code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS
+                     ? "Note already exists."
+                     : "Cannot create note (Windows error " + std::to_string(code) + ").";
+        return false;
+    }
+    bool ok = true;
+    size_t offset = 0;
+    while (offset < bytes.size()) {
+        DWORD written = 0;
+        const DWORD count = static_cast<DWORD>(std::min<size_t>(bytes.size() - offset, 1U << 20));
+        if (!WriteFile(file, bytes.data() + offset, count, &written, nullptr) || !written) {
+            ok = false;
+            break;
+        }
+        offset += written;
+    }
+    if (!FlushFileBuffers(file)) ok = false;
+    if (!CloseHandle(file)) ok = false;
+#else
+    // Directory handles and no-follow opens prevent traversal through symlinks,
+    // even if an ancestor is swapped after opening it. An already-open directory
+    // can itself be moved outside the vault by another process.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) -- no-follow directory open
+    int directory = ::open(mRoot.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (directory < 0) {
+        *error = "Cannot open vault folder: " +
+                 std::error_code(errno, std::generic_category()).message();
+        return false;
+    }
+    for (const auto& component : path.parent_path()) {
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) -- no-follow relative directory open
+        const int next =
+            ::openat(directory, component.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        const int savedError = errno;
+        ::close(directory);
+        if (next < 0) {
+            *error = "Cannot open note parent folder: " +
+                     std::error_code(savedError, std::generic_category()).message();
+            return false;
+        }
+        directory = next;
+    }
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) -- exclusive relative file create
+    const int file = ::openat(
+        directory,
+        path.filename().c_str(),
+        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+        0600);
+    const int createError = errno;
+    ::close(directory);
+    if (file < 0) {
+        *error = createError == EEXIST
+                     ? "Note already exists."
+                     : "Cannot create note: " +
+                           std::error_code(createError, std::generic_category()).message();
+        return false;
+    }
+    bool ok = true;
+    size_t offset = 0;
+    while (offset < bytes.size()) {
+        const auto written = ::write(file, bytes.data() + offset, bytes.size() - offset);
+        if (written <= 0) {
+            ok = false;
+            break;
+        }
+        offset += static_cast<size_t>(written);
+    }
+    if (::close(file) != 0) ok = false;
+#endif
+    if (!ok) *error = "Cannot finish writing new note; a partial note may remain.";
+    return ok;
+}
+
 bool Vault::saveNote(
     const std::string& relative,
     const std::string& expected,

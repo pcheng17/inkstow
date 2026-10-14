@@ -113,6 +113,22 @@ void editingAndEncoding()
     CHECK(session.isDirty());
 }
 
+void recoveryCreatesMissingNoteInExistingFolder()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "Folder"));
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    const std::string bytes = "\xEF\xBB\xBF"
+                              "Recovered\n";
+    CHECK(vault->createNoteWithContent("Folder/Recovered.md", bytes, &error));
+    CHECK(read(temp.mPath / "Folder" / "Recovered.md") == bytes);
+    std::string opened;
+    CHECK(vault->readNote("Folder/Recovered.md", &opened, &error));
+    CHECK(opened == bytes);
+}
+
 void symlinkRefusal()
 {
     TempVault temp;
@@ -200,6 +216,7 @@ int main()
     try {
         fixtureDiscovery();
         editingAndEncoding();
+        recoveryCreatesMissingNoteInExistingFolder();
         symlinkRefusal();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {
