@@ -57,5 +57,5 @@ SpaceBeforeCtorInitializerColon: true
 SpaceBeforeInheritanceColon: true
 SpaceBeforeParens: ControlStatements
 SpacesInAngles: Leave
-Standard: c++17
+Standard: c++20
 UseTab: Never

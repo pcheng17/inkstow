@@ -26,7 +26,7 @@ namespace inkstow::portable
 {
 namespace detail
 {
-bool validUtf8(const std::string &text)
+bool validUtf8(const std::string& text)
 {
     for (size_t i = 0; i < text.size();) {
         const auto first = static_cast<unsigned char>(text[i]);
@@ -53,7 +53,18 @@ bool validUtf8(const std::string &text)
 
 namespace
 {
-bool markdownPath(const std::string &relative)
+// Keep the public path API as UTF-8 bytes; C++20 filesystem uses char8_t.
+fs::path pathFromUtf8(const std::string& bytes)
+{
+    return fs::path(std::u8string(bytes.begin(), bytes.end()));
+}
+
+std::string utf8Bytes(const std::u8string& text)
+{
+    return std::string(text.begin(), text.end());
+}
+
+bool markdownPath(const std::string& relative)
 {
     if (!detail::validUtf8(relative) || relative.empty() || relative[0] == '/' ||
         relative.find('\\') != std::string::npos || relative.find(':') != std::string::npos ||
@@ -75,7 +86,7 @@ bool markdownPath(const std::string &relative)
     return true;
 }
 
-bool inside(const fs::path &root, const fs::path &path)
+bool inside(const fs::path& root, const fs::path& path)
 {
     auto a = root.begin();
     auto b = path.begin();
@@ -84,7 +95,7 @@ bool inside(const fs::path &root, const fs::path &path)
     return b != path.end();
 }
 
-bool readBytes(const fs::path &path, std::string *bytes, std::string *error)
+bool readBytes(const fs::path& path, std::string* bytes, std::string* error)
 {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
@@ -100,7 +111,7 @@ bool readBytes(const fs::path &path, std::string *bytes, std::string *error)
     return true;
 }
 
-bool stage(const fs::path &path, const std::string &bytes, fs::path *staged, std::string *error)
+bool stage(const fs::path& path, const std::string& bytes, fs::path* staged, std::string* error)
 {
     std::error_code ec;
     const auto permissions = fs::status(path, ec).permissions();
@@ -177,14 +188,14 @@ bool stage(const fs::path &path, const std::string &bytes, fs::path *staged, std
 }
 } // namespace
 
-std::optional<Vault> Vault::open(const std::string &folder, std::string *error)
+std::optional<Vault> Vault::open(const std::string& folder, std::string* error)
 {
     if (!detail::validUtf8(folder) || folder.find('\0') != std::string::npos) {
         *error = "Expected a UTF-8 vault folder.";
         return std::nullopt;
     }
     std::error_code ec;
-    const fs::path root = fs::canonical(fs::u8path(folder), ec);
+    const fs::path root = fs::canonical(pathFromUtf8(folder), ec);
     if (ec || !fs::is_directory(root)) {
         *error = "Vault must be a readable directory.";
         return std::nullopt;
@@ -192,15 +203,15 @@ std::optional<Vault> Vault::open(const std::string &folder, std::string *error)
     return Vault(root);
 }
 
-bool Vault::listNotes(std::vector<std::string> *notes, std::string *error) const
+bool Vault::listNotes(std::vector<std::string>* notes, std::string* error) const
 {
     std::vector<std::string> found;
     std::error_code ec;
     fs::recursive_directory_iterator it(mRoot, fs::directory_options::none, ec);
     const fs::recursive_directory_iterator end;
     while (!ec && it != end) {
-        const auto &entry = *it;
-        const std::string name = entry.path().filename().u8string();
+        const auto& entry = *it;
+        const std::string name = utf8Bytes(entry.path().filename().u8string());
         const auto status = entry.symlink_status(ec);
         if (ec) break;
 #ifdef _WIN32
@@ -216,7 +227,8 @@ bool Vault::listNotes(std::vector<std::string> *notes, std::string *error) const
         if (name.empty() || name[0] == '.' || linked) {
             it.disable_recursion_pending();
         } else if (fs::is_regular_file(status)) {
-            const auto relative = entry.path().lexically_relative(mRoot).generic_u8string();
+            const auto relative =
+                utf8Bytes(entry.path().lexically_relative(mRoot).generic_u8string());
             if (markdownPath(relative)) found.push_back(relative);
         }
         it.increment(ec);
@@ -230,7 +242,7 @@ bool Vault::listNotes(std::vector<std::string> *notes, std::string *error) const
     return true;
 }
 
-std::optional<fs::path> Vault::notePath(const std::string &relative, std::string *error) const
+std::optional<fs::path> Vault::notePath(const std::string& relative, std::string* error) const
 {
     if (!markdownPath(relative)) {
         *error = "Expected a visible relative Markdown path.";
@@ -238,7 +250,7 @@ std::optional<fs::path> Vault::notePath(const std::string &relative, std::string
     }
     fs::path walked = mRoot;
     std::error_code ec;
-    for (const auto &segment : fs::u8path(relative)) {
+    for (const auto& segment : pathFromUtf8(relative)) {
         walked /= segment;
         const auto status = fs::symlink_status(walked, ec);
 #ifdef _WIN32
@@ -261,21 +273,21 @@ std::optional<fs::path> Vault::notePath(const std::string &relative, std::string
     return resolved;
 }
 
-bool Vault::readNote(const std::string &relative, std::string *bytes, std::string *error) const
+bool Vault::readNote(const std::string& relative, std::string* bytes, std::string* error) const
 {
     const auto path = notePath(relative, error);
     return path && readBytes(*path, bytes, error);
 }
 
 bool Vault::saveNote(
-    const std::string &relative,
-    const std::string &expected,
-    const std::string &bytes,
-    std::string *error) const
+    const std::string& relative,
+    const std::string& expected,
+    const std::string& bytes,
+    std::string* error) const
 {
     const auto path = notePath(relative, error);
     if (!path) return false;
-    const auto revalidate = [this, &relative, &path](std::string *reason) {
+    const auto revalidate = [this, &relative, &path](std::string* reason) {
         return notePath(relative, reason) == path;
     };
 #ifdef _WIN32
@@ -295,7 +307,7 @@ bool Vault::saveNote(
 
 namespace detail
 {
-ReplaceResult replaceFile(const fs::path &staged, const fs::path &destination, std::string *error)
+ReplaceResult replaceFile(const fs::path& staged, const fs::path& destination, std::string* error)
 {
 #ifdef _WIN32
     if (MoveFileExW(
@@ -319,13 +331,13 @@ ReplaceResult replaceFile(const fs::path &staged, const fs::path &destination, s
 }
 
 bool guardedReplace(
-    const fs::path &path,
-    const std::string &expected,
-    const std::string &bytes,
-    const std::function<bool(std::string *)> &revalidate,
-    const ReplaceAttempt &replace,
+    const fs::path& path,
+    const std::string& expected,
+    const std::string& bytes,
+    const std::function<bool(std::string*)>& revalidate,
+    const ReplaceAttempt& replace,
     int maxAttempts,
-    std::string *error)
+    std::string* error)
 {
     for (int attempt = 0; attempt < maxAttempts; ++attempt) {
         std::string current;

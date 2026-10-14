@@ -20,13 +20,19 @@ using namespace inkstow::portable;
 
 namespace
 {
-void write(const fs::path &path, const std::string &bytes)
+std::string utf8Path(const fs::path& path)
+{
+    const auto text = path.u8string();
+    return std::string(text.begin(), text.end());
+}
+
+void write(const fs::path& path, const std::string& bytes)
 {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     CHECK(out && out.write(bytes.data(), static_cast<std::streamsize>(bytes.size())));
 }
 
-std::string read(const fs::path &path)
+std::string read(const fs::path& path)
 {
     std::ifstream in(path, std::ios::binary);
     return std::string(std::istreambuf_iterator<char>{in}, {});
@@ -38,10 +44,10 @@ struct TempVault
                      ("inkstow-portable-" +
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     TempVault() { CHECK(fs::create_directory(mPath)); }
-    TempVault(const TempVault &) = delete;
-    TempVault &operator=(const TempVault &) = delete;
-    TempVault(TempVault &&) = delete;
-    TempVault &operator=(TempVault &&) = delete;
+    TempVault(const TempVault&) = delete;
+    TempVault& operator=(const TempVault&) = delete;
+    TempVault(TempVault&&) = delete;
+    TempVault& operator=(TempVault&&) = delete;
     ~TempVault()
     {
         std::error_code ignored;
@@ -78,7 +84,7 @@ void editingAndEncoding()
     write(temp.mPath / "Truncated.md", "\xE2\x98");
     Session session;
     std::string error;
-    CHECK(session.openVault(temp.mPath.u8string(), &error));
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
     CHECK(!session.selectNote("Bad.md", &error));
     CHECK(!session.selectNote("Surrogate.md", &error));
     CHECK(!session.selectNote("Truncated.md", &error));
@@ -113,7 +119,7 @@ void symlinkRefusal()
     write(temp.mPath / "Folder" / "Inside.md", "inside");
     fs::create_directory_symlink(temp.mPath / "Folder", temp.mPath / "Alias", ec);
     std::string error;
-    auto vault = Vault::open(temp.mPath.u8string(), &error);
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
     CHECK(vault);
     std::vector<std::string> notes;
     CHECK(vault->listNotes(&notes, &error));
@@ -131,10 +137,10 @@ void retryRechecksAndRefusals()
     const fs::path path = temp.mPath / "Note.md";
     write(path, "old");
     std::string error;
-    const auto valid = [](std::string *) { return true; };
+    const auto valid = [](std::string*) { return true; };
     int tries = 0;
     const auto lockThenReplace =
-        [&](const fs::path &stage, const fs::path &destination, std::string *reason) {
+        [&](const fs::path& stage, const fs::path& destination, std::string* reason) {
             if (++tries == 1) {
                 *reason = "locked";
                 return detail::ReplaceResult::Retryable;
@@ -146,7 +152,7 @@ void retryRechecksAndRefusals()
     CHECK(read(path) == "new");
     tries = 0;
     write(path, "old");
-    const auto outsideWrite = [&](const fs::path &, const fs::path &, std::string *reason) {
+    const auto outsideWrite = [&](const fs::path&, const fs::path&, std::string* reason) {
         ++tries;
         write(path, "outside");
         *reason = "locked";
@@ -159,7 +165,7 @@ void retryRechecksAndRefusals()
     CHECK(read(path) == "outside");
     write(path, "old");
     tries = 0;
-    const auto alwaysLocked = [&](const fs::path &, const fs::path &, std::string *reason) {
+    const auto alwaysLocked = [&](const fs::path&, const fs::path&, std::string* reason) {
         ++tries;
         *reason = "locked";
         return detail::ReplaceResult::Retryable;
@@ -170,7 +176,7 @@ void retryRechecksAndRefusals()
     CHECK(tries == 3);
     CHECK(read(path) == "old");
     tries = 0;
-    const auto stageChange = [&](std::string *) {
+    const auto stageChange = [&](std::string*) {
         if (++tries == 2) write(path, "outside");
         return true;
     };
@@ -179,7 +185,7 @@ void retryRechecksAndRefusals()
     CHECK(stagedSaved == false);
     CHECK(read(path) == "outside");
     CHECK(tries == 2);
-    for (const auto &entry : fs::directory_iterator(temp.mPath))
+    for (const auto& entry : fs::directory_iterator(temp.mPath))
         CHECK(entry.path().filename() == "Note.md");
 }
 } // namespace
@@ -191,7 +197,7 @@ int main()
         editingAndEncoding();
         symlinkRefusal();
         retryRechecksAndRefusals();
-    } catch (const std::exception &failure) {
+    } catch (const std::exception& failure) {
         std::cerr << failure.what() << "\n";
         return 1;
     }
