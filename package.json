@@ -6,7 +6,7 @@
     "test": "node --import tsx --test .sandcastle/*.test.ts",
     "typecheck": "tsc --noEmit",
     "sandcastle": "tsx .sandcastle/main.mts",
-    "sandcastle:build-image": "sandcastle build-image --dockerfile .sandcastle/Dockerfile --image-name sandcastle:inkstow-pi"
+    "sandcastle:build-image": "sandcastle docker build-image --dockerfile .sandcastle/Dockerfile --image-name sandcastle:inkstow-pi"
   },
   "devDependencies": {
     "@ai-hero/sandcastle": "0.12.0",

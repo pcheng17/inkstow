@@ -1,11 +1,11 @@
 import { createSandbox, pi, type AgentProvider, type Sandbox, type SandboxRunResult } from '@ai-hero/sandcastle';
 import { docker } from '@ai-hero/sandcastle/sandboxes/docker';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { ensureSandboxPiProfile, preflightSandboxPiAuth, sandboxPiLoginCommand, sandboxPiMount, SANDBOX_PI_MODEL } from './auth.js';
+import { ensureSandboxPiProfile, preflightSandboxPiAuth, sandboxPiAuthCheckCommand, sandboxPiLoginCommand, sandboxPiMount, SANDBOX_PI_MODEL } from './auth.js';
 import { GitHubIssueTracker, type Ticket } from './github.js';
 
 const IMAGE = 'sandcastle:inkstow-pi';
@@ -17,11 +17,23 @@ const Review = z.object({ blocking: z.array(Finding), nonBlocking: z.array(Findi
 const Pr = z.object({ title: z.string().min(1), body: z.string().min(1) });
 type Finding = z.infer<typeof Finding>;
 export class Blocked extends Error {}
+class IssueChanged extends Blocked {}
 
 export function branchForIssue(number: number): string { return `sandcastle/issue-${number}`; }
 export function quote(s: string): string { return `'${s.replaceAll("'", "'\\''")}'`; }
 function git(...args: string[]): string { return execFileSync('git', args, { encoding: 'utf8' }).trim(); }
 function host(command: string, args: string[]): string { return execFileSync(command, args, { encoding: 'utf8' }).trim(); }
+/** Push from a fresh bare repository, never from the agent-writable worktree config. */
+export function pushIsolated(worktree: string, branch: string, remote = 'https://github.com/pcheng17/inkstow.git'): void {
+  const folder = mkdtempSync(join(tmpdir(), 'inkstow-push-'));
+  try {
+    const bare = join(folder, 'push.git');
+    host('git', ['init', '--bare', '-q', bare]);
+    host('git', ['-C', bare, '-c', 'protocol.file.allow=always', 'fetch', '--no-tags', worktree, 'HEAD']);
+    host('git', ['-C', bare, '-c', 'core.hooksPath=/dev/null', '-c', 'credential.helper=!gh auth git-credential',
+      'push', remote, `FETCH_HEAD:refs/heads/${branch}`]);
+  } finally { rmSync(folder, { recursive: true, force: true }); }
+}
 function issueNumber(value: string | undefined): number {
   if (!value || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) throw new Error('usage: npm run sandcastle -- [--check | --login] <issue-number>');
   return Number(value);
@@ -148,6 +160,12 @@ export async function runWorkflow(ticket: Ticket, sandbox: Sandbox, base: string
       await run('pr', prompt('pr', { ...args, DIFF: diff, SUMMARY: implementation.summary, NON_BLOCKING: formatFindings(findings), NOTICED: noticed.join('\n') || '(none)' }), reviewAgent), 'pr', Pr));
     const failure = await verify(sandbox, base);
     if (failure) throw new Blocked(`Final verification failed:\n${failure}`);
+    let current: Ticket;
+    try { current = await tracker.getEligibleTicket(ticket.number); }
+    catch { throw new IssueChanged('Issue eligibility cannot be confirmed; re-triage before opening a PR'); }
+    if (JSON.stringify(current) !== JSON.stringify(ticket)) {
+      throw new IssueChanged('Issue changed during implementation; re-triage before opening a PR');
+    }
     const url = push(branch, pr.value.title, `${pr.value.body}\n\nCloses #${ticket.number}\n`);
     prOpened = true;
     console.log(`PR opened: ${url}`);
@@ -156,6 +174,7 @@ export async function runWorkflow(ticket: Ticket, sandbox: Sandbox, base: string
   } catch (error) {
     const reason = error instanceof Error ? error.message.slice(0, 2500) : String(error);
     console.error(reason);
+    if (error instanceof IssueChanged) throw error;
     try { tracker.markNeedsInfo(ticket.number, `Sandcastle stopped on \`${branch}\` (${prOpened ? 'PR opened' : 'PR not confirmed; inspect remote branch'}):\n\n${reason}`); }
     catch (updateError) { console.error(`Also failed to update issue: ${String(updateError)}`); }
     throw error;
@@ -166,6 +185,9 @@ async function main(argv: string[]): Promise<void> {
   const mode = argv[0] === '--check' || argv[0] === '--login' ? argv.shift() : undefined;
   const number = mode === '--login' ? undefined : issueNumber(argv.shift());
   if (argv.length) throw new Error('Unexpected arguments');
+  // Sandcastle automatically injects every key from this file into its container.
+  // A local ignored file must never silently cross the sandbox credential boundary.
+  if (existsSync('.sandcastle/.env')) throw new Error('Refusing .sandcastle/.env: Sandcastle would inject its contents into the sandbox');
   const profile = ensureSandboxPiProfile();
   if (mode === '--login') {
     const { command, args } = sandboxPiLoginCommand(profile, IMAGE, process.getuid!(), process.getgid!());
@@ -180,8 +202,8 @@ async function main(argv: string[]): Promise<void> {
   git('fetch', 'origin', 'main');
   const base = git('rev-parse', 'origin/main');
   if (mode === '--check') {
-    const { command, args } = sandboxPiLoginCommand(profile, IMAGE, process.getuid!(), process.getgid!());
-    const check = spawnSync(command, [...args.slice(0, -3), 'auth', 'check', '--model', SANDBOX_PI_MODEL, '--json'], { encoding: 'utf8' });
+    const { command, args } = sandboxPiAuthCheckCommand(profile, IMAGE, process.getuid!(), process.getgid!());
+    const check = spawnSync(command, args, { encoding: 'utf8' });
     let ready = false;
     try { ready = JSON.parse(check.stdout).status === 'ready'; } catch { /* fail closed */ }
     if (check.error || check.status !== 0 || !ready) throw new Error('Isolated Pi auth is not ready; run npm run sandcastle -- --login');
@@ -200,7 +222,7 @@ async function main(argv: string[]): Promise<void> {
       try {
         const bodyFile = join(folder, 'body.md');
         writeFileSync(bodyFile, body);
-        git('push', '-u', 'origin', head);
+        pushIsolated(sandbox.worktreePath, head);
         return host('gh', ['pr', 'create', '--repo', 'pcheng17/inkstow', '--base', 'main', '--head', head, '--title', title, '--body-file', bodyFile]);
       } finally { rmSync(folder, { recursive: true, force: true }); }
     });

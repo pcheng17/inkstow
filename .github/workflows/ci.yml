@@ -9,6 +9,18 @@ permissions:
   contents: read
 
 jobs:
+  sandcastle-harness:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
   tests:
     runs-on: ubuntu-24.04
     steps:

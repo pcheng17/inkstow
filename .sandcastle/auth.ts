@@ -61,3 +61,19 @@ export function sandboxPiLoginCommand(profile: string, imageName: string, uid: n
     ],
   };
 }
+
+/** No TTY flags: callers capture the JSON output for a fail-closed dry run. */
+export function sandboxPiAuthCheckCommand(profile: string, imageName: string, uid: number, gid: number): {
+  command: string;
+  args: string[];
+} {
+  return {
+    command: 'docker',
+    args: [
+      'run', '--rm', '--user', `${uid}:${gid}`,
+      '--mount', `type=bind,src=${profile},dst=${SANDBOX_PI_AGENT_PATH}`,
+      '--workdir', '/home/agent', '--entrypoint', 'pi', imageName,
+      'auth', 'check', '--model', SANDBOX_PI_MODEL, '--json',
+    ],
+  };
+}

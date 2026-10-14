@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
-  ensureSandboxPiProfile, preflightSandboxPiAuth, sandboxPiLoginCommand, sandboxPiMount,
+  ensureSandboxPiProfile, preflightSandboxPiAuth, sandboxPiAuthCheckCommand, sandboxPiLoginCommand, sandboxPiMount,
   SANDBOX_PI_AGENT_PATH,
 } from './auth.js';
 
@@ -49,6 +49,18 @@ test('sandboxPiLoginCommand runs an isolated interactive container with the same
     '--model', 'openai-codex/gpt-6-sol', '--no-session',
   ]);
   assert.ok(!command.args.includes('--env'));
+});
+
+test('sandboxPiAuthCheckCommand captures JSON without requiring an interactive TTY', () => {
+  const check = sandboxPiAuthCheckCommand('/tmp/private pi', 'inkstow-pi:test', 1234, 2345);
+  assert.equal(check.command, 'docker');
+  assert.deepEqual(check.args, [
+    'run', '--rm', '--user', '1234:2345',
+    '--mount', `type=bind,src=/tmp/private pi,dst=${SANDBOX_PI_AGENT_PATH}`,
+    '--workdir', '/home/agent', '--entrypoint', 'pi', 'inkstow-pi:test',
+    'auth', 'check', '--model', 'openai-codex/gpt-6-sol', '--json',
+  ]);
+  assert.ok(!check.args.includes('-it'));
 });
 
 test('preflightSandboxPiAuth fails closed unless sandbox Pi reports ready', async () => {

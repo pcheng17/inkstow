@@ -8,7 +8,7 @@ import type { Sandbox } from '@ai-hero/sandcastle';
 import { GitHubIssueTracker } from './github.js';
 import { pi } from '@ai-hero/sandcastle';
 import { z } from 'zod';
-import { assertBranchFree, branchForIssue, mustExec, parseTagged, readOnly, readOnlyAgent, runWorkflow, verify } from './main.mjs';
+import { assertBranchFree, branchForIssue, mustExec, parseTagged, pushIsolated, readOnly, readOnlyAgent, runWorkflow, verify } from './main.mjs';
 
 test('branchForIssue uses a stable issue-specific branch and rejects existing local or remote branches', () => {
   const branch = branchForIssue(42);
@@ -19,6 +19,29 @@ test('branchForIssue uses a stable issue-specific branch and rejects existing lo
   for (const match of ['branch', 'ls-remote']) {
     assert.throws(() => assertBranchFree(branch, (...args) => args[0] === match ? branch : ''), /already exists/);
   }
+});
+
+test('pushIsolated ignores a sandbox-changed origin and URL rewrite', () => {
+  const root = mkdtempSync(join(tmpdir(), 'inkstow-push-test-'));
+  const source = join(root, 'source');
+  const target = join(root, 'target.git');
+  const evil = join(root, 'evil.git');
+  const run = (...args: string[]) => execFileSync('git', args, { encoding: 'utf8' }).trim();
+  try {
+    run('init', '-q', source);
+    run('init', '-q', '--bare', target);
+    run('init', '-q', '--bare', evil);
+    run('-C', source, 'config', 'user.name', 'Test');
+    run('-C', source, 'config', 'user.email', 'test@example.com');
+    writeFileSync(join(source, 'README.md'), 'committed\n');
+    run('-C', source, 'add', 'README.md');
+    run('-C', source, 'commit', '-qm', 'change');
+    run('-C', source, 'remote', 'add', 'origin', evil);
+    run('-C', source, 'config', `url.file://${evil}.insteadOf`, `file://${target}`);
+    pushIsolated(source, 'sandcastle/issue-42', `file://${target}`);
+    assert.equal(run('-C', target, 'rev-parse', 'refs/heads/sandcastle/issue-42'), run('-C', source, 'rev-parse', 'HEAD'));
+    assert.equal(run('-C', evil, 'branch', '--list', 'sandcastle/issue-42'), '');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('parseTagged validates the last JSON block with Zod', () => {
@@ -101,6 +124,11 @@ test('runWorkflow uses one implementer session, fresh serial read-only passes, a
     let pushCount = 0;
     let comments = 0;
     const tracker = new GitHubIssueTracker(args => {
+      if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify({
+        number: 42, title: 'Change', body: 'Update', url: 'https://example.test/42',
+        state: 'OPEN', labels: [{ name: 'ready-for-agent' }], comments: [], parent: null,
+      });
+      if (args[0] === 'api') return '[[]]';
       assert.deepEqual(args.slice(0, 2), ['issue', 'comment']);
       comments++;
       return '';
