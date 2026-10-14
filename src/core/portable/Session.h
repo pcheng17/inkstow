@@ -26,6 +26,7 @@ public:
     DiskChange syncWithDisk(std::string* error);
     bool overwriteDisk(std::string* error);
     bool reloadFromDisk(std::string* error);
+    bool mergeOutsideChanges(std::string* error);
     void setContent(std::string content) { mContent = std::move(content); }
     bool isDirty() const { return mContent != mSavedContent; }
     const std::string& getContent() const { return mContent; }

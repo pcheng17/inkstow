@@ -198,6 +198,63 @@ void resolutionRequiresReportedOutsideVersion()
     CHECK(session.getContent() == "unsaved");
 }
 
+void mergeReportedOutsideChanges()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    Session session;
+    std::string error;
+    write(note, "one\ntwo\nthree\nfour\n");
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("ONE\ntwo\nthree\nfour\n");
+    write(note, "one\ntwo\nthree\nFOUR\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "ONE\ntwo\nthree\nFOUR\n" && session.isDirty());
+    CHECK(read(note) == "one\ntwo\nthree\nFOUR\n");
+    write(note, "newer\n");
+    CHECK(!session.save(&error));
+    CHECK(session.getContent() == "ONE\ntwo\nthree\nFOUR\n");
+    write(note, "one\ntwo\nthree\nFOUR\n");
+    CHECK(session.save(&error));
+    CHECK(read(note) == "ONE\ntwo\nthree\nFOUR\n");
+
+    write(note, "one\ntwo\nthree\n");
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent("one\nlocal\nthree\n");
+    write(note, "one\noutside\nthree\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    write(note, "one\nnewer\nthree\n");
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "one\nlocal\nthree\n");
+    write(note, "one\noutside\nthree\n");
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(
+        session.getContent() ==
+        "one\n<<<<<<< mine\nlocal\n=======\noutside\n>>>>>>> outside\nthree\n");
+    CHECK(read(note) == "one\noutside\nthree\n");
+    CHECK(session.save(&error));
+    CHECK(read(note) == session.getContent());
+
+    write(note, "one\ntwo\nthree\n");
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent("one\nthree\n");
+    write(note, "one\nchanged\nthree\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "one\n<<<<<<< mine\n=======\nchanged\n>>>>>>> outside\nthree\n");
+
+    write(note, "a\nb\nc\nd\ne");
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent("a\nX\ne");
+    write(note, "a\nb\nc\nY\nd\ne");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "a\n<<<<<<< mine\nX\n=======\nb\nc\nY\nd\n>>>>>>> outside\ne");
+    CHECK(read(note) == "a\nb\nc\nY\nd\ne");
+}
+
 void recoveryCreatesMissingNoteInExistingFolder()
 {
     TempVault temp;
@@ -374,6 +431,7 @@ int main()
         cleanOutsideChangeReloadsAndPreservesBom();
         dirtyOutsideChangeRetainsEditsAndReportsSnapshot();
         resolutionRequiresReportedOutsideVersion();
+        mergeReportedOutsideChanges();
         recoveryCreatesMissingNoteInExistingFolder();
         recoveryNeverOverwritesReappearedNote();
         recoveryRejectsInvalidPathsAndMissingParent();
