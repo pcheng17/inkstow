@@ -61,7 +61,10 @@ std::optional<std::string> normalizeNoteInput(const std::string& input)
         0,
         nullptr,
         nullptr);
-    if (!count) return last == first ? std::string() : std::nullopt;
+    if (!count) {
+        if (last == first) return std::string();
+        return std::nullopt;
+    }
     std::string result(static_cast<size_t>(count), '\0');
     if (!WideCharToMultiByte(
             CP_UTF8,

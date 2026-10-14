@@ -22,6 +22,7 @@ namespace
 bool linkedPath(const fs::path& path, const fs::file_status& status)
 {
 #ifdef _WIN32
+    (void)status;
     const DWORD attributes = GetFileAttributesW(path.c_str());
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT);
 #else
