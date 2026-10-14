@@ -133,6 +133,32 @@ bool safeLink(const std::string& path)
 {
     return path.find_first_of("#|[]\n\r") == std::string::npos;
 }
+
+// Discovery omits hidden and linked entries; either could shadow a rewritten link.
+bool unshadowedLinkPath(
+    const fs::path& root, const std::string& linkPath, const std::string& note, std::string* error)
+{
+    const auto shadow = root / pathOf(linkPath);
+    std::error_code ec;
+    fs::directory_iterator siblings(shadow.parent_path(), ec);
+    if (ec) {
+        *error = "Cannot inspect link target in " + note;
+        return false;
+    }
+    const fs::directory_iterator end;
+    while (!ec && siblings != end) {
+        if (lower(bytes(siblings->path().filename())) == lower(bytes(shadow.filename()))) {
+            *error = "Cannot write an unambiguous extensionless link in " + note;
+            return false;
+        }
+        siblings.increment(ec);
+    }
+    if (ec) {
+        *error = "Cannot inspect link target in " + note;
+        return false;
+    }
+    return true;
+}
 } // namespace
 
 bool Vault::createNote(const std::string& relative, std::string* error) const
@@ -295,28 +321,7 @@ bool Vault::moveNote(
                         *error = "Cannot write an unambiguous extensionless link in " + note;
                         return false;
                     }
-                    // Include linked and hidden entries that discovery deliberately omits.
-                    const auto shadow = mRoot / pathOf(linkPath);
-                    std::error_code shadowError;
-                    fs::directory_iterator siblings(shadow.parent_path(), shadowError);
-                    if (shadowError) {
-                        *error = "Cannot inspect link target in " + note;
-                        return false;
-                    }
-                    const fs::directory_iterator siblingsEnd;
-                    while (!shadowError && siblings != siblingsEnd) {
-                        if (lower(bytes(siblings->path().filename())) ==
-                            lower(bytes(shadow.filename())))
-                        {
-                            *error = "Cannot write an unambiguous extensionless link in " + note;
-                            return false;
-                        }
-                        siblings.increment(shadowError);
-                    }
-                    if (shadowError) {
-                        *error = "Cannot inspect link target in " + note;
-                        return false;
-                    }
+                    if (!unshadowedLinkPath(mRoot, linkPath, note, error)) return false;
                     output += "[[/" + linkPath + "]]";
                 } else
                     output += text.substr(start, end + 2 - start);
