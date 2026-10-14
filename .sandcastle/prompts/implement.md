@@ -7,7 +7,7 @@ You are in a sandbox worktree on `{{BRANCH}}`, based on `{{BASE_SHA}}`. The host
 1. This host-orchestrated workflow is an exception to Harness Kit's global preference for subagents: work alone and do not spawn agents. Read step 3 (standards and lowered-bar check) of the `code-review` skill before editing. Do the review yourself later.
 2. Load `tdd` and follow its test-first loop. Use `diagnosing-bugs` for difficult failures and `codebase-design` or `dod` when their subject applies. If a decision needs a human, report blocked rather than guessing.
 3. Implement only the issue. Track unrelated observations under `noticed` without editing them. Commit each green slice with only that slice staged. Never bypass hooks. After each slice build and test the changed behavior; before finishing, check `git status --porcelain` is empty.
-4. The host runs WebView-enabled build, all CTest, formatting and C++ clang-tidy before review. Do not claim a failed check passed.
+4. For C++ changes, use targeted clang-tidy checks during implementation: check changed `.cpp` files and translation units affected by changed headers, using the WebView-enabled compilation database. Do not run the full-repository `scripts/check-clang-tidy.py` yourself; the host runs it after implementation and simplification, alongside the WebView-enabled build, all CTest and formatting checks. If the host reports a failure, fix it and use targeted checks to confirm the correction; the host will rerun full verification. Do not claim a failed check passed.
 
 Finish with one JSON block:
 <implementation>
