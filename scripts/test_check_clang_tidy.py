@@ -45,6 +45,19 @@ class ClangTidyCheckTest(unittest.TestCase):
         self.assertIn(self.sources[0], result.stderr)
         self.assertFalse(marker.exists())
 
+    def test_non_linux_platforms_exclude_linux_only_sources(self):
+        non_linux = checker.source_groups(platform="darwin")
+        self.assertEqual(non_linux, checker.source_groups(platform="win32"))
+        sources = [source for group in non_linux for source in group]
+        self.assertNotIn("src/webview/NavigationPolicyLinux.cpp", sources)
+        self.assertNotIn("tests/WebviewNativeNavigationTests.cpp", sources)
+        self.assertIn("src/webview/Bridge.cpp", sources)
+        self.assertIn("src/webview/Main.cpp", sources)
+        self.write_database(sources)
+        checker.check_entries(self.build_dir / "compile_commands.json", non_linux)
+        with self.assertRaisesRegex(ValueError, "Missing clang-tidy compilation entries"):
+            checker.check_entries(self.build_dir / "compile_commands.json", checker.source_groups(platform="linux"))
+
     def test_lint_failure_propagates(self):
         self.write_database(self.sources)
         binary = self.build_dir / "tidy"

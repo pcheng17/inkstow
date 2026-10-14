@@ -45,7 +45,7 @@ git config core.hooksPath .githooks
 
 ## Clang-tidy check
 
-On Linux, configure with WebView enabled and build all checked targets so the compilation database includes the shell and test sources, then run the same check as CI from the repository root:
+Configure with WebView enabled and build all checked targets so the compilation database includes the shell and test sources, then run the same check as CI from the repository root:
 
 ```sh
 cmake --preset debug -DINKSTOW_BUILD_WEBVIEW=ON
@@ -53,7 +53,7 @@ cmake --build --preset debug --target inkstow inkstow-webview unit-tests ui-test
 python3 scripts/check-clang-tidy.py
 ```
 
-The script uses `clang-tidy` on your PATH by default; pass `--clang-tidy clang-tidy-18` to use CI's pinned executable. It refuses missing compilation entries and treats lint warnings as errors.
+The script uses `clang-tidy` on your PATH by default; pass `--clang-tidy clang-tidy-18` to use CI's pinned executable. It refuses missing compilation entries and treats lint warnings as errors. On Linux it requires the Linux navigation implementation and native-navigation test compilation entries (the latter needs Xvfb at configure time); on macOS and Windows it skips these Linux-only sources. Platform-specific macOS/Windows navigation implementations are not covered by this check. The clang-tidy CI job runs on Linux.
 
 ## Headless tests
 

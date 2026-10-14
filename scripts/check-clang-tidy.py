@@ -9,6 +9,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
+LINUX_ONLY_SOURCES = {"tests/WebviewNativeNavigationTests.cpp", "src/webview/NavigationPolicyLinux.cpp"}
 SOURCE_GROUPS = (
     ("src/*.cpp", "src/core/*.cpp", "src/ui/*.cpp", "tests/*.cpp"),
     (
@@ -20,7 +21,7 @@ SOURCE_GROUPS = (
 )
 
 
-def source_groups():
+def source_groups(platform=sys.platform):
     groups = []
     for patterns in SOURCE_GROUPS:
         sources = []
@@ -28,7 +29,10 @@ def source_groups():
             matches = sorted(ROOT.glob(pattern))
             if not matches:
                 raise ValueError(f"No sources match {pattern}")
-            sources.extend(path.relative_to(ROOT).as_posix() for path in matches)
+            for path in matches:
+                source = path.relative_to(ROOT).as_posix()
+                if platform == "linux" or source not in LINUX_ONLY_SOURCES:
+                    sources.append(source)
         groups.append(sources)
     return groups
 
