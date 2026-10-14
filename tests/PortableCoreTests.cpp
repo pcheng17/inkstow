@@ -343,6 +343,45 @@ void mergeRefusesOversizedOrInvalidInputsWithoutLosingSnapshot()
     CHECK(read(note) == "outside");
 }
 
+void recoveryRespectsSelectedPathSafety()
+{
+    TempVault temp;
+    TempVault other;
+    const fs::path folder = temp.mPath / "Folder";
+    CHECK(fs::create_directory(folder));
+    const fs::path note = folder / "Note.md";
+    write(note, "original");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Folder/Note.md", &error));
+    session.setContent("mine");
+    CHECK(fs::remove(note));
+    CHECK(fs::remove(folder));
+    CHECK(!session.saveAsNewNote(&error));
+    CHECK(session.getContent() == "mine" && session.isDirty());
+    CHECK(!fs::exists(folder));
+    std::error_code ec;
+    fs::create_directory_symlink(other.mPath, folder, ec);
+    if (!ec) {
+        CHECK(!session.saveAsNewNote(&error));
+        CHECK(!fs::exists(other.mPath / "Note.md"));
+        CHECK(fs::remove(folder));
+    }
+    CHECK(fs::create_directory(folder));
+    const fs::path target = other.mPath / "Target.md";
+    write(target, "outside");
+    fs::create_symlink(target, note, ec);
+    if (!ec) {
+        CHECK(!session.saveAsNewNote(&error));
+        CHECK(!session.save(&error));
+        CHECK(read(target) == "outside");
+        CHECK(fs::remove(note));
+    }
+    CHECK(session.saveAsNewNote(&error));
+    CHECK(read(note) == "mine");
+}
+
 void recoveryCreatesMissingNoteInExistingFolder()
 {
     TempVault temp;
@@ -523,6 +562,7 @@ int main()
         missingNoteRecoveryRefusesReappearingPath();
         discardEditsDoesNotRecreateDeletedNote();
         mergeRefusesOversizedOrInvalidInputsWithoutLosingSnapshot();
+        recoveryRespectsSelectedPathSafety();
         recoveryCreatesMissingNoteInExistingFolder();
         recoveryNeverOverwritesReappearedNote();
         recoveryRejectsInvalidPathsAndMissingParent();
