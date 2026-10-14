@@ -21,6 +21,21 @@ bool hasFields(const Json& request, std::initializer_list<const char*> fields)
     });
 }
 
+const char* changeName(portable::DiskChange change)
+{
+    switch (change) {
+    case portable::DiskChange::Conflict:
+        return "conflict";
+    case portable::DiskChange::Missing:
+        return "missing";
+    case portable::DiskChange::Reloaded:
+        return "reloaded";
+    case portable::DiskChange::None:
+        return "none";
+    }
+    return "none";
+}
+
 bool stringField(const Json& request, const char* field, std::size_t maxBytes)
 {
     return request.at(field).is_string() &&
@@ -50,6 +65,7 @@ std::string Bridge::handle(const std::string& arguments)
                     stringField(request, "folder", 4096))
                 {
                     success = mSession.openVault(request.at("folder").get<std::string>(), &error);
+                    if (success) mChange = portable::DiskChange::None;
                 } else if (operation == "list" && hasFields(request, {"operation"})) {
                     success = true;
                 } else if (
@@ -57,6 +73,7 @@ std::string Bridge::handle(const std::string& arguments)
                     stringField(request, "path", 4096))
                 {
                     success = mSession.selectNote(request.at("path").get<std::string>(), &error);
+                    if (success) mChange = portable::DiskChange::None;
                 } else if (
                     operation == "edit" && hasFields(request, {"operation", "content"}) &&
                     stringField(request, "content", std::size_t{4} * 1024 * 1024))
@@ -67,8 +84,47 @@ std::string Bridge::handle(const std::string& arguments)
                         mSession.setContent(request.at("content").get<std::string>());
                         success = true;
                     }
+                } else if (operation == "refresh" && hasFields(request, {"operation"})) {
+                    mChange = mSession.syncWithDisk(&error);
+                    success = true;
                 } else if (operation == "save" && hasFields(request, {"operation"})) {
                     success = mSession.save(&error);
+                    if (success)
+                        mChange = portable::DiskChange::None;
+                    else {
+                        std::string ignored;
+                        mChange = mSession.syncWithDisk(&ignored);
+                    }
+                } else if (
+                    operation == "reload" && hasFields(request, {"operation"}) &&
+                    mChange != portable::DiskChange::None)
+                {
+                    success = mSession.reloadFromDisk(&error);
+                    if (success) mChange = portable::DiskChange::None;
+                } else if (
+                    operation == "keepMine" && hasFields(request, {"operation"}) &&
+                    mChange == portable::DiskChange::Conflict)
+                {
+                    success = mSession.overwriteDisk(&error);
+                    if (success) mChange = portable::DiskChange::None;
+                } else if (
+                    operation == "merge" && hasFields(request, {"operation"}) &&
+                    mChange == portable::DiskChange::Conflict)
+                {
+                    success = mSession.mergeOutsideChanges(&error);
+                    if (success) mChange = portable::DiskChange::None;
+                } else if (
+                    operation == "saveAsNew" && hasFields(request, {"operation"}) &&
+                    mChange == portable::DiskChange::Missing)
+                {
+                    success = mSession.saveAsNewNote(&error);
+                    if (success) mChange = portable::DiskChange::None;
+                } else if (
+                    operation == "discard" && hasFields(request, {"operation"}) &&
+                    mChange == portable::DiskChange::Missing)
+                {
+                    mSession.discardEdits();
+                    success = true;
                 } else {
                     error = "Unknown operation or invalid request fields.";
                 }
@@ -79,9 +135,10 @@ std::string Bridge::handle(const std::string& arguments)
             {  "notes",   mSession.getNotes()},
             {   "path",    mSession.getPath()},
             {"content", mSession.getContent()},
-            {  "dirty",    mSession.isDirty()}
+            {  "dirty",    mSession.isDirty()},
+            { "change",   changeName(mChange)}
         };
-        if (!success) reply["error"] = error;
+        if (!error.empty()) reply["error"] = error;
         return reply.dump();
     } catch (const std::exception&) {
         // Includes malformed JSON and invalid UTF-8; never expose raw parser exceptions.

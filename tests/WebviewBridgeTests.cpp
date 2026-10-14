@@ -137,6 +137,135 @@ int main() // NOLINT(bugprone-exception-escape)
     });
     CHECK(conflict["ok"] == false && conflict["dirty"] == true && conflict["content"] == "Unsaved");
     CHECK(diskBytes(root / "Second.md") == "Outside");
+    CHECK(conflict["change"] == "conflict");
+    const Json merged = request(
+        bridge,
+        {
+            {"operation", "merge"}
+    });
+    CHECK(merged["ok"] == true && merged["dirty"] == true && merged["change"] == "none");
+    CHECK(merged["content"] == "<<<<<<< mine\nUnsaved\n=======\nOutside\n>>>>>>> outside");
+    CHECK(diskBytes(root / "Second.md") == "Outside");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "save"}
+    })["dirty"] == false);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",         "edit"},
+                {  "content", "My next edit"}
+    })["dirty"] == true);
+    {
+        std::ofstream output(root / "Second.md", std::ios::binary);
+        output << "New outside";
+    }
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
+    })["change"] == "conflict");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "keepMine"}
+    })["dirty"] == false);
+    CHECK(diskBytes(root / "Second.md") == "My next edit");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",       "edit"},
+                {  "content", "Recover me"}
+    })["dirty"] == true);
+    fs::remove(root / "Second.md");
+    const Json missing = request(
+        bridge,
+        {
+            {"operation", "refresh"}
+    });
+    CHECK(missing["change"] == "missing" && missing["content"] == "Recover me");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "save"}
+    })["ok"] == false);
+    {
+        std::ofstream output(root / "Second.md", std::ios::binary);
+        output << "Reappeared";
+    }
+    const Json refusedRecovery = request(
+        bridge,
+        {
+            {"operation", "saveAsNew"}
+    });
+    CHECK(refusedRecovery["ok"] == false && refusedRecovery["content"] == "Recover me");
+    CHECK(diskBytes(root / "Second.md") == "Reappeared");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
+    })["change"] == "conflict");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "reload"}
+    })["content"] == "Reappeared");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",         "edit"},
+                {  "content", "New recovery"}
+    })["dirty"] == true);
+    fs::remove(root / "Second.md");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
+    })["change"] == "missing");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "saveAsNew"}
+    })["dirty"] == false);
+    CHECK(diskBytes(root / "Second.md") == "New recovery");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",       "edit"},
+                {  "content", "Discard me"}
+    })["dirty"] == true);
+    fs::remove(root / "Second.md");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
+    })["change"] == "missing");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "discard"}
+    })["dirty"] == false);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
+    })["change"] == "missing");
     CHECK(
         request(
             bridge,
@@ -168,6 +297,6 @@ int main() // NOLINT(bugprone-exception-escape)
             bridge,
             Json{
                 {"operation", "list"}
-    })["content"] == "Unsaved");
+    })["content"] == "New recovery");
     fs::remove_all(root);
 }

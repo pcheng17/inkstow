@@ -15,6 +15,7 @@ public:
 
 private:
     portable::Session mSession;
+    portable::DiskChange mChange = portable::DiskChange::None;
 };
 
 } // namespace inkstow::webview_shell
