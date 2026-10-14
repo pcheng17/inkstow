@@ -12,7 +12,7 @@ QString AppSettingsStore::lastVault() const
     return QSettings().value(kLastVaultKey).toString();
 }
 
-bool AppSettingsStore::setLastVault(const QString &path)
+bool AppSettingsStore::setLastVault(const QString& path)
 {
     QSettings settings;
     settings.setValue(kLastVaultKey, path);

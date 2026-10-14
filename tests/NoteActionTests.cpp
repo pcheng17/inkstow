@@ -36,21 +36,21 @@ using NoteFiles = std::vector<std::pair<QString, QByteArray>>;
 class TestVault
 {
 public:
-    explicit TestVault(const NoteFiles &notes)
+    explicit TestVault(const NoteFiles& notes)
     {
         CHECK(mDir.isValid() && mTrash.isValid());
-        for (const auto &[path, text] : notes) {
+        for (const auto& [path, text] : notes) {
             CHECK(QFileInfo(filePath(path)).dir().mkpath(QStringLiteral(".")));
             writeFile(filePath(path), text);
         }
         mWindow = std::make_unique<Window>(
-            [this](const QString &path, QString * /*error*/) {
+            [this](const QString& path, QString* /*error*/) {
                 return QFile::rename(
                     path,
                     QDir(mTrash.path()).filePath(QFileInfo(path).fileName()));
             },
-            [](const QUrl & /*url*/) { return true; },
-            [this](QWidget * /*parent*/) {
+            [](const QUrl& /*url*/) { return true; },
+            [this](QWidget* /*parent*/) {
                 ++mPicks;
                 return mPicks == 1 ? std::optional(mDir.path()) : std::nullopt;
             },
@@ -66,24 +66,24 @@ public:
         mWindow->activateWindow();
         CHECK(waitFor([&] { return mWindow->isActiveWindow(); }));
     }
-    Window &window() { return *mWindow; }
-    QString filePath(const QString &relative) const { return QDir(mDir.path()).filePath(relative); }
-    bool trashed(const QString &name) const
+    Window& window() { return *mWindow; }
+    QString filePath(const QString& relative) const { return QDir(mDir.path()).filePath(relative); }
+    bool trashed(const QString& name) const
     {
         return QFile::exists(QDir(mTrash.path()).filePath(name));
     }
     int picks() const { return mPicks; }
 
     template<typename T>
-    T *find(const QString &name)
+    T* find(const QString& name)
     {
-        auto *found = mWindow->findChild<T *>(name);
+        auto* found = mWindow->findChild<T*>(name);
         CHECK(found);
         return found;
     }
-    QAction *action(const QString &name) { return find<QAction>(name); }
-    QTreeWidget *tree() { return find<QTreeWidget>(QStringLiteral("notes")); }
-    QTextEdit *editor() { return find<QTextEdit>(QStringLiteral("editor")); }
+    QAction* action(const QString& name) { return find<QAction>(name); }
+    QTreeWidget* tree() { return find<QTreeWidget>(QStringLiteral("notes")); }
+    QTextEdit* editor() { return find<QTextEdit>(QStringLiteral("editor")); }
 
 private:
     QTemporaryDir mDir;
@@ -94,7 +94,7 @@ private:
 
 // Presses a shortcut in widget as a user would, so the window's shortcuts see
 // it before the widget does.
-void pressShortcut(QWidget *widget, const QKeySequence &shortcut)
+void pressShortcut(QWidget* widget, const QKeySequence& shortcut)
 {
     CHECK(shortcut.count() == 1);
     widget->window()->activateWindow();
@@ -107,34 +107,34 @@ void pressShortcut(QWidget *widget, const QKeySequence &shortcut)
 
 // Answers the next Rename / move prompts with destination and the default
 // choice, Update links.
-void answerMovePrompts(const QString &destination)
+void answerMovePrompts(const QString& destination)
 {
     QTimer::singleShot(0, [destination] {
-        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
         CHECK(dialog);
-        auto *input = dialog->findChild<QLineEdit *>();
+        auto* input = dialog->findChild<QLineEdit*>();
         CHECK(input);
         input->setText(destination);
         dialog->accept();
         QTimer::singleShot(0, [] {
-            auto *confirmation = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            auto* confirmation = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
             CHECK(confirmation && confirmation->defaultButton());
             confirmation->defaultButton()->click();
         });
     });
 }
 
-void moveCursorTo(QTextEdit *editor, int position)
+void moveCursorTo(QTextEdit* editor, int position)
 {
     QTextCursor cursor = editor->textCursor();
     cursor.setPosition(position);
     editor->setTextCursor(cursor);
 }
 
-bool inMenuBar(QMainWindow &window, QAction *action)
+bool inMenuBar(QMainWindow& window, QAction* action)
 {
     const auto menus = window.menuBar()->actions();
-    return std::any_of(menus.begin(), menus.end(), [&](const QAction *menu) {
+    return std::any_of(menus.begin(), menus.end(), [&](const QAction* menu) {
         return menu->menu() && menu->menu()->actions().contains(action);
     });
 }
@@ -153,20 +153,20 @@ void testActionsInMenuBar()
         {  QStringLiteral("moveNoteAction"),               QKeySequence(Qt::Key_F2)},
         {QStringLiteral("deleteNoteAction"),                         QKeySequence()},
     };
-    for (const auto &[name, shortcut] : expected) {
-        CHECK(vault.window().findChildren<QAction *>(name).size() == 1);
-        QAction *action = vault.action(name);
+    for (const auto& [name, shortcut] : expected) {
+        CHECK(vault.window().findChildren<QAction*>(name).size() == 1);
+        QAction* action = vault.action(name);
         CHECK(!action->text().isEmpty());
         CHECK(!action->toolTip().isEmpty());
         CHECK(action->shortcut() == shortcut);
         CHECK(inMenuBar(vault.window(), action));
     }
-    for (const QString &button :
+    for (const QString& button :
          {QStringLiteral("saveNote"),
           QStringLiteral("followLink"),
           QStringLiteral("moveNote"),
           QStringLiteral("deleteNote")})
-        CHECK(vault.window().findChild<QPushButton *>(button) == nullptr);
+        CHECK(vault.window().findChild<QPushButton*>(button) == nullptr);
 }
 
 // Shortcuts work from the editor and the tree with the same results as the actions.
@@ -176,8 +176,8 @@ void testShortcuts()
         {QStringLiteral("a.md"), "see [[b]]"},
         {QStringLiteral("b.md"),         "b"}
     });
-    QTreeWidget *tree = vault.tree();
-    QTextEdit *editor = vault.editor();
+    QTreeWidget* tree = vault.tree();
+    QTextEdit* editor = vault.editor();
     openNote(tree, QStringLiteral("a.md"));
     CHECK(editor->hasFocus());
     moveCursorTo(editor, static_cast<int>(editor->toPlainText().size()));
@@ -215,9 +215,9 @@ void testCtrlClickFollowsLink()
         {QStringLiteral("a.md"), "see [[b]] here"},
         {QStringLiteral("b.md"),              "b"}
     });
-    QTreeWidget *tree = vault.tree();
-    QTextEdit *editor = vault.editor();
-    auto *status = vault.find<QLabel>(QStringLiteral("status"));
+    QTreeWidget* tree = vault.tree();
+    QTextEdit* editor = vault.editor();
+    auto* status = vault.find<QLabel>(QStringLiteral("status"));
     openNote(tree, QStringLiteral("a.md"));
     const auto pointAt = [&](int position) {
         QTextCursor cursor(editor->document());
@@ -243,14 +243,14 @@ void testHeader()
         {QStringLiteral("Folder/Second note.md"), "second"},
         {           QStringLiteral("Welcome.md"),     "hi"}
     });
-    Window &window = vault.window();
-    auto *header = vault.find<QWidget>(QStringLiteral("noteHeader"));
-    auto *title = vault.find<QLabel>(QStringLiteral("noteTitle"));
-    auto *unsaved = vault.find<QLabel>(QStringLiteral("unsavedIndicator"));
-    QAction *save = vault.action(QStringLiteral("saveAction"));
-    QAction *move = vault.action(QStringLiteral("moveNoteAction"));
-    QAction *remove = vault.action(QStringLiteral("deleteNoteAction"));
-    QTextEdit *editor = vault.editor();
+    Window& window = vault.window();
+    auto* header = vault.find<QWidget>(QStringLiteral("noteHeader"));
+    auto* title = vault.find<QLabel>(QStringLiteral("noteTitle"));
+    auto* unsaved = vault.find<QLabel>(QStringLiteral("unsavedIndicator"));
+    QAction* save = vault.action(QStringLiteral("saveAction"));
+    QAction* move = vault.action(QStringLiteral("moveNoteAction"));
+    QAction* remove = vault.action(QStringLiteral("deleteNoteAction"));
+    QTextEdit* editor = vault.editor();
     // Whether Save, Rename / move and Delete are enabled.
     const auto enabled = [&] {
         return std::tuple(save->isEnabled(), move->isEnabled(), remove->isEnabled());
@@ -282,9 +282,9 @@ void testHeader()
     CHECK(title->text() == QStringLiteral("Welcome"));
 }
 
-QPoint itemPoint(QTreeWidget *tree, const QString &path)
+QPoint itemPoint(QTreeWidget* tree, const QString& path)
 {
-    QTreeWidgetItem *item = treeItem(tree, path);
+    QTreeWidgetItem* item = treeItem(tree, path);
     CHECK(item);
     tree->scrollToItem(item);
     return tree->visualItemRect(item).center();
@@ -292,11 +292,11 @@ QPoint itemPoint(QTreeWidget *tree, const QString &path)
 
 // Right-clicks at point in the tree's viewport and returns the actions of the
 // menu shown, closing it.
-QList<QAction *> rightClick(QTreeWidget *tree, const QPoint &point)
+QList<QAction*> rightClick(QTreeWidget* tree, const QPoint& point)
 {
-    QList<QAction *> shown;
+    QList<QAction*> shown;
     QTimer::singleShot(0, [&] {
-        auto *popup = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+        auto* popup = qobject_cast<QMenu*>(QApplication::activePopupWidget());
         if (!popup) return;
         shown = popup->actions();
         popup->close();
@@ -315,12 +315,12 @@ void testTreeContextMenu()
         {       QStringLiteral("b.md"), "b"},
         {QStringLiteral("Folder/c.md"), "c"}
     });
-    auto *tree = dynamic_cast<NoteTree *>(vault.tree());
+    auto* tree = dynamic_cast<NoteTree*>(vault.tree());
     CHECK(tree);
-    QTextEdit *editor = vault.editor();
-    QAction *move = vault.action(QStringLiteral("moveNoteAction"));
-    QAction *remove = vault.action(QStringLiteral("deleteNoteAction"));
-    const QList<QAction *> noteActions{move, remove};
+    QTextEdit* editor = vault.editor();
+    QAction* move = vault.action(QStringLiteral("moveNoteAction"));
+    QAction* remove = vault.action(QStringLiteral("deleteNoteAction"));
+    const QList<QAction*> noteActions{move, remove};
     openNote(tree, QStringLiteral("a.md"));
 
     std::unique_ptr<QMenu> menu = tree->contextMenuAt(itemPoint(tree, QStringLiteral("b.md")));
@@ -365,7 +365,7 @@ void testTreeContextMenuForUnopenableNote()
         {  QStringLiteral("a.md"),            "a"},
         {QStringLiteral("bad.md"), "\xff\xfe bad"}
     });
-    auto *tree = dynamic_cast<NoteTree *>(vault.tree());
+    auto* tree = dynamic_cast<NoteTree*>(vault.tree());
     CHECK(tree);
     openNote(tree, QStringLiteral("a.md"));
     CHECK(!tree->contextMenuAt(itemPoint(tree, QStringLiteral("bad.md"))));
@@ -382,7 +382,7 @@ void testCloseBlockedWhileUnsaved()
     vault.editor()->insertPlainText(QStringLiteral("x"));
     bool warned = false;
     QTimer::singleShot(0, [&] {
-        auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        auto* box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         warned = box != nullptr;
         if (box) box->accept();
     });

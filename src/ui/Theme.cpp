@@ -68,7 +68,7 @@ QTextCharFormat theme::markdownFormat(MarkdownKind kind, int headingLevel)
     return format;
 }
 
-void configureLightTheme([[maybe_unused]] QApplication &app)
+void configureLightTheme([[maybe_unused]] QApplication& app)
 {
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     QPalette light;

@@ -13,9 +13,9 @@ public:
     NoteHeader();
 
     // path is vault-relative, or empty when no note is open.
-    void showNote(const QString &path, bool unsaved);
+    void showNote(const QString& path, bool unsaved);
 
 private:
-    QLabel *mTitle;
-    QLabel *mUnsaved;
+    QLabel* mTitle;
+    QLabel* mUnsaved;
 };

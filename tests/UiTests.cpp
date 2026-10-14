@@ -50,23 +50,23 @@ class FailingSettings : public SettingsStore
 {
 public:
     QString lastVault() const override { return {}; }
-    bool setLastVault(const QString & /*path*/) override { return false; }
+    bool setLastVault(const QString& /*path*/) override { return false; }
 };
 
-static std::optional<QString> failIfPicked(QWidget * /*parent*/)
+static std::optional<QString> failIfPicked(QWidget* /*parent*/)
 {
     throw std::runtime_error("The folder picker was shown unexpectedly");
 }
 
 // A last vault that can't be reopened leaves the empty state up with the reason.
-static void checkLastVaultNotReopened(const QString &lastVault)
+static void checkLastVaultNotReopened(const QString& lastVault)
 {
     const auto settings = std::make_shared<MemorySettings>();
     settings->setLastVault(lastVault);
     Window window(refuseTrash, {}, failIfPicked, settings);
-    auto *emptyState = window.findChild<QWidget *>(QStringLiteral("emptyState"));
-    auto *message = window.findChild<QLabel *>(QStringLiteral("emptyStateMessage"));
-    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
+    auto* emptyState = window.findChild<QWidget*>(QStringLiteral("emptyState"));
+    auto* message = window.findChild<QLabel*>(QStringLiteral("emptyStateMessage"));
+    auto* notes = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
     CHECK(emptyState && message && notes);
     CHECK(emptyState->isVisibleTo(&window));
     CHECK(!notes->isVisibleTo(&window));
@@ -92,11 +92,11 @@ static void testUnrememberedVaultIsReported()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<FailingSettings>());
-    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
-    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    auto* open = window.findChild<QPushButton*>(QStringLiteral("openVault"));
+    auto* notes = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
+    auto* status = window.findChild<QLabel*>(QStringLiteral("status"));
     CHECK(open && notes && status);
     open->click();
     CHECK(notePaths(notes).size() == 1); // The vault still opens.
@@ -113,10 +113,10 @@ static void testReopeningLastVault()
     const auto settings = std::make_shared<MemorySettings>();
     {
         std::optional<QString> picked;
-        Window first(refuseTrash, {}, [&](QWidget *) { return picked; }, settings);
+        Window first(refuseTrash, {}, [&](QWidget*) { return picked; }, settings);
         CHECK(first.windowTitle() == QStringLiteral("Inkstow"));
-        auto *open = first.findChild<QPushButton *>(QStringLiteral("openVault"));
-        auto *emptyState = first.findChild<QWidget *>(QStringLiteral("emptyState"));
+        auto* open = first.findChild<QPushButton*>(QStringLiteral("openVault"));
+        auto* emptyState = first.findChild<QWidget*>(QStringLiteral("emptyState"));
         CHECK(open && emptyState);
         CHECK(emptyState->isVisibleTo(&first));
         open->click(); // Cancelled.
@@ -130,29 +130,29 @@ static void testReopeningLastVault()
         CHECK(first.windowTitle() == title);
     }
     Window second(refuseTrash, {}, failIfPicked, settings);
-    auto *notes = second.findChild<QTreeWidget *>(QStringLiteral("notes"));
+    auto* notes = second.findChild<QTreeWidget*>(QStringLiteral("notes"));
     CHECK(notes);
     CHECK(notePaths(notes) == QStringList{QStringLiteral("Welcome.md")});
     CHECK(second.windowTitle() == title);
 }
 
 // Opens a vault holding one note.md with `text` and selects it.
-static void openSingleNote(Window &window, const QTemporaryDir &dir, const QByteArray &text)
+static void openSingleNote(Window& window, const QTemporaryDir& dir, const QByteArray& text)
 {
     writeFile(QDir(dir.path()).filePath(QStringLiteral("note.md")), text);
-    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
-    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
+    auto* open = window.findChild<QPushButton*>(QStringLiteral("openVault"));
+    auto* notes = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
     CHECK(open && notes);
     open->click();
     openNote(notes, QStringLiteral("note.md"));
 }
 
 // Distance from the top of one paragraph to the top of the next.
-static qreal linePitch(const QTextEdit *editor, int paragraph)
+static qreal linePitch(const QTextEdit* editor, int paragraph)
 {
     const QTextBlock block = editor->document()->findBlockByNumber(paragraph);
     CHECK(block.isValid() && block.next().isValid());
-    QAbstractTextDocumentLayout *layout = editor->document()->documentLayout();
+    QAbstractTextDocumentLayout* layout = editor->document()->documentLayout();
     return layout->blockBoundingRect(block.next()).top() - layout->blockBoundingRect(block).top();
 }
 
@@ -165,12 +165,12 @@ static void testReadableEditorText()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show(); // Text is laid out only once it is shown.
     openSingleNote(window, dir, "first\nsecond");
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *save = window.findChild<QAction *>(QStringLiteral("saveAction"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* save = window.findChild<QAction*>(QStringLiteral("saveAction"));
     CHECK(editor && save);
     CHECK(editor->font().pointSize() == 13);
     const qreal roomy = 1.4 * QFontMetricsF(editor->font()).height();
@@ -181,7 +181,7 @@ static void testReadableEditorText()
     editor->setTextCursor(end);
     editor->insertPlainText(QStringLiteral("\nthird"));
     CHECK(linePitch(editor, 1) >= roomy);
-    auto *pasted = new QMimeData;
+    auto* pasted = new QMimeData;
     pasted->setHtml(QStringLiteral("<h1>fourth</h1><p><b>fifth</b></p>"));
     pasted->setText(QStringLiteral("\nfourth\nfifth"));
     QApplication::clipboard()->setMimeData(pasted);
@@ -195,7 +195,7 @@ static void testReadableEditorText()
 }
 
 // The area the editor's characters occupy, in the editor's own coordinates.
-static QRect textBounds(const QTextEdit *editor)
+static QRect textBounds(const QTextEdit* editor)
 {
     QRect bounds;
     QTextCursor cursor(editor->document());
@@ -215,11 +215,11 @@ static void testEditorTextWidth()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
     openSingleNote(window, dir, QByteArray("a ").repeated(4000)); // Short words wrap evenly.
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
     CHECK(editor);
     const int word = QFontMetrics(editor->font()).horizontalAdvance(QStringLiteral("a "));
 
@@ -250,18 +250,18 @@ static void testEditorHighlightsMarkdown()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     openSingleNote(window, dir, "# Title\n**bold** and [[link]]");
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *save = window.findChild<QAction *>(QStringLiteral("saveAction"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* save = window.findChild<QAction*>(QStringLiteral("saveAction"));
     CHECK(editor && save);
     CHECK(
-        dynamic_cast<MarkdownHighlighter *>(editor->document()->findChild<QSyntaxHighlighter *>(
+        dynamic_cast<MarkdownHighlighter*>(editor->document()->findChild<QSyntaxHighlighter*>(
             QStringLiteral("markdownHighlighter"))));
     const auto kindsAt = [&](int block, int position) {
         const auto ranges = editor->document()->findBlockByNumber(block).layout()->formats();
-        for (const QTextLayout::FormatRange &range : ranges) {
+        for (const QTextLayout::FormatRange& range : ranges) {
             if (position >= range.start && position < range.start + range.length)
                 return range.format.intProperty(theme::kMarkdownKindsProperty);
         }
@@ -290,7 +290,7 @@ static void testLongNoteStaysResponsive()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
     QByteArray text;
@@ -300,7 +300,7 @@ static void testLongNoteStaysResponsive()
         text += "```\nfenced " + QByteArray::number(line) + "\n```\n";
     }
     openSingleNote(window, dir, text);
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
     CHECK(editor);
     CHECK(editor->document()->blockCount() > 10000);
     QTextCursor middle(editor->document()->findBlockByNumber(5001));
@@ -319,7 +319,7 @@ static void testReloadKeepsPlace()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
     window.activateWindow(); // Activation is how this test asks for a sync.
@@ -328,9 +328,9 @@ static void testReloadKeepsPlace()
     for (int line = 0; line < 200; ++line)
         text += "line " + QByteArray::number(line) + '\n';
     openSingleNote(window, dir, text);
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
     CHECK(editor);
-    QScrollBar *scroll = editor->verticalScrollBar();
+    QScrollBar* scroll = editor->verticalScrollBar();
     CHECK(scroll->maximum() > 0);
     QTextCursor cursor = editor->textCursor();
     cursor.setPosition(static_cast<int>(text.indexOf("line 150")));
@@ -356,14 +356,14 @@ static void testNoNoteEmptyState()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     writeFile(QDir(dir.path()).filePath(QStringLiteral("note.md")), "text");
-    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
-    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *empty = window.findChild<QWidget *>(QStringLiteral("noNoteState"));
-    auto *message = window.findChild<QLabel *>(QStringLiteral("noNoteMessage"));
+    auto* open = window.findChild<QPushButton*>(QStringLiteral("openVault"));
+    auto* notes = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* empty = window.findChild<QWidget*>(QStringLiteral("noNoteState"));
+    auto* message = window.findChild<QLabel*>(QStringLiteral("noNoteMessage"));
     CHECK(open && notes && editor && empty && message);
     CHECK(editor->accessibleName() == QStringLiteral("Note text"));
     window.show();
@@ -380,7 +380,7 @@ static void testNoNoteEmptyState()
 }
 
 // Pins the current light look so moving style values into the theme changes nothing.
-static void testCurrentStyleKept(const Window &window)
+static void testCurrentStyleKept(const Window& window)
 {
     const QPalette palette = QApplication::palette();
     const QColor ink(QStringLiteral("#24212b"));
@@ -394,7 +394,7 @@ static void testCurrentStyleKept(const Window &window)
     CHECK(palette.color(QPalette::ButtonText) == ink);
     CHECK(palette.color(QPalette::Highlight) == QColor(QStringLiteral("#e7def4")));
     CHECK(palette.color(QPalette::HighlightedText) == ink);
-    auto *title = window.findChild<QLabel *>(QStringLiteral("appTitle"));
+    auto* title = window.findChild<QLabel*>(QStringLiteral("appTitle"));
     CHECK(title);
     CHECK(title->text() == QStringLiteral("Inkstow"));
     CHECK(title->font().bold());
@@ -412,10 +412,10 @@ struct PickerScript
 // Triggers File > Open vault with the picker answering `answer` this once, then
 // checks the open vault's notes and window title were left as they were.
 static void openVaultExpectingNoChange(
-    Window &window, PickerScript &picker, std::optional<QString> answer)
+    Window& window, PickerScript& picker, std::optional<QString> answer)
 {
-    auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
-    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
+    auto* switchVault = window.findChild<QAction*>(QStringLiteral("openVaultAction"));
+    auto* notes = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
     CHECK(switchVault && notes);
     const QStringList listed = notePaths(notes);
     const QString title = window.windowTitle();
@@ -427,14 +427,14 @@ static void openVaultExpectingNoChange(
 }
 
 // Opening a vault from the File menu and cancelling the picker changes nothing.
-static void testCancellingOpenVault(Window &window, PickerScript &picker)
+static void testCancellingOpenVault(Window& window, PickerScript& picker)
 {
-    auto *switchVault = window.findChild<QAction *>(QStringLiteral("openVaultAction"));
-    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    auto* switchVault = window.findChild<QAction*>(QStringLiteral("openVaultAction"));
+    auto* status = window.findChild<QLabel*>(QStringLiteral("status"));
     CHECK(switchVault && status);
     CHECK(switchVault->shortcut() == QKeySequence(QKeySequence::Open));
     const auto menus = window.menuBar()->actions();
-    CHECK(std::any_of(menus.begin(), menus.end(), [&](QAction *menu) {
+    CHECK(std::any_of(menus.begin(), menus.end(), [&](QAction* menu) {
         return menu->menu() && menu->menu()->actions().contains(switchVault);
     }));
     const QString openedStatus = status->text();
@@ -443,11 +443,11 @@ static void testCancellingOpenVault(Window &window, PickerScript &picker)
 }
 
 // Unsaved edits block switching vaults, the same way they block switching notes.
-static void testVaultSwitchRefusedWhileUnsaved(Window &window, PickerScript &picker)
+static void testVaultSwitchRefusedWhileUnsaved(Window& window, PickerScript& picker)
 {
-    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    auto* notes = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* status = window.findChild<QLabel*>(QStringLiteral("status"));
     CHECK(notes && editor && status);
     QTemporaryDir otherVault;
     CHECK(otherVault.isValid());
@@ -462,19 +462,19 @@ static void testVaultSwitchRefusedWhileUnsaved(Window &window, PickerScript &pic
 }
 
 static void testFollowingLinks(
-    Window &window, const QDir &dir, const QStringList &openedAttachments)
+    Window& window, const QDir& dir, const QStringList& openedAttachments)
 {
-    auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *follow = window.findChild<QAction *>(QStringLiteral("followLinkAction"));
-    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    auto* notes = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* follow = window.findChild<QAction*>(QStringLiteral("followLinkAction"));
+    auto* status = window.findChild<QLabel*>(QStringLiteral("status"));
     CHECK(notes && editor && follow && status);
     writeFile(
         dir.filePath(QStringLiteral("other.md")),
         "[[note#Part|Alias]] [[missing]] [[asset.png]]");
     writeFile(dir.filePath(QStringLiteral("asset.png")), "attachment");
     openNote(notes, QStringLiteral("other.md"));
-    const auto cursorAt = [&](const QString &needle) {
+    const auto cursorAt = [&](const QString& needle) {
         QTextCursor cursor = editor->textCursor();
         cursor.setPosition(static_cast<int>(editor->toPlainText().indexOf(needle) + 2));
         editor->setTextCursor(cursor);
@@ -524,12 +524,12 @@ static void testFollowingLinks(
 }
 
 // Shows the tree's items under parent (the top level when null) as "kind:name".
-static QStringList treeRows(const QTreeWidget *tree, const QTreeWidgetItem *parent = nullptr)
+static QStringList treeRows(const QTreeWidget* tree, const QTreeWidgetItem* parent = nullptr)
 {
     QStringList rows;
     const int count = parent ? parent->childCount() : tree->topLevelItemCount();
     for (int i = 0; i < count; ++i) {
-        const QTreeWidgetItem *item = parent ? parent->child(i) : tree->topLevelItem(i);
+        const QTreeWidgetItem* item = parent ? parent->child(i) : tree->topLevelItem(i);
         const bool folder = item->type() == NoteTree::kFolderItem;
         rows.append((folder ? QStringLiteral("folder:") : QStringLiteral("note:")) + item->text(0));
     }
@@ -555,14 +555,14 @@ static void testNoteTree()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
     window.activateWindow();
-    auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
-    auto *tree = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
+    auto* open = window.findChild<QPushButton*>(QStringLiteral("openVault"));
+    auto* tree = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* status = window.findChild<QLabel*>(QStringLiteral("status"));
     CHECK(open && tree && editor && status);
     CHECK(!tree->accessibleName().isEmpty());
     CHECK(tree->indentation() == 12);
@@ -576,7 +576,7 @@ static void testNoteTree()
                               QStringLiteral("folder:Zeta"),
                               QStringLiteral("note:A note"),
                               QStringLiteral("note:b")}));
-    QTreeWidgetItem *alpha = treeItem(tree, QStringLiteral("alpha"));
+    QTreeWidgetItem* alpha = treeItem(tree, QStringLiteral("alpha"));
     CHECK(alpha);
     CHECK(
         treeRows(tree, alpha) ==
@@ -606,7 +606,7 @@ static void testNoteTree()
     QTextCursor cursor = editor->textCursor();
     cursor.setPosition(3);
     editor->setTextCursor(cursor);
-    window.findChild<QAction *>(QStringLiteral("followLinkAction"))->trigger();
+    window.findChild<QAction*>(QStringLiteral("followLinkAction"))->trigger();
     CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
     CHECK(alpha->isExpanded() && treeItem(tree, QStringLiteral("alpha/deep"))->isExpanded());
 
@@ -638,13 +638,13 @@ static void testNoteTree()
     CHECK(currentPath(tree) == QStringLiteral("alpha/deep/inner.md"));
 
     // Opening a vault starts with folders collapsed and nothing selected.
-    window.findChild<QAction *>(QStringLiteral("openVaultAction"))->trigger();
+    window.findChild<QAction*>(QStringLiteral("openVaultAction"))->trigger();
     CHECK(!treeItem(tree, QStringLiteral("alpha"))->isExpanded());
     CHECK(!treeItem(tree, QStringLiteral("Zeta"))->isExpanded());
     CHECK(currentPath(tree).isEmpty());
 }
 
-static void checkStatusAppearance(QLabel *status, bool error)
+static void checkStatusAppearance(QLabel* status, bool error)
 {
     CHECK(
         status->palette().color(QPalette::WindowText) ==
@@ -652,11 +652,11 @@ static void checkStatusAppearance(QLabel *status, bool error)
     if (error) CHECK(status->palette().color(QPalette::Window) == QColor(theme::kErrorBackground));
 }
 
-static void checkPromptAppearance(QWidget *bar, const QString &message)
+static void checkPromptAppearance(QWidget* bar, const QString& message)
 {
     CHECK(bar->palette().color(QPalette::Window) == QColor(theme::kPromptBackground));
     CHECK(bar->accessibleName().contains(message));
-    for (auto *button : bar->findChildren<QPushButton *>()) {
+    for (auto* button : bar->findChildren<QPushButton*>()) {
         CHECK(!button->objectName().isEmpty());
         CHECK(button->accessibleName() == button->text());
     }
@@ -669,18 +669,18 @@ static void testCancelQuitKeepsEdits(int key = 0)
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
     openSingleNote(window, dir, "original");
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
     CHECK(editor);
     editor->setPlainText(QStringLiteral("draft"));
     bool offeredCancel = false;
     QTimer::singleShot(0, [&] {
-        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        auto* prompt = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         if (!prompt) return;
-        auto *cancel = prompt->findChild<QPushButton *>(QStringLiteral("cancelQuit"));
+        auto* cancel = prompt->findChild<QPushButton*>(QStringLiteral("cancelQuit"));
         offeredCancel = prompt->objectName() == QStringLiteral("quitPrompt") &&
                         prompt->accessibleName() == QStringLiteral("Unsaved changes") && cancel &&
                         cancel->accessibleName() == QStringLiteral("Cancel");
@@ -705,19 +705,19 @@ static void testDiscardQuitLeavesDiskUntouched()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
     openSingleNote(window, dir, "original");
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
     CHECK(editor);
     editor->setPlainText(QStringLiteral("draft"));
     bool offeredDiscard = false;
     bool safeDefault = false;
     QTimer::singleShot(0, [&] {
-        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        auto* prompt = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         if (!prompt) return;
-        auto *discard = prompt->findChild<QPushButton *>(QStringLiteral("discardAndQuit"));
+        auto* discard = prompt->findChild<QPushButton*>(QStringLiteral("discardAndQuit"));
         offeredDiscard = discard && discard->accessibleName() == QStringLiteral("Discard and quit");
         safeDefault = prompt->defaultButton() != discard && prompt->escapeButton() != discard;
         if (discard)
@@ -738,22 +738,22 @@ static void testSaveQuit(bool conflict)
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
     openSingleNote(window, dir, "original");
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
-    auto *conflictBar = window.findChild<QWidget *>(QStringLiteral("conflictBar"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* status = window.findChild<QLabel*>(QStringLiteral("status"));
+    auto* conflictBar = window.findChild<QWidget*>(QStringLiteral("conflictBar"));
     CHECK(editor && status && conflictBar);
     editor->setPlainText(QStringLiteral("draft"));
     const QString note = dir.filePath(QStringLiteral("note.md"));
     if (conflict) writeFile(note, "external edit");
     bool offeredSave = false;
     QTimer::singleShot(0, [&] {
-        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        auto* prompt = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         if (!prompt) return;
-        auto *save = prompt->findChild<QPushButton *>(QStringLiteral("saveAndQuit"));
+        auto* save = prompt->findChild<QPushButton*>(QStringLiteral("saveAndQuit"));
         offeredSave = save && save->accessibleName() == QStringLiteral("Save and quit");
         if (save)
             save->click();
@@ -778,21 +778,21 @@ static void testSaveQuitAfterNoteRemoved()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
     openSingleNote(window, dir, "original");
-    auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-    auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
-    auto *conflictBar = window.findChild<QWidget *>(QStringLiteral("conflictBar"));
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* status = window.findChild<QLabel*>(QStringLiteral("status"));
+    auto* conflictBar = window.findChild<QWidget*>(QStringLiteral("conflictBar"));
     CHECK(editor && status && conflictBar);
     editor->setPlainText(QStringLiteral("draft"));
     const QString note = dir.filePath(QStringLiteral("note.md"));
     CHECK(QFile::remove(note));
     QTimer::singleShot(0, [&] {
-        auto *prompt = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        auto* prompt = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
         if (!prompt) return;
-        auto *save = prompt->findChild<QPushButton *>(QStringLiteral("saveAndQuit"));
+        auto* save = prompt->findChild<QPushButton*>(QStringLiteral("saveAndQuit"));
         if (save)
             save->click();
         else
@@ -813,7 +813,7 @@ static void testCleanQuitNeedsNoPrompt()
     Window window(
         refuseTrash,
         {},
-        [&](QWidget *) { return std::optional(dir.path()); },
+        [&](QWidget*) { return std::optional(dir.path()); },
         std::make_shared<MemorySettings>());
     window.show();
     openSingleNote(window, dir, "original");
@@ -822,7 +822,7 @@ static void testCleanQuitNeedsNoPrompt()
     CHECK(!QApplication::activeModalWidget());
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
     try {
@@ -857,15 +857,15 @@ int main(int argc, char **argv)
         QStringList openedAttachments;
         PickerScript picker{dir.path()};
         Window window(
-            [&](const QString &path, QString *) {
+            [&](const QString& path, QString*) {
                 return QFile::rename(path, QDir(trash.path()).filePath(QFileInfo(path).fileName()));
             },
-            [&](const QUrl &url) {
+            [&](const QUrl& url) {
                 CHECK(url.isLocalFile());
                 openedAttachments.append(url.toLocalFile());
                 return true;
             },
-            [&](QWidget *) {
+            [&](QWidget*) {
                 ++picker.mCalls;
                 return picker.mAnswer;
             },
@@ -890,23 +890,23 @@ int main(int argc, char **argv)
         testEditorHighlightsMarkdown();
         testLongNoteStaysResponsive();
         runNoteActionTests();
-        auto *open = window.findChild<QPushButton *>(QStringLiteral("openVault"));
-        auto *notes = window.findChild<QTreeWidget *>(QStringLiteral("notes"));
-        auto *editor = window.findChild<QTextEdit *>(QStringLiteral("editor"));
-        auto *save = window.findChild<QAction *>(QStringLiteral("saveAction"));
-        auto *status = window.findChild<QLabel *>(QStringLiteral("status"));
-        auto *conflictBar = window.findChild<QWidget *>(QStringLiteral("conflictBar"));
-        auto *keepMine = window.findChild<QPushButton *>(QStringLiteral("keepMine"));
-        auto *reload = window.findChild<QPushButton *>(QStringLiteral("reloadFromDisk"));
-        auto *discard = window.findChild<QPushButton *>(QStringLiteral("discardEdits"));
-        auto *merge = window.findChild<QPushButton *>(QStringLiteral("mergeOutsideChanges"));
-        auto *saveAsNew = window.findChild<QPushButton *>(QStringLiteral("saveAsNewNote"));
-        auto *newPath = window.findChild<QLineEdit *>(QStringLiteral("newNotePath"));
-        auto *create = window.findChild<QPushButton *>(QStringLiteral("createNote"));
-        auto *remove = window.findChild<QAction *>(QStringLiteral("deleteNoteAction"));
-        auto *deleteBar = window.findChild<QWidget *>(QStringLiteral("deleteBar"));
-        auto *confirmDelete = window.findChild<QPushButton *>(QStringLiteral("confirmDelete"));
-        auto *cancelDelete = window.findChild<QPushButton *>(QStringLiteral("cancelDelete"));
+        auto* open = window.findChild<QPushButton*>(QStringLiteral("openVault"));
+        auto* notes = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
+        auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+        auto* save = window.findChild<QAction*>(QStringLiteral("saveAction"));
+        auto* status = window.findChild<QLabel*>(QStringLiteral("status"));
+        auto* conflictBar = window.findChild<QWidget*>(QStringLiteral("conflictBar"));
+        auto* keepMine = window.findChild<QPushButton*>(QStringLiteral("keepMine"));
+        auto* reload = window.findChild<QPushButton*>(QStringLiteral("reloadFromDisk"));
+        auto* discard = window.findChild<QPushButton*>(QStringLiteral("discardEdits"));
+        auto* merge = window.findChild<QPushButton*>(QStringLiteral("mergeOutsideChanges"));
+        auto* saveAsNew = window.findChild<QPushButton*>(QStringLiteral("saveAsNewNote"));
+        auto* newPath = window.findChild<QLineEdit*>(QStringLiteral("newNotePath"));
+        auto* create = window.findChild<QPushButton*>(QStringLiteral("createNote"));
+        auto* remove = window.findChild<QAction*>(QStringLiteral("deleteNoteAction"));
+        auto* deleteBar = window.findChild<QWidget*>(QStringLiteral("deleteBar"));
+        auto* confirmDelete = window.findChild<QPushButton*>(QStringLiteral("confirmDelete"));
+        auto* cancelDelete = window.findChild<QPushButton*>(QStringLiteral("cancelDelete"));
         CHECK(
             open && notes && editor && save && status && conflictBar && keepMine && reload &&
             discard && merge && saveAsNew && newPath && create && remove && deleteBar &&
@@ -1001,7 +1001,7 @@ int main(int argc, char **argv)
         // Atomic replacement, as many editors save, drops the file from the
         // watcher; later changes must still be noticed.
         if (watcherWorks)
-            for (const QByteArray &bytes :
+            for (const QByteArray& bytes :
                  {QByteArray("renamed once"), QByteArray("renamed twice")})
             {
                 QSaveFile replacement(note);
@@ -1113,17 +1113,17 @@ int main(int argc, char **argv)
         CHECK(newPath->text() == QStringLiteral("../escape"));
 
         // Rename/move asks for a destination and explicitly confirms link updates.
-        auto *move = window.findChild<QAction *>(QStringLiteral("moveNoteAction"));
+        auto* move = window.findChild<QAction*>(QStringLiteral("moveNoteAction"));
         CHECK(move && move->isEnabled());
         QTimer::singleShot(0, [&] {
-            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            auto* dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
             CHECK(dialog);
-            auto *input = dialog->findChild<QLineEdit *>();
+            auto* input = dialog->findChild<QLineEdit*>();
             CHECK(input);
             input->setText(QStringLiteral("Moved"));
             dialog->accept();
             QTimer::singleShot(0, [&] {
-                auto *confirmation = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+                auto* confirmation = qobject_cast<QMessageBox*>(QApplication::activeModalWidget());
                 CHECK(confirmation);
                 CHECK(confirmation->defaultButton());
                 confirmation->defaultButton()->click();
@@ -1164,9 +1164,9 @@ int main(int argc, char **argv)
         CHECK(QFile::exists(QDir(trash.path()).filePath(QStringLiteral("Moved.md"))));
         CHECK(treeItem(notes, QStringLiteral("Moved.md")) == nullptr);
         CHECK(!editor->isEnabled());
-        CHECK(window.findChild<QWidget *>(QStringLiteral("noNoteState"))->isVisible());
+        CHECK(window.findChild<QWidget*>(QStringLiteral("noNoteState"))->isVisible());
         CHECK(!remove->isEnabled());
-    } catch (const std::exception &error) {
+    } catch (const std::exception& error) {
         qCritical("%s", error.what());
         return 1;
     }

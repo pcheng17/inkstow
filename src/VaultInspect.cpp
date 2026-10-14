@@ -3,7 +3,7 @@
 #include <QCoreApplication>
 #include <QTextStream>
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
     QTextStream out(stdout);
@@ -19,7 +19,7 @@ int main(int argc, char **argv)
         err << "Vault error: " << error << '\n';
         return 1;
     }
-    for (const QString &note : notes)
+    for (const QString& note : notes)
         out << note << '\n';
     return 0;
 }

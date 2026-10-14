@@ -25,36 +25,36 @@ class QCloseEvent;
 class QFileSystemWatcher;
 
 // Asks for a vault folder; returns nothing when the user cancels.
-using FolderPicker = std::function<std::optional<QString>(QWidget *parent)>;
+using FolderPicker = std::function<std::optional<QString>(QWidget* parent)>;
 
 class Window : public QMainWindow
 {
 public:
     explicit Window(
         TrashFunction trash = moveToSystemTrash,
-        std::function<bool(const QUrl &)> openAttachment = {},
+        std::function<bool(const QUrl&)> openAttachment = {},
         FolderPicker pickFolder = {},
         std::shared_ptr<SettingsStore> settings = {});
 
 protected:
-    void changeEvent(QEvent *event) override;
-    void closeEvent(QCloseEvent *event) override;
+    void changeEvent(QEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
 
 private:
     // Sets up the actions shared by the menu bar, the note tree's context
     // menu and the empty state's button.
     void createActions();
     void openVault();
-    bool openVaultFolder(const QString &folder, QString *error);
+    bool openVaultFolder(const QString& folder, QString* error);
     void reopenLastVault();
-    void selectNote(const QString &path);
+    void selectNote(const QString& path);
     // Selects a note, then reveals it and focuses the editor if it opened.
-    void openNote(const QString &path);
+    void openNote(const QString& path);
     void saveNote();
     void followLink();
-    QWidget *createEmptyState();
+    QWidget* createEmptyState();
     void refresh();
-    void replaceEditor(const QString &text);
+    void replaceEditor(const QString& text);
     void watchNote();
     void updateWatches();
     void syncWithDisk();
@@ -71,34 +71,34 @@ private:
     void moveNote();
 
     Session mSession;
-    std::function<bool(const QUrl &)> mOpenAttachment;
+    std::function<bool(const QUrl&)> mOpenAttachment;
     FolderPicker mPickFolder;
     std::shared_ptr<SettingsStore> mSettings;
-    QFileSystemWatcher *mWatcher;
-    QTimer *mSyncTimer;
-    NoteTree *mNotes;
-    NoteEditor *mEditor;
-    QWidget *mNoNoteState;
-    QStackedWidget *mEditorPages; // Shows mEditor, or mNoNoteState when no note is open.
-    QAction *mSave;
-    QAction *mFollowLink;
-    QAction *mDelete;
-    QAction *mMove;
-    QLineEdit *mNewPath;
-    QPushButton *mCreate;
-    PromptBanner *mDeleteBar = nullptr;
+    QFileSystemWatcher* mWatcher;
+    QTimer* mSyncTimer;
+    NoteTree* mNotes;
+    NoteEditor* mEditor;
+    QWidget* mNoNoteState;
+    QStackedWidget* mEditorPages; // Shows mEditor, or mNoNoteState when no note is open.
+    QAction* mSave;
+    QAction* mFollowLink;
+    QAction* mDelete;
+    QAction* mMove;
+    QLineEdit* mNewPath;
+    QPushButton* mCreate;
+    PromptBanner* mDeleteBar = nullptr;
     QString mDeletePath; // The note the delete confirmation was shown for.
-    PromptBanner *mConflictBar = nullptr;
-    QPushButton *mReload;
-    QPushButton *mKeepMine;
-    QPushButton *mMerge;
-    QPushButton *mSaveAsNew;
-    QPushButton *mDiscard;
-    QAction *mOpenVault;
-    QStackedWidget *mPages;
-    QLabel *mEmptyMessage;
-    QWidget *mEmptyState; // Built from mOpenVault and mEmptyMessage, so declared after them.
-    QWidget *mVaultView = nullptr;
-    NoteHeader *mHeader;
-    StatusLabel *mStatus;
+    PromptBanner* mConflictBar = nullptr;
+    QPushButton* mReload;
+    QPushButton* mKeepMine;
+    QPushButton* mMerge;
+    QPushButton* mSaveAsNew;
+    QPushButton* mDiscard;
+    QAction* mOpenVault;
+    QStackedWidget* mPages;
+    QLabel* mEmptyMessage;
+    QWidget* mEmptyState; // Built from mOpenVault and mEmptyMessage, so declared after them.
+    QWidget* mVaultView = nullptr;
+    NoteHeader* mHeader;
+    StatusLabel* mStatus;
 };

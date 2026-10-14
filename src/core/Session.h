@@ -24,47 +24,47 @@ public:
     }
 
     // Refuses while the selected note has unsaved changes.
-    bool canOpenVault(QString *error) const;
-    bool openVault(const QString &folder, QString *error);
-    bool selectNote(const QString &path, QString *error);
-    bool save(QString *error);
+    bool canOpenVault(QString* error) const;
+    bool openVault(const QString& folder, QString* error);
+    bool selectNote(const QString& path, QString* error);
+    bool save(QString* error);
     // Creates and selects a note at a vault-relative path, adding ".md" when
     // missing. Moves the selected note to the trash. Both refuse while the
     // editor has unsaved edits.
-    bool createNote(const QString &input, QString *error);
-    bool trashNote(QString *error);
-    bool moveNote(const QString &input, bool updateLinks, QString *error);
-    bool reloadNotes(QString *error);
+    bool createNote(const QString& input, QString* error);
+    bool trashNote(QString* error);
+    bool moveNote(const QString& input, bool updateLinks, QString* error);
+    bool reloadNotes(QString* error);
     // Reloads a clean note changed by another program. Never discards edits.
-    DiskChange syncWithDisk(QString *error);
+    DiskChange syncWithDisk(QString* error);
     // Conflict resolution: discard the edits for the disk version, or replace
     // the disk version with the edits. Both fail if the note is gone, and
     // overwriteDisk only replaces the version syncWithDisk last reported.
-    bool reloadFromDisk(QString *error);
-    bool overwriteDisk(QString *error);
+    bool reloadFromDisk(QString* error);
+    bool overwriteDisk(QString* error);
     // Merges the last saved text, editor edits and the reported disk version.
     // Conflict markers remain editable; no disk write happens until save.
-    bool mergeOutsideChanges(QString *error);
+    bool mergeOutsideChanges(QString* error);
     // Recreates a missing selected note without replacing any existing path.
-    bool saveAsNewNote(QString *error);
+    bool saveAsNewNote(QString* error);
     // Drops unsaved edits, e.g. after the note was deleted outside Inkstow.
     void discardEdits() { mContent = mSavedContent; }
-    void setContent(const QString &content) { mContent = content; }
+    void setContent(const QString& content) { mContent = content; }
 
     bool hasVault() const { return mVault.has_value(); }
     bool dirty() const { return mContent != mSavedContent; }
-    const QStringList &notes() const { return mNotes; }
+    const QStringList& notes() const { return mNotes; }
     // Vault-relative folders below the root, including empty ones.
-    const QStringList &folders() const { return mFolders; }
+    const QStringList& folders() const { return mFolders; }
     // Absolute vault folder, or empty when no vault is open.
     QString vaultRoot() const { return mVault ? mVault->root() : QString(); }
-    const QString &path() const { return mPath; }
-    const QString &content() const { return mContent; }
-    std::optional<QString> resolveWikilink(const QString &link) const
+    const QString& path() const { return mPath; }
+    const QString& content() const { return mContent; }
+    std::optional<QString> resolveWikilink(const QString& link) const
     {
         return mVault && !mPath.isEmpty() ? mVault->resolveWikilink(link, mPath) : std::nullopt;
     }
-    std::optional<QString> attachmentPath(const QString &relative) const
+    std::optional<QString> attachmentPath(const QString& relative) const
     {
         return mVault ? mVault->attachmentPath(relative) : std::nullopt;
     }
@@ -72,13 +72,13 @@ public:
     QString notePath() const;
 
 private:
-    const Vault *requireNote(QString *error) const;
-    bool requireClean(QString *error) const;
+    const Vault* requireNote(QString* error) const;
+    bool requireClean(QString* error) const;
     void clearNote();
-    QString discoveredPath(const QString &requested) const;
-    bool write(const QByteArray &expected, QString *error);
-    static bool decode(const QByteArray &bytes, QString *text, QString *error);
-    void load(const QString &path, const QByteArray &bytes, const QString &text);
+    QString discoveredPath(const QString& requested) const;
+    bool write(const QByteArray& expected, QString* error);
+    static bool decode(const QByteArray& bytes, QString* text, QString* error);
+    void load(const QString& path, const QByteArray& bytes, const QString& text);
 
     TrashFunction mTrash;
     std::optional<Vault> mVault;

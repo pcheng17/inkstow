@@ -19,7 +19,7 @@ NoteHeader::NoteHeader()
     QPalette palette = mUnsaved->palette();
     palette.setColor(QPalette::WindowText, QColor(theme::kUnsavedInk));
     mUnsaved->setPalette(palette);
-    auto *layout = new QHBoxLayout(this);
+    auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(theme::kFlushMargins);
     layout->setSpacing(theme::kHeaderSpacing);
     layout->addWidget(mTitle);
@@ -28,7 +28,7 @@ NoteHeader::NoteHeader()
     showNote(QString(), false);
 }
 
-void NoteHeader::showNote(const QString &path, bool unsaved)
+void NoteHeader::showNote(const QString& path, bool unsaved)
 {
     setHidden(path.isEmpty());
     mTitle->setText(QFileInfo(path).completeBaseName());

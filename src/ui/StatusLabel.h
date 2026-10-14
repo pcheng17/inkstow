@@ -9,7 +9,7 @@
 class StatusLabel : public QLabel
 {
 public:
-    void setText(const QString &message)
+    void setText(const QString& message)
     {
         QLabel::setText(message);
         const bool error = message.startsWith(QStringLiteral("Error:"));
