@@ -147,7 +147,10 @@ async function save() {
     return;
   }
   const reply = await request({ operation: 'save' });
-  if (reply.path === snapshot.path) snapshot = reply;
+  if (reply.path === snapshot.path) {
+    snapshot = reply;
+    if (reply.change === 'reloaded') newDocument(reply.content);
+  }
   showReplyError(reply, 'Could not save note.');
   setLocked(false);
 }

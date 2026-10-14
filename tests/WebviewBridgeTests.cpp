@@ -264,6 +264,18 @@ int main() // NOLINT(bugprone-exception-escape)
         request(
             bridge,
             {
+                {"operation", "discard"}
+    })["ok"] == false);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "list"}
+    })["change"] == "none");
+    CHECK(
+        request(
+            bridge,
+            {
                 {"operation", "refresh"}
     })["change"] == "missing");
     CHECK(

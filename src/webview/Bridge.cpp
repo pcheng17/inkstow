@@ -124,6 +124,7 @@ std::string Bridge::handle(const std::string& arguments)
                     mChange == portable::DiskChange::Missing)
                 {
                     mSession.discardEdits();
+                    mChange = portable::DiskChange::None;
                     success = true;
                 } else {
                     error = "Unknown operation or invalid request fields.";

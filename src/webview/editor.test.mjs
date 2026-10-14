@@ -87,7 +87,14 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
           case 'save':
             if (!path) return snapshot(false, 'No note selected.');
             if (!disk.has(path)) { change = 'missing'; return snapshot(false, 'Note no longer exists.'); }
-            if (!disk.get(path).equals(expectedBytes)) { change = 'conflict'; reportedBytes = Buffer.from(disk.get(path)); return snapshot(false, 'Note changed on disk.'); }
+            if (!disk.get(path).equals(expectedBytes)) {
+              if (content === saved) {
+                expectedBytes = Buffer.from(disk.get(path));
+                content = saved = decoder.decode(expectedBytes.subarray(bom ? 3 : 0));
+                change = 'reloaded';
+              } else { change = 'conflict'; reportedBytes = Buffer.from(disk.get(path)); }
+              return snapshot(false, 'Note changed on disk.');
+            }
             expectedBytes = Buffer.concat([bom ? Buffer.from([0xef, 0xbb, 0xbf]) : Buffer.alloc(0), Buffer.from(content)]);
             disk.set(path, Buffer.from(expectedBytes));
             saved = content; change = 'none'; return snapshot(true);
@@ -97,7 +104,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             disk.set(path, Buffer.from(expectedBytes)); saved = content; change = 'none'; return snapshot(true);
           case 'discard':
             if (change !== 'missing') return snapshot(false, 'No missing note.');
-            content = saved; return snapshot(true);
+            content = saved; change = 'none'; return snapshot(true);
           default: return snapshot(false, 'Unknown operation.');
         }
       };
@@ -234,6 +241,21 @@ test('dirty note refuses navigation, save failures and bridge errors keep text v
   } finally { ui.dom.window.close(); }
 });
 
+test('stale clean save reloads the visible editor before later edits can be saved', async () => {
+  const ui = await setup({ 'Note.md': Buffer.from('Original') });
+  try {
+    await ui.open(); await ui.select('Note.md');
+    ui.disk.set('Note.md', Buffer.from('Outside'));
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /changed on disk/i);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Outside');
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+    await ui.type('Edited outside');
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.equal(ui.disk.get('Note.md').toString(), 'Edited outside');
+  } finally { ui.dom.window.close(); }
+});
+
 test('outside change offers reload, keep mine, and unsaved editable merge markers', async () => {
   const ui = await setup({ 'Note.md': Buffer.from('Base') });
   try {
@@ -314,6 +336,7 @@ test('missing note retains edits and refuses to overwrite a reappeared file', as
     await ui.type('Throw away'); ui.disk.delete('Note.md');
     ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
     ui.document.querySelector('#discard').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#missing').hidden, true);
     assert.equal(ui.document.querySelector('#dirty').hidden, true);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'Recover');
   } finally { ui.dom.window.close(); }
