@@ -13,18 +13,7 @@
 #include <windows.h>
 
 #include <chrono>
-#include <cstdio>
 #include <thread>
-
-// Temporary CI diagnostic. Same monotonic clock as the vault probe.
-static void traceSaveRace(const char* stage)
-{
-    const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(
-                            std::chrono::steady_clock::now().time_since_epoch())
-                            .count();
-    std::fprintf(stderr, "[DEBUG-save-race] %lld test %s\n", static_cast<long long>(micros), stage);
-    std::fflush(stderr);
-}
 #endif
 
 #ifdef Q_OS_UNIX
@@ -204,22 +193,13 @@ static void retriesLockedWindowsDestination()
     const HANDLE changing = lockWithoutDelete(path);
     CHECK(changing != INVALID_HANDLE_VALUE);
     // Write before unlocking so no retry can land between the unlock and the write.
-    qputenv("INKSTOW_TRACE_SAVE_RACE", "1");
-    traceSaveRace("lock-acquired");
     std::thread change([changing, path] {
         std::this_thread::sleep_for(std::chrono::milliseconds(400));
-        traceSaveRace("external-write-start");
         writeFile(path, "external");
-        traceSaveRace("external-write-end");
         CloseHandle(changing);
-        traceSaveRace("lock-released");
     });
-    traceSaveRace("save-start");
     const bool overwritten = vault->saveNote(QStringLiteral("note.md"), "expected", "mine", &error);
-    traceSaveRace(overwritten ? "save-succeeded" : "save-refused");
     change.join();
-    traceSaveRace(readFile(path) == "external" ? "final-external" : "final-not-external");
-    qunsetenv("INKSTOW_TRACE_SAVE_RACE");
     CHECK(!overwritten);
     CHECK(error.contains(QStringLiteral("Save conflict")));
     CHECK(readFile(path) == "external");
