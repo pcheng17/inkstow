@@ -31,4 +31,7 @@ const delimiter = 'INKSTOW_HTML';
 if (html.includes(`)${delimiter}"`)) throw new Error('HTML conflicts with C++ raw-string delimiter');
 await mkdir(dirname(header), { recursive: true });
 await writeFile(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), html);
-await writeFile(header, `#pragma once\n// Offline HTML generated from the pinned CodeMirror bundle.\ninline constexpr const char *kLocalHtml = R"${delimiter}(${html})${delimiter}";\n`);
+// MSVC limits individual string literals to 64 KiB; assemble the page from smaller chunks.
+const chunks = Array.from(html.matchAll(/[\s\S]{1,8000}/gu), match => match[0]);
+const literals = chunks.map(chunk => `  page += R"${delimiter}(${chunk})${delimiter}";\n`).join('');
+await writeFile(header, `#pragma once\n#include <string>\n// Offline HTML generated from the pinned CodeMirror bundle.\ninline const std::string kLocalHtml = [] {\n  std::string page;\n  page.reserve(${Buffer.byteLength(html, 'utf8')});\n${literals}  return page;\n}();\n`);
