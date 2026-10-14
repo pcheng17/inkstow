@@ -1,5 +1,6 @@
 #include "Bridge.h"
 #include "LocalHtml.h"
+#include "NavigationPolicy.h"
 
 // Upstream 0.12.0's header contains parameter shadowing; keep project warnings clean.
 #if defined(__GNUC__) || defined(__clang__)
@@ -22,6 +23,7 @@ int main()
         webview::webview window(false, nullptr);
         window.set_title("Inkstow");
         window.set_size(960, 720, WEBVIEW_HINT_NONE);
+        inkstow::webview_shell::NavigationPolicy navigation(window.browser_controller().value());
         window.bind("inkstowRequest", [&bridge](const std::string& args) {
             return bridge.handle(args);
         });

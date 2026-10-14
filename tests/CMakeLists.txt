@@ -20,12 +20,34 @@ target_link_libraries(portable-core-tests PRIVATE portable-core inkstow-warnings
 target_compile_definitions(portable-core-tests PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
 add_test(NAME portable-core-tests COMMAND portable-core-tests)
 
-add_executable(webview-bridge-tests EXCLUDE_FROM_ALL WebviewBridgeTests.cpp)
-target_link_libraries(webview-bridge-tests PRIVATE webview-bridge inkstow-warnings)
-add_test(NAME webview-bridge-tests COMMAND webview-bridge-tests)
-
 # Build headless tests without pulling in the widget tests.
-add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-tests webview-bridge-tests)
+add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-tests)
+if(INKSTOW_BUILD_WEBVIEW)
+  add_executable(webview-bridge-tests EXCLUDE_FROM_ALL WebviewBridgeTests.cpp)
+  target_link_libraries(webview-bridge-tests PRIVATE webview-bridge inkstow-warnings)
+  add_test(NAME webview-bridge-tests COMMAND webview-bridge-tests)
+  add_dependencies(unit-tests webview-bridge-tests)
+
+  add_executable(webview-navigation-tests EXCLUDE_FROM_ALL WebviewNavigationTests.cpp)
+  target_include_directories(webview-navigation-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/webview)
+  target_link_libraries(webview-navigation-tests PRIVATE inkstow-warnings)
+  add_test(NAME webview-navigation-tests COMMAND webview-navigation-tests)
+  add_dependencies(unit-tests webview-navigation-tests)
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_program(XVFB_RUN_EXECUTABLE xvfb-run)
+    if(XVFB_RUN_EXECUTABLE)
+      add_executable(webview-native-navigation-tests EXCLUDE_FROM_ALL
+                     WebviewNativeNavigationTests.cpp
+                     ${PROJECT_SOURCE_DIR}/src/webview/NavigationPolicyLinux.cpp)
+      target_include_directories(webview-native-navigation-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/webview)
+      target_link_libraries(webview-native-navigation-tests PRIVATE webview::core_static inkstow-warnings)
+      add_test(NAME webview-native-navigation-tests
+               COMMAND "${XVFB_RUN_EXECUTABLE}" -a $<TARGET_FILE:webview-native-navigation-tests>)
+      add_dependencies(unit-tests webview-native-navigation-tests)
+    endif()
+  endif()
+endif()
 
 # QTest delivers key presses through the shortcut map, as real typing does.
 find_package(Qt6 6.4 REQUIRED COMPONENTS Test)

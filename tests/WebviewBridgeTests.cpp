@@ -2,14 +2,22 @@
 
 #include <nlohmann/json.hpp>
 
-#include <cassert>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 
 namespace
 {
 using Json = nlohmann::json;
+
+void check(bool passed, const char* expression)
+{
+    if (!passed) {
+        throw std::runtime_error(std::string("Bridge check failed: ") + expression);
+    }
+}
+#define CHECK(expression) check((expression), #expression)
 
 Json request(inkstow::webview_shell::Bridge& bridge, const Json& body)
 {
@@ -42,33 +50,33 @@ int main() // NOLINT(bugprone-exception-escape)
         output << "Second";
     }
     inkstow::webview_shell::Bridge bridge;
-    assert(
+    CHECK(
         request(
             bridge,
             {
                 {"operation", "save"}
     })["ok"] == false);
-    assert(
+    CHECK(
         request(
             bridge,
             {
                 {"operation",          "open"},
                 {   "folder", root.u8string()}
     })["ok"] == true);
-    assert(
+    CHECK(
         request(
             bridge,
             {
                 {"operation", "list"}
     })["notes"] == Json::array({"BOM.md", "Second.md"}));
-    assert(
+    CHECK(
         request(
             bridge,
             {
                 {"operation", "select"},
                 {     "path", "BOM.md"}
     })["content"] == "Original");
-    assert(
+    CHECK(
         request(
             bridge,
             {
@@ -81,32 +89,31 @@ int main() // NOLINT(bugprone-exception-escape)
             {"operation",    "select"},
             {     "path", "Second.md"}
     });
-    assert(
-        refused["ok"] == false && refused["path"] == "BOM.md" && refused["content"] == "Changed");
-    assert(
+    CHECK(refused["ok"] == false && refused["path"] == "BOM.md" && refused["content"] == "Changed");
+    CHECK(
         request(
             bridge,
             {
                 {"operation",          "open"},
                 {   "folder", root.u8string()}
     })["ok"] == false);
-    assert(
+    CHECK(
         request(
             bridge,
             {
                 {"operation", "save"}
     })["dirty"] == false);
-    assert(
+    CHECK(
         diskBytes(note) == "\xEF\xBB\xBF"
                            "Changed");
-    assert(
+    CHECK(
         request(
             bridge,
             {
                 {"operation",    "select"},
                 {     "path", "Second.md"}
     })["ok"] == true);
-    assert(
+    CHECK(
         request(
             bridge,
             Json{
@@ -122,17 +129,16 @@ int main() // NOLINT(bugprone-exception-escape)
         Json{
             {"operation", "save"}
     });
-    assert(
-        conflict["ok"] == false && conflict["dirty"] == true && conflict["content"] == "Unsaved");
-    assert(diskBytes(root / "Second.md") == "Outside");
-    assert(
+    CHECK(conflict["ok"] == false && conflict["dirty"] == true && conflict["content"] == "Unsaved");
+    CHECK(diskBytes(root / "Second.md") == "Outside");
+    CHECK(
         request(
             bridge,
             Json{
                 {"operation",    "select"},
                 {     "path", "../BOM.md"}
     })["ok"] == false);
-    assert(
+    CHECK(
         request(
             bridge,
             {
@@ -140,18 +146,18 @@ int main() // NOLINT(bugprone-exception-escape)
                 {  "content", "Draft"},
                 {    "extra",       1}
     })["ok"] == false);
-    assert(bridge.handle("not json").find("\"ok\":false") != std::string::npos);
-    assert(bridge.handle("[{}]").find("\"ok\":false") != std::string::npos);
-    assert(
+    CHECK(bridge.handle("not json").find("\"ok\":false") != std::string::npos);
+    CHECK(bridge.handle("[{}]").find("\"ok\":false") != std::string::npos);
+    CHECK(
         bridge.handle("[{\"operation\":\"edit\",\"content\":12}]").find("\"ok\":false") !=
         std::string::npos);
-    assert(
+    CHECK(
         request(
             bridge,
             {
                 {"operation", "list"}
     })["path"] == "Second.md");
-    assert(
+    CHECK(
         request(
             bridge,
             Json{
