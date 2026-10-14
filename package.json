@@ -1,0 +1,16 @@
+{
+  "name": "inkstow-sandcastle-harness",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --import tsx --test .sandcastle/github.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@ai-hero/sandcastle": "0.12.0",
+    "@types/node": "25.5.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "zod": "4.6.5"
+  }
+}
