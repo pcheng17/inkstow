@@ -101,6 +101,17 @@ void put(const std::filesystem::path& path, const std::string& content)
     std::ofstream file(path, std::ios::binary);
     file << content;
 }
+
+void replaceEditor(webview::webview& window, const std::string& text)
+{
+    // Browser editing commands follow CodeMirror's real input path (selection, beforeinput, input).
+    window.eval(
+        "{const editor=document.querySelector('#editor [contenteditable=true]');"
+        "editor.focus();document.execCommand('selectAll');"
+        "document.execCommand('insertText',false," +
+        nlohmann::json(text).dump() + ");}");
+    pumpFor(std::chrono::milliseconds(350));
+}
 } // namespace
 
 int run()
@@ -134,11 +145,7 @@ int run()
     pumpFor(std::chrono::milliseconds(350));
     window.eval("document.querySelector('#notes button').click()");
     pumpFor(std::chrono::milliseconds(350));
-    window.eval(
-        "{const editor=document.querySelector('#editor [contenteditable=true]');"
-        "editor.focus();document.execCommand('selectAll');"
-        "document.execCommand('insertText',false,'Mine');}");
-    pumpFor(std::chrono::milliseconds(350));
+    replaceEditor(window, "Mine");
     put(note, "Outside");
     window.eval("window.dispatchEvent(new Event('focus'));");
     pumpFor(std::chrono::milliseconds(350));
@@ -200,6 +207,81 @@ int run()
     check(
         observed.find("\\\"dirty\\\":false") != std::string::npos,
         "Successful recovery left note dirty");
+
+    put(note, "Baseline");
+    window.eval("window.dispatchEvent(new Event('focus'))");
+    pumpFor(std::chrono::milliseconds(350));
+    replaceEditor(window, "Local for keep");
+    put(note, "Outside keep");
+    window.eval("window.dispatchEvent(new Event('focus'))");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "probe(JSON.stringify({text:document.querySelector('.cm-content').textContent,"
+        "conflict:!document.querySelector('#conflict').hidden}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("Local for keep") != std::string::npos &&
+            observed.find("\\\"conflict\\\":true") != std::string::npos,
+        "Outside change lost unsaved edits before Keep mine");
+    window.eval("document.querySelector('#keep-mine').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(bytes(note) == "Local for keep", "Keep mine did not save the reported version");
+    window.eval(
+        "probe(JSON.stringify({dirty:!document.querySelector('#dirty').hidden,"
+        "conflict:!document.querySelector('#conflict').hidden}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("\\\"dirty\\\":false") != std::string::npos &&
+            observed.find("\\\"conflict\\\":false") != std::string::npos,
+        "Keep mine did not resolve conflict");
+
+    replaceEditor(window, "Local for reload");
+    put(note, "Outside reload");
+    window.eval("window.dispatchEvent(new Event('focus'))");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("probe(document.querySelector('.cm-content').textContent)");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("Local for reload") != std::string::npos,
+        "Outside change lost unsaved edits before Reload");
+    window.eval("document.querySelector('#reload').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "probe(JSON.stringify({text:document.querySelector('.cm-content').textContent,"
+        "dirty:!document.querySelector('#dirty').hidden}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("Outside reload") != std::string::npos &&
+            observed.find("\\\"dirty\\\":false") != std::string::npos &&
+            bytes(note) == "Outside reload",
+        "Reload did not select disk version without writing");
+
+    replaceEditor(window, "Local for discard");
+    fs::remove(note);
+    window.eval("window.dispatchEvent(new Event('focus'))");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "probe(JSON.stringify({text:document.querySelector('.cm-content').textContent,"
+        "missing:!document.querySelector('#missing').hidden}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("Local for discard") != std::string::npos &&
+            observed.find("\\\"missing\\\":true") != std::string::npos,
+        "Missing note lost unsaved edits before Discard");
+    window.eval("document.querySelector('#discard').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("window.dispatchEvent(new Event('focus'))");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "probe(JSON.stringify({text:document.querySelector('.cm-content').textContent,"
+        "missing:!document.querySelector('#missing').hidden,"
+        "dirty:!document.querySelector('#dirty').hidden}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("Outside reload") != std::string::npos &&
+            observed.find("\\\"missing\\\":false") != std::string::npos &&
+            observed.find("\\\"dirty\\\":false") != std::string::npos && !fs::exists(note),
+        "Discard did not resolve the missing note without writing");
     return 0;
 }
 
