@@ -38,6 +38,7 @@ public:
 
 private:
     bool load(const std::string& path, std::string bytes, std::string* error);
+    bool write(const std::string& expected, std::string* error);
     std::optional<Vault> mVault;
     std::vector<std::string> mNotes;
     std::string mPath;

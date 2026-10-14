@@ -310,19 +310,15 @@ bool Session::overwriteDisk(std::string* error)
         *error = "No outside change to replace.";
         return false;
     }
-    if (!detail::validUtf8(mContent)) {
-        *error = "Markdown must be valid UTF-8.";
-        return false;
-    }
-    const std::string bytes = (mHasBom ? std::string(kBom) : std::string()) + mContent;
-    if (!mVault->saveNote(mPath, *mConflictBytes, bytes, error)) return false;
-    mSavedBytes = bytes;
-    mSavedContent = mContent;
-    mConflictBytes.reset();
-    return true;
+    return write(*mConflictBytes, error);
 }
 
 bool Session::save(std::string* error)
+{
+    return write(mSavedBytes, error);
+}
+
+bool Session::write(const std::string& expected, std::string* error)
 {
     if (!mVault || mPath.empty()) {
         *error = "No note selected.";
@@ -333,7 +329,7 @@ bool Session::save(std::string* error)
         return false;
     }
     const std::string bytes = (mHasBom ? std::string(kBom) : std::string()) + mContent;
-    if (!mVault->saveNote(mPath, mSavedBytes, bytes, error)) return false;
+    if (!mVault->saveNote(mPath, expected, bytes, error)) return false;
     mSavedBytes = bytes;
     mSavedContent = mContent;
     mConflictBytes.reset();
