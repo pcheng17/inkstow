@@ -138,6 +138,34 @@ void cleanOutsideChangeReloadsAndPreservesBom()
     CHECK(session.syncWithDisk(&error) == DiskChange::None);
 }
 
+void dirtyOutsideChangeRetainsEditsAndReportsSnapshot()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "original");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("mine");
+    write(note, "outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.getContent() == "mine" && session.isDirty());
+    CHECK(session.overwriteDisk(&error));
+    CHECK(read(note) == "mine" && !session.isDirty());
+    session.setContent("mine again");
+    write(note, "outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(!session.save(&error));
+    CHECK(read(note) == "outside");
+    write(note, "\xFF");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.getContent() == "mine again");
+    CHECK(fs::remove(note));
+    CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+    CHECK(session.getPath() == "Note.md" && session.getContent() == "mine again");
+}
+
 void recoveryCreatesMissingNoteInExistingFolder()
 {
     TempVault temp;
@@ -312,6 +340,7 @@ int main()
         fixtureDiscovery();
         editingAndEncoding();
         cleanOutsideChangeReloadsAndPreservesBom();
+        dirtyOutsideChangeRetainsEditsAndReportsSnapshot();
         recoveryCreatesMissingNoteInExistingFolder();
         recoveryNeverOverwritesReappearedNote();
         recoveryRejectsInvalidPathsAndMissingParent();

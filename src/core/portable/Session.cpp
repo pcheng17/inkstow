@@ -28,6 +28,7 @@ bool Session::openVault(const std::string& folder, std::string* error)
     mContent.clear();
     mSavedContent.clear();
     mSavedBytes.clear();
+    mConflictBytes.reset();
     mHasBom = false;
     return true;
 }
@@ -57,6 +58,7 @@ bool Session::load(const std::string& path, std::string bytes, std::string* erro
     }
     mPath = path;
     mSavedBytes = std::move(bytes);
+    mConflictBytes.reset();
     mSavedContent = text;
     mContent = text;
     mHasBom = hasBom;
@@ -69,12 +71,35 @@ DiskChange Session::syncWithDisk(std::string* error)
     std::string bytes;
     if (!mVault->readNote(mPath, &bytes, error)) return DiskChange::Missing;
     if (bytes == mSavedBytes) return DiskChange::None;
+    mConflictBytes = bytes;
     if (isDirty()) {
         *error = "Note changed on disk while you have unsaved edits; reload from disk or keep your "
                  "version.";
         return DiskChange::Conflict;
     }
     return load(mPath, std::move(bytes), error) ? DiskChange::Reloaded : DiskChange::Conflict;
+}
+
+bool Session::overwriteDisk(std::string* error)
+{
+    if (!mVault || mPath.empty()) {
+        *error = "No note selected.";
+        return false;
+    }
+    if (!mConflictBytes) {
+        *error = "No outside change to replace.";
+        return false;
+    }
+    if (!detail::validUtf8(mContent)) {
+        *error = "Markdown must be valid UTF-8.";
+        return false;
+    }
+    const std::string bytes = (mHasBom ? std::string(kBom) : std::string()) + mContent;
+    if (!mVault->saveNote(mPath, *mConflictBytes, bytes, error)) return false;
+    mSavedBytes = bytes;
+    mSavedContent = mContent;
+    mConflictBytes.reset();
+    return true;
 }
 
 bool Session::save(std::string* error)
@@ -91,6 +116,7 @@ bool Session::save(std::string* error)
     if (!mVault->saveNote(mPath, mSavedBytes, bytes, error)) return false;
     mSavedBytes = bytes;
     mSavedContent = mContent;
+    mConflictBytes.reset();
     return true;
 }
 

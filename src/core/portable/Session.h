@@ -24,6 +24,7 @@ public:
     bool selectNote(const std::string& relative, std::string* error);
     bool save(std::string* error);
     DiskChange syncWithDisk(std::string* error);
+    bool overwriteDisk(std::string* error);
     void setContent(std::string content) { mContent = std::move(content); }
     bool isDirty() const { return mContent != mSavedContent; }
     const std::string& getContent() const { return mContent; }
@@ -39,6 +40,7 @@ private:
     std::string mContent;
     std::string mSavedContent;
     std::string mSavedBytes;
+    std::optional<std::string> mConflictBytes;
     bool mHasBom = false;
 };
 
