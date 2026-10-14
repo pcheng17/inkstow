@@ -12,7 +12,7 @@ namespace
 constexpr std::string_view kBom = "\xEF\xBB\xBF";
 } // namespace
 
-bool Session::openVault(const std::string &folder, std::string *error)
+bool Session::openVault(const std::string& folder, std::string* error)
 {
     if (isDirty()) {
         *error = "Save the current note before opening another vault.";
@@ -32,7 +32,7 @@ bool Session::openVault(const std::string &folder, std::string *error)
     return true;
 }
 
-bool Session::selectNote(const std::string &relative, std::string *error)
+bool Session::selectNote(const std::string& relative, std::string* error)
 {
     if (isDirty()) {
         *error = "Save the current note before switching.";
@@ -58,7 +58,7 @@ bool Session::selectNote(const std::string &relative, std::string *error)
     return true;
 }
 
-bool Session::save(std::string *error)
+bool Session::save(std::string* error)
 {
     if (!mVault || mPath.empty()) {
         *error = "No note selected.";

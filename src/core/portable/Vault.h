@@ -13,16 +13,16 @@ namespace inkstow::portable
 class Vault
 {
 public:
-    static std::optional<Vault> open(const std::string &folder, std::string *error);
-    const std::filesystem::path &root() const { return mRoot; }
-    bool listNotes(std::vector<std::string> *notes, std::string *error) const;
-    bool readNote(const std::string &relative, std::string *bytes, std::string *error) const;
+    static std::optional<Vault> open(const std::string& folder, std::string* error);
+    const std::filesystem::path& root() const { return mRoot; }
+    bool listNotes(std::vector<std::string>* notes, std::string* error) const;
+    bool readNote(const std::string& relative, std::string* bytes, std::string* error) const;
     // Best-effort comparison, not a cross-process transaction. See README.
     bool saveNote(
-        const std::string &relative,
-        const std::string &expected,
-        const std::string &bytes,
-        std::string *error) const;
+        const std::string& relative,
+        const std::string& expected,
+        const std::string& bytes,
+        std::string* error) const;
 
 private:
     explicit Vault(std::filesystem::path root)
@@ -30,7 +30,7 @@ private:
     {
     }
     std::optional<std::filesystem::path> notePath(
-        const std::string &relative, std::string *error) const;
+        const std::string& relative, std::string* error) const;
     std::filesystem::path mRoot;
 };
 
