@@ -190,7 +190,12 @@ void resolutionRequiresReportedOutsideVersion()
     session.setContent("new mine");
     write(note, "new outside");
     CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
-    CHECK(session.reloadFromDisk(&error));
+    write(note, "\xFF");
+    CHECK(!session.reloadFromDisk(&error));
+    CHECK(error.find("UTF-8") != std::string::npos);
+    CHECK(session.getContent() == "new mine" && session.isDirty());
+    write(note, "new outside");
+    CHECK(session.reloadFromDisk(&error)); // Explicit reload reads the latest disk version.
     CHECK(session.getContent() == "new outside");
     CHECK(!session.isDirty());
     CHECK(!session.overwriteDisk(&error));
