@@ -17,12 +17,48 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <thread>
 
 namespace
 {
+struct TempVault
+{
+    std::filesystem::path mPath;
+    TempVault()
+    {
+        std::mt19937_64 generator(std::random_device{}());
+        for (int attempt = 0; attempt < 32; ++attempt) {
+            const auto candidate = std::filesystem::temp_directory_path() /
+                                   ("inkstow-webview-conflict-" + std::to_string(generator()));
+            std::error_code error;
+            if (std::filesystem::create_directory(candidate, error)) {
+                mPath = candidate;
+                return;
+            }
+            if (error && error != std::errc::file_exists) {
+                throw std::filesystem::filesystem_error(
+                    "Could not create test vault",
+                    candidate,
+                    error);
+            }
+        }
+        throw std::runtime_error("Could not reserve unique test vault");
+    }
+    ~TempVault()
+    {
+        if (mPath.empty()) return;
+        std::error_code ignored;
+        std::filesystem::remove_all(mPath, ignored);
+    }
+    TempVault(const TempVault&) = delete;
+    TempVault& operator=(const TempVault&) = delete;
+    TempVault(TempVault&&) = delete;
+    TempVault& operator=(TempVault&&) = delete;
+};
+
 void check(bool condition, const char* message)
 {
     if (!condition) throw std::runtime_error(message);
@@ -70,9 +106,8 @@ void put(const std::filesystem::path& path, const std::string& content)
 int run()
 {
     namespace fs = std::filesystem;
-    const auto root = fs::temp_directory_path() / "inkstow-webview-conflict-window";
-    fs::remove_all(root);
-    fs::create_directories(root);
+    TempVault temp;
+    const auto& root = temp.mPath;
     const auto note = root / "Note.md";
     put(note, "Base");
     inkstow::webview_shell::Bridge bridge;
@@ -100,8 +135,9 @@ int run()
     window.eval("document.querySelector('#notes button').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
-        "document.querySelector('.cm-line').textContent='Mine';"
-        "document.querySelector('.cm-content').dispatchEvent(new Event('input',{bubbles:true}));");
+        "{const editor=document.querySelector('#editor [contenteditable=true]');"
+        "editor.focus();document.execCommand('selectAll');"
+        "document.execCommand('insertText',false,'Mine');}");
     pumpFor(std::chrono::milliseconds(350));
     put(note, "Outside");
     window.eval("window.dispatchEvent(new Event('focus'));");
@@ -164,7 +200,6 @@ int run()
     check(
         observed.find("\\\"dirty\\\":false") != std::string::npos,
         "Successful recovery left note dirty");
-    fs::remove_all(root);
     return 0;
 }
 
