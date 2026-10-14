@@ -744,6 +744,8 @@ void movePreflightRefusesUnsafeLinksAndPaths()
     refused("Folder/Moved.md");
     write(temp.mPath / "Links.md", "[[Target]extra]]");
     refused("Folder/Moved.md");
+    write(temp.mPath / "Links.md", "[[Unrelated\nlink]]");
+    refused("Folder/Moved.md");
     write(temp.mPath / "Links.md", "[[Target|alias]]");
     refused("Folder/Moved.md");
     write(temp.mPath / "Links.md", "[[Target]]");

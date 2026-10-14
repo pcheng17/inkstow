@@ -298,6 +298,10 @@ bool Vault::moveNote(
                     return false;
                 }
                 const std::string link = text.substr(start + 2, end - start - 2);
+                if (link.empty() || link.find_first_of("\n\r") != std::string::npos) {
+                    *error = "Unsupported wikilink syntax in " + note;
+                    return false;
+                }
                 const auto bare = basename(link.substr(0, link.find_first_of("|#")));
                 const bool relevant = note == from || lower(bare) == lower(oldName) ||
                                       lower(bare) == lower(newName) ||
