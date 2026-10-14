@@ -11,6 +11,13 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+
+#include <cstdlib>
+#endif
+
 namespace fs = std::filesystem;
 using namespace inkstow::portable;
 
@@ -496,6 +503,43 @@ void recoveryRejectsSymlinkTargetsAndParents()
     CHECK(read(outside) == "outside");
 }
 
+#ifdef _WIN32
+void recoveryRejectsWindowsJunctionParent()
+{
+    TempVault outside;
+    TempVault temp;
+    const fs::path junction = temp.mPath / "Junction";
+    const fs::path outsideNote = outside.mPath / "Note.md";
+    struct JunctionCleanup
+    {
+        fs::path mPath;
+        ~JunctionCleanup()
+        {
+            std::error_code ignored;
+            fs::remove(mPath, ignored);
+        }
+    } cleanup{junction};
+    const std::wstring command =
+        L"mklink /J \"" + junction.wstring() + L"\" \"" + outside.mPath.wstring() + L"\"";
+    const int result = _wsystem(command.c_str());
+    if (result != 0)
+        throw std::runtime_error(
+            "Cannot create Windows junction with mklink /J (exit code " + std::to_string(result) +
+            "): " + utf8Path(junction) + " -> " + utf8Path(outside.mPath));
+    const DWORD attributes = GetFileAttributesW(junction.c_str());
+    CHECK(attributes != INVALID_FILE_ATTRIBUTES);
+    CHECK((attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+    CHECK((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0);
+    CHECK(!fs::exists(outsideNote));
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(!vault->createNoteWithContent("Junction/Note.md", "mine", &error));
+    CHECK(error.find("reparse point") != std::string::npos);
+    CHECK(!fs::exists(outsideNote));
+}
+#endif
+
 void symlinkRefusal()
 {
     TempVault temp;
@@ -596,6 +640,9 @@ int main()
         recoveryNeverOverwritesReappearedNote();
         recoveryRejectsInvalidPathsAndMissingParent();
         recoveryRejectsSymlinkTargetsAndParents();
+#ifdef _WIN32
+        recoveryRejectsWindowsJunctionParent();
+#endif
         symlinkRefusal();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {
