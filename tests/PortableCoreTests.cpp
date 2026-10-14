@@ -585,6 +585,37 @@ void createAction()
     }
 }
 
+void sessionFollowsAttachmentLinksSafely()
+{
+    TempVault temp;
+    TempVault outside;
+    CHECK(fs::create_directory(temp.mPath / "Folder"));
+    write(temp.mPath / "Folder" / "Source.md", "[[image.png]]");
+    write(temp.mPath / "Folder" / "image.png", "nearby");
+    write(temp.mPath / "image.png", "root");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Folder/Source.md", &error));
+    CHECK(
+        session.followAttachment("image.png", &error) ==
+        fs::canonical(temp.mPath / "Folder" / "image.png"));
+    CHECK(
+        session.followAttachment("/image.png", &error) == fs::canonical(temp.mPath / "image.png"));
+    CHECK(!session.followAttachment("missing.png", &error));
+    CHECK(!session.followAttachment("../image.png", &error));
+    CHECK(!session.followAttachment("Source", &error));
+    session.setContent("unsaved");
+    CHECK(!session.followAttachment("image.png", &error));
+    CHECK(error.find("Save or discard") != std::string::npos);
+    CHECK(session.getPath() == "Folder/Source.md" && session.getContent() == "unsaved");
+    session.discardEdits();
+    write(outside.mPath / "outside.png", "outside");
+    std::error_code ec;
+    fs::create_symlink(outside.mPath / "outside.png", temp.mPath / "Folder" / "link.png", ec);
+    if (!ec) CHECK(!session.followAttachment("link.png", &error));
+}
+
 void sessionUsesDiscoveredCaseOnCaseInsensitiveVolumes()
 {
     TempVault temp;
@@ -828,6 +859,7 @@ int main()
         trashRefusesWhenUnavailable();
         sessionNoteActions();
         sessionUsesDiscoveredCaseOnCaseInsensitiveVolumes();
+        sessionFollowsAttachmentLinksSafely();
         movePreflightRefusesUnsafeLinksAndPaths();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {

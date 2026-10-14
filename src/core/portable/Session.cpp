@@ -452,6 +452,22 @@ bool Session::followWikilink(const std::string& link, std::string* error)
     return selectNote(*target, error);
 }
 
+std::optional<std::filesystem::path> Session::followAttachment(
+    const std::string& link, std::string* error) const
+{
+    if (!mVault || mPath.empty()) {
+        *error = "Select a note first.";
+        return std::nullopt;
+    }
+    if (!requireClean(error)) return std::nullopt;
+    const auto target = mVault->resolveWikilink(link, mPath);
+    if (target) {
+        if (auto path = attachmentPath(*target)) return path;
+    }
+    *error = "Link does not point to a supported attachment.";
+    return std::nullopt;
+}
+
 std::optional<std::filesystem::path> Session::attachmentPath(const std::string& relative) const
 {
     if (!mVault || mPath.empty() || isDirty()) return std::nullopt;

@@ -33,6 +33,9 @@ public:
     bool trashNote(std::string* error);
     bool trashNote(const Vault::TrashFunction& trash, std::string* error);
     bool followWikilink(const std::string& link, std::string* error);
+    // Resolve and revalidate an attachment link before the shell opens it.
+    std::optional<std::filesystem::path> followAttachment(
+        const std::string& link, std::string* error) const;
     std::optional<std::filesystem::path> attachmentPath(const std::string& relative) const;
     void discardEdits() { mContent = mSavedContent; }
     void setContent(std::string content) { mContent = std::move(content); }
