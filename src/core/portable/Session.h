@@ -9,14 +9,14 @@ namespace inkstow::portable
 class Session
 {
 public:
-    bool openVault(const std::string &folder, std::string *error);
-    bool selectNote(const std::string &relative, std::string *error);
-    bool save(std::string *error);
+    bool openVault(const std::string& folder, std::string* error);
+    bool selectNote(const std::string& relative, std::string* error);
+    bool save(std::string* error);
     void setContent(std::string content) { mContent = std::move(content); }
     bool isDirty() const { return mContent != mSavedContent; }
-    const std::string &getContent() const { return mContent; }
-    const std::string &getPath() const { return mPath; }
-    const std::vector<std::string> &getNotes() const { return mNotes; }
+    const std::string& getContent() const { return mContent; }
+    const std::string& getPath() const { return mPath; }
+    const std::vector<std::string>& getNotes() const { return mNotes; }
 
 private:
     std::optional<Vault> mVault;

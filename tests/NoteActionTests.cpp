@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -93,7 +94,8 @@ private:
 };
 
 // Presses a shortcut in widget as a user would, so the window's shortcuts see
-// it before the widget does.
+// it before the widget does. Explicit press/release avoids a clang-tidy 18
+// false positive in Qt's QPointer guard for the combined Click event.
 void pressShortcut(QWidget* widget, const QKeySequence& shortcut)
 {
     CHECK(shortcut.count() == 1);
@@ -102,7 +104,8 @@ void pressShortcut(QWidget* widget, const QKeySequence& shortcut)
     widget->setFocus();
     CHECK(widget->hasFocus());
     const QKeyCombination key = shortcut[0];
-    QTest::keyClick(widget, key.key(), key.keyboardModifiers());
+    QTest::keyPress(widget, key.key(), key.keyboardModifiers());
+    QTest::keyRelease(widget, key.key(), key.keyboardModifiers());
 }
 
 // Answers the next Rename / move prompts with destination and the default
@@ -181,7 +184,11 @@ void testShortcuts()
     openNote(tree, QStringLiteral("a.md"));
     CHECK(editor->hasFocus());
     moveCursorTo(editor, static_cast<int>(editor->toPlainText().size()));
-    QTest::keyClicks(editor, QStringLiteral(" more"));
+    // Use the same explicit events for text typing to avoid Qt's Click path.
+    for (const char key : std::string_view(" more")) {
+        QTest::keyPress(editor, key);
+        QTest::keyRelease(editor, key);
+    }
     pressShortcut(editor, QKeySequence::Save);
     CHECK(readFile(vault.filePath(QStringLiteral("a.md"))) == "see [[b]] more");
     CHECK(!vault.action(QStringLiteral("saveAction"))->isEnabled());
