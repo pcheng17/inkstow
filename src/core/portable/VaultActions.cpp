@@ -188,10 +188,11 @@ bool Vault::createNote(const std::string& relative, std::string* error) const
         break;
     }
     const bool ok = parentsReady && createNoteWithContent(relative, "", error);
-    for (auto it = created.rbegin(); it != created.rend(); ++it) {
-        if (ok) break;
-        std::error_code ignored;
-        fs::remove(*it, ignored);
+    if (!ok) {
+        for (auto it = created.rbegin(); it != created.rend(); ++it) {
+            std::error_code ignored;
+            fs::remove(*it, ignored);
+        }
     }
     return ok;
 }
