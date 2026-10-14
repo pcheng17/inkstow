@@ -122,6 +122,34 @@ Lines apply(const Lines& base, std::size_t start, std::size_t end, const std::ve
     return result;
 }
 
+std::optional<std::string_view> uniformSeparator(std::string_view text)
+{
+    std::string_view found;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] != '\r' && text[i] != '\n') continue;
+        const std::string_view current =
+            text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n' ? text.substr(i++, 2)
+                                                                          : text.substr(i, 1);
+        if (!found.empty() && found != current) return std::nullopt;
+        found = current;
+    }
+    return found;
+}
+
+std::string withSeparator(std::string_view text, std::string_view separator)
+{
+    std::string result;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] != '\r' && text[i] != '\n') {
+            result += text[i];
+            continue;
+        }
+        if (text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n') ++i;
+        result += separator;
+    }
+    return result;
+}
+
 std::string threeWayMerge(
     const std::string& baseText, const std::string& mineText, const std::string& outsideText)
 {
@@ -309,10 +337,17 @@ bool Session::mergeOutsideChanges(std::string* error)
         return false;
     }
     const std::string merged = threeWayMerge(mSavedContent, mContent, outside);
+    const auto outsideSeparator = uniformSeparator(outside);
+    const auto baseSeparator = uniformSeparator(mSavedContent);
+    std::string editorText = merged;
+    if (outsideSeparator) {
+        const auto separator = outsideSeparator->empty() ? baseSeparator : outsideSeparator;
+        if (separator && !separator->empty()) editorText = withSeparator(merged, *separator);
+    }
     mSavedBytes = std::move(current);
     mSavedContent = outside;
     mHasBom = outsideBom;
-    mContent = merged;
+    mContent = editorText;
     mConflictBytes.reset();
     return true;
 }

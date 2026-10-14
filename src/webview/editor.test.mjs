@@ -80,8 +80,10 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
           }
           case 'merge':
             if (change !== 'conflict' || !disk.get(path)?.equals(reportedBytes)) return snapshot(false, 'Outside note changed again.');
-            content = `<<<<<<< mine\n${content}\n=======\n${decoder.decode(reportedBytes.subarray(bom ? 3 : 0))}\n>>>>>>> outside`;
             saved = decoder.decode(reportedBytes.subarray(bom ? 3 : 0));
+            const separator = saved.match(/\r\n|\r|\n/)?.[0] || content.match(/\r\n|\r|\n/)?.[0] || '\n';
+            content = `<<<<<<< mine\n${content}\n=======\n${saved}\n>>>>>>> outside`
+              .replace(/\r\n|\r|\n/g, separator);
             expectedBytes = Buffer.from(reportedBytes); change = 'none'; return snapshot(true);
           case 'keepMine':
             if (change !== 'conflict' || !disk.get(path)?.equals(reportedBytes)) return snapshot(false, 'Outside note changed again.');
@@ -283,17 +285,25 @@ test('outside change offers reload, keep mine, and unsaved editable merge marker
   } finally { ui.dom.window.close(); }
 });
 
-test('CRLF conflict markers from the session remain editable after merge', async () => {
-  const ui = await setup({ 'Note.md': Buffer.from('Base\r\nLine') });
-  try {
-    await ui.open(); await ui.select('Note.md'); await ui.type('Mine');
-    ui.disk.set('Note.md', Buffer.from('Outside\r\nLine'));
-    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
-    ui.document.querySelector('#merge').click(); await ui.pause();
-    assert.match(ui.document.querySelector('.cm-content').textContent, /<<<<<<< mine/);
-    assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'true');
-    assert.equal(ui.document.querySelector('#save').disabled, false);
-  } finally { ui.dom.window.close(); }
+test('CRLF and CR merged markers stay editable without changing untouched line endings on save', async () => {
+  for (const separator of ['\r\n', '\r']) {
+    const ui = await setup({ 'Note.md': Buffer.from(`Base${separator}Line`) });
+    try {
+      await ui.open(); await ui.select('Note.md'); await ui.type('Mine');
+      ui.disk.set('Note.md', Buffer.from(`Outside${separator}Line`));
+      ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+      ui.document.querySelector('#merge').click(); await ui.pause();
+      assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'true');
+      assert.equal(ui.document.querySelector('#save').disabled, false);
+      const line = ui.document.querySelectorAll('.cm-line')[1];
+      line.textContent = 'Reviewed';
+      ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.Event('input', { bubbles: true }));
+      await ui.pause();
+      ui.document.querySelector('#save').click(); await ui.pause();
+      assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(
+        `<<<<<<< mine${separator}Reviewed${separator}Line${separator}=======${separator}Outside${separator}Line${separator}>>>>>>> outside`));
+    } finally { ui.dom.window.close(); }
+  }
 });
 
 test('keep mine writes only reported outside version, and reload discards edits explicitly', async () => {
