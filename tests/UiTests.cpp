@@ -199,7 +199,8 @@ static void testReadableEditorText()
 static void testSavePreservesEditorBytes()
 {
     for (const QString& name :
-         {QStringLiteral("CRLF.md"),
+         {QStringLiteral("LF.md"),
+          QStringLiteral("CRLF.md"),
           QStringLiteral("CR.md"),
           QStringLiteral("Mixed.md"),
           QStringLiteral("NBSP.md"),
@@ -211,6 +212,12 @@ static void testSavePreservesEditorBytes()
         const QString path = dir.filePath(name);
         const QByteArray original =
             readFile(QDir(QString::fromUtf8(BYTE_FIDELITY_VAULT)).filePath(name));
+        if (name == QStringLiteral("LF.md")) CHECK(original == "first\nsecond\n");
+        if (name == QStringLiteral("CRLF.md")) CHECK(original == "first\r\nsecond\r\n");
+        if (name == QStringLiteral("Paragraph separator.md"))
+            CHECK(
+                original == "first\xe2\x80\xa9"
+                            "word\nsecond\n");
         writeFile(path, original);
         Window window(
             refuseTrash,
@@ -237,12 +244,17 @@ static void testSavePreservesEditorBytes()
                                         ? QByteArray("edited first\nsecond\nthird\nfourth\n")
                                         : QByteArray("edited ") + original;
         CHECK(readFile(path) == expected);
-        if (name == QStringLiteral("Paragraph separator.md")) {
+        if (name == QStringLiteral("LF.md") || name == QStringLiteral("CRLF.md") ||
+            name == QStringLiteral("Paragraph separator.md"))
+        {
             QTextCursor beginning = editor->textCursor();
             beginning.movePosition(QTextCursor::Start);
             beginning.insertText(QStringLiteral("new line\n"));
             save->trigger();
-            CHECK(readFile(path) == QByteArray("new line\n") + expected);
+            const QByteArray newline = name == QStringLiteral("CRLF.md") ? "\r\n" : "\n";
+            CHECK(readFile(path) == QByteArray("new line") + newline + expected);
+        }
+        if (name == QStringLiteral("Paragraph separator.md")) {
             QTextCursor remove(editor->document());
             remove.setPosition(
                 static_cast<int>(QString::fromUtf8(readFile(path)).indexOf(u'\u2029')));
