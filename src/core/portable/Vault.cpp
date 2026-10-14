@@ -367,8 +367,8 @@ bool Vault::createNoteWithContent(
         return false;
     }
     for (const auto& component : path.parent_path()) {
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) -- no-follow relative directory open
         const int next =
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
             ::openat(directory, component.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
         const int savedError = errno;
         ::close(directory);
