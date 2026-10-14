@@ -298,6 +298,48 @@ static void testReloadPreservesParagraphSeparators()
         readFile(dir.filePath(QStringLiteral("note.md"))) == "mine edited first\xe2\x80\xa9second");
 }
 
+static void testEnterAfterParagraphSeparatorIsNewline()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget*) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    openSingleNote(window, dir, "first\xe2\x80\xa9word\nsecond\n");
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* save = window.findChild<QAction*>(QStringLiteral("saveAction"));
+    CHECK(editor && save);
+    QTextCursor cursor = editor->textCursor();
+    cursor.setPosition(7); // Inside the paragraph following U+2029.
+    editor->setTextCursor(cursor);
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(editor, &enter);
+    save->trigger();
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "first\xe2\x80\xa9w\nord\nsecond\n");
+    editor->undo();
+    editor->redo();
+    cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    cursor.insertText(QStringLiteral("edited "));
+    save->trigger();
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("note.md"))) ==
+        "edited first\xe2\x80\xa9w\nord\nsecond\n");
+    cursor = editor->textCursor();
+    cursor.setPosition(editor->document()->findBlockByNumber(1).position());
+    editor->setTextCursor(cursor);
+    auto* pasted = new QMimeData;
+    pasted->setText(QStringLiteral("paste\n"));
+    QApplication::clipboard()->setMimeData(pasted);
+    editor->paste();
+    save->trigger();
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("note.md"))) ==
+        "edited first\xe2\x80\xa9paste\nw\nord\nsecond\n");
+}
+
 static void testTypingParagraphSeparators()
 {
     QTemporaryDir dir;
@@ -1035,6 +1077,7 @@ int main(int argc, char** argv)
         testSavePreservesEditorBytes();
         testTypingParagraphSeparators();
         testReloadPreservesParagraphSeparators();
+        testEnterAfterParagraphSeparatorIsNewline();
         testLongNoteStaysResponsive();
         runNoteActionTests();
         auto* open = window.findChild<QPushButton*>(QStringLiteral("openVault"));

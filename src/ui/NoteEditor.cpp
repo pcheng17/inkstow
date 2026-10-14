@@ -90,7 +90,7 @@ QString NoteEditor::rawNoteText() const
 void NoteEditor::insertNoteText(const QString& text)
 {
     QTextCursor cursor = textCursor();
-    if (!text.contains(u'\u2029')) {
+    if (!text.contains(u'\n') && !text.contains(u'\r') && !text.contains(u'\u2029')) {
         cursor.insertText(text);
         return;
     }
@@ -114,6 +114,16 @@ void NoteEditor::insertFromMimeData(const QMimeData* source)
 
 void NoteEditor::keyPressEvent(QKeyEvent* event)
 {
+    if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
+        event->modifiers() == Qt::NoModifier)
+    {
+        QTextCursor cursor = textCursor();
+        cursor.beginEditBlock();
+        QTextEdit::keyPressEvent(event);
+        tagBlock(textCursor().block(), false); // A new paragraph never inherits U+2029.
+        cursor.endEditBlock();
+        return;
+    }
     if (event->text().contains(u'\u2029') && !event->modifiers().testFlag(Qt::ControlModifier)) {
         insertNoteText(event->text());
         event->accept();
