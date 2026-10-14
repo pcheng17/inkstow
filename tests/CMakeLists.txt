@@ -15,8 +15,13 @@ target_link_libraries(highlighter-tests PRIVATE Qt6::Gui Qt6::Widgets inkstow-wa
 add_test(NAME highlighter-tests COMMAND highlighter-tests)
 set_tests_properties(highlighter-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-# Build both headless test executables without pulling in the widget tests.
-add_custom_target(unit-tests DEPENDS core-tests highlighter-tests)
+add_executable(portable-core-tests EXCLUDE_FROM_ALL PortableCoreTests.cpp)
+target_link_libraries(portable-core-tests PRIVATE portable-core inkstow-warnings)
+target_compile_definitions(portable-core-tests PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
+add_test(NAME portable-core-tests COMMAND portable-core-tests)
+
+# Build headless tests without pulling in the widget tests.
+add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-tests)
 
 # QTest delivers key presses through the shortcut map, as real typing does.
 find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
