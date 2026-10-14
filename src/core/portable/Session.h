@@ -16,7 +16,7 @@ public:
     bool isDirty() const { return mContent != mSavedContent; }
     const std::string &getContent() const { return mContent; }
     const std::string &getPath() const { return mPath; }
-    const std::vector<std::string> &notes() const { return mNotes; }
+    const std::vector<std::string> &getNotes() const { return mNotes; }
 
 private:
     std::optional<Vault> mVault;
