@@ -46,7 +46,7 @@ test('sandboxPiLoginCommand runs an isolated interactive container with the same
     'run', '--rm', '-it', '--user', '1234:2345',
     '--mount', `type=bind,src=/tmp/private pi,dst=${SANDBOX_PI_AGENT_PATH}`,
     '--workdir', '/home/agent', '--entrypoint', 'pi', 'inkstow-pi:test',
-    '--model', 'openai-codex/gpt-6-sol', '--no-session',
+    '--model', 'openai/gpt-6-sol', '--no-session',
   ]);
   assert.ok(!command.args.includes('--env'));
 });
@@ -58,7 +58,7 @@ test('sandboxPiAuthCheckCommand captures JSON without requiring an interactive T
     'run', '--rm', '--user', '1234:2345',
     '--mount', `type=bind,src=/tmp/private pi,dst=${SANDBOX_PI_AGENT_PATH}`,
     '--workdir', '/home/agent', '--entrypoint', 'pi', 'inkstow-pi:test',
-    'auth', 'check', '--model', 'openai-codex/gpt-6-sol', '--json',
+    'auth', 'check', '--model', 'openai/gpt-6-sol', '--json',
   ]);
   assert.ok(!check.args.includes('-it'));
 });
@@ -70,7 +70,7 @@ test('preflightSandboxPiAuth fails closed unless sandbox Pi reports ready', asyn
     return { stdout: '{"status":"ready"}', stderr: '', exitCode: 0 };
   } };
   await preflightSandboxPiAuth(sandbox);
-  assert.deepEqual(calls, ['pi auth check --model openai-codex/gpt-6-sol --json']);
+  assert.deepEqual(calls, ['pi auth check --model openai/gpt-6-sol --json']);
   for (const [stdout, exitCode] of [
     ['{"status":"not_ready"}', 1], ['{"status":"invalid"}', 2],
     ['{"status":"ready"}', 1], ['not JSON', 0], ['{}', 0],

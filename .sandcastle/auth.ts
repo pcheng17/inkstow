@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import type { MountConfig } from '@ai-hero/sandcastle';
 
 export const SANDBOX_PI_AGENT_PATH = '/home/agent/.pi/agent';
-export const SANDBOX_PI_MODEL = 'openai-codex/gpt-6-sol';
+// Pi's OpenAI OAuth login registers the model under `openai` in this image.
+export const SANDBOX_PI_MODEL = 'openai/gpt-6-sol';
 
 /** Only this dedicated profile is shared with sandboxes; never mount the host's ~/.pi/agent. */
 export function ensureSandboxPiProfile(home = homedir()): string {

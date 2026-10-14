@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { Sandbox } from '@ai-hero/sandcastle';
 import { GitHubIssueTracker } from './github.js';
 import { pi } from '@ai-hero/sandcastle';
+import { SANDBOX_PI_MODEL } from './auth.js';
 import { z } from 'zod';
 import { assertBranchFree, branchForIssue, mustExec, parseTagged, pushIsolated, readOnly, readOnlyAgent, runWorkflow, verify } from './main.mjs';
 
@@ -52,9 +53,9 @@ test('parseTagged validates the last JSON block with Zod', () => {
 });
 
 test('readOnlyAgent grants only read, disables extensions and MCP, and keeps explicit model', () => {
-  const provider = readOnlyAgent(pi('openai-codex/gpt-6-sol'));
+  const provider = readOnlyAgent(pi(SANDBOX_PI_MODEL));
   const command = provider.buildPrintCommand({ prompt: 'inspect', dangerouslySkipPermissions: true }).command;
-  assert.match(command, /--model 'openai-codex\/gpt-6-sol'/);
+  assert.match(command, /--model 'openai\/gpt-6-sol'/);
   assert.match(command, /--tools read/);
   assert.match(command, /--no-extensions --no-mcp/);
   assert.doesNotMatch(command, /--tools bash/);
@@ -151,7 +152,7 @@ test('runWorkflow uses one implementer session, fresh serial read-only passes, a
       },
     } as unknown as Sandbox;
     const ticket = { number: 42, title: 'Change', body: 'Update', url: 'https://example.test/42', comments: [], parentSpec: null };
-    await runWorkflow(ticket, sandbox, base, pi('openai-codex/gpt-6-sol'), tracker, (branch, title, body) => {
+    await runWorkflow(ticket, sandbox, base, pi(SANDBOX_PI_MODEL), tracker, (branch, title, body) => {
       assert.equal(branch, 'sandcastle/issue-42');
       assert.equal(title, 'feat: updated');
       assert.match(body, /Closes #42/);
@@ -171,7 +172,7 @@ test('runWorkflow marks a blocked implementation needs-info without pushing or o
   const tracker = new GitHubIssueTracker(args => { calls.push([...args]); return ''; });
   const ticket = { number: 42, title: 'Blocked', body: '', url: 'https://example.test/42', comments: [], parentSpec: null };
   const sandbox = { run: async () => ({ stdout: '<implementation>{"status":"blocked","summary":"needs a decision","noticed":[]}</implementation>' }) } as unknown as Sandbox;
-  await assert.rejects(runWorkflow(ticket, sandbox, 'base', pi('openai-codex/gpt-6-sol'), tracker,
+  await assert.rejects(runWorkflow(ticket, sandbox, 'base', pi(SANDBOX_PI_MODEL), tracker,
     () => { throw new Error('must not push'); }), /needs a decision/);
   assert.deepEqual(calls.map(args => args.slice(0, 2)), [['issue', 'comment'], ['issue', 'edit']]);
   assert.ok(calls[1].includes('needs-info'));
