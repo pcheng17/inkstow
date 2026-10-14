@@ -85,21 +85,21 @@ void editingAndEncoding()
     CHECK(session.selectNote("Note.md", &error));
     CHECK(session.content() == "caf\xC3\xA9");
     session.setContent("edited \xE2\x98\x83");
-    CHECK(session.dirty());
+    CHECK(session.isDirty());
     CHECK(!session.selectNote("Bad.md", &error));
     CHECK(session.save(&error));
-    CHECK(!session.dirty());
+    CHECK(!session.isDirty());
     CHECK(
         read(temp.mPath / "Note.md") == "\xEF\xBB\xBF"
                                         "edited \xE2\x98\x83");
     session.setContent("mine");
     write(temp.mPath / "Note.md", "outside");
     CHECK(!session.save(&error));
-    CHECK(session.dirty() && session.content() == "mine");
+    CHECK(session.isDirty() && session.content() == "mine");
     CHECK(read(temp.mPath / "Note.md") == "outside");
     session.setContent("\xED\xA0\x80");
     CHECK(!session.save(&error));
-    CHECK(session.dirty());
+    CHECK(session.isDirty());
 }
 
 void symlinkRefusal()

@@ -14,7 +14,7 @@ constexpr std::string_view kBom = "\xEF\xBB\xBF";
 
 bool Session::openVault(const std::string &folder, std::string *error)
 {
-    if (dirty()) {
+    if (isDirty()) {
         *error = "Save the current note before opening another vault.";
         return false;
     }
@@ -34,7 +34,7 @@ bool Session::openVault(const std::string &folder, std::string *error)
 
 bool Session::selectNote(const std::string &relative, std::string *error)
 {
-    if (dirty()) {
+    if (isDirty()) {
         *error = "Save the current note before switching.";
         return false;
     }

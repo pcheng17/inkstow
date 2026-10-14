@@ -13,7 +13,7 @@ public:
     bool selectNote(const std::string &relative, std::string *error);
     bool save(std::string *error);
     void setContent(std::string content) { mContent = std::move(content); }
-    bool dirty() const { return mContent != mSavedContent; }
+    bool isDirty() const { return mContent != mSavedContent; }
     const std::string &content() const { return mContent; }
     const std::string &path() const { return mPath; }
     const std::vector<std::string> &notes() const { return mNotes; }
