@@ -56,7 +56,14 @@ if(INKSTOW_BUILD_WEBVIEW)
   FetchContent_MakeAvailable(webview nlohmann_json)
 
   # Build the offline frontend before compiling the shell; keep generated assets out of the tree.
-  find_program(NPM_EXECUTABLE npm REQUIRED)
+  if(WIN32)
+    find_program(NPM_EXECUTABLE npm.cmd REQUIRED)
+    # MSBuild runs custom commands in a batch file; call returns to it after npm.cmd.
+    set(NPM_COMMAND cmd /c call "${NPM_EXECUTABLE}")
+  else()
+    find_program(NPM_EXECUTABLE npm REQUIRED)
+    set(NPM_COMMAND "${NPM_EXECUTABLE}")
+  endif()
   find_program(NODE_EXECUTABLE node REQUIRED)
   set(WEBVIEW_ASSET_DIR "${CMAKE_CURRENT_BINARY_DIR}/webview-assets")
   file(MAKE_DIRECTORY "${WEBVIEW_ASSET_DIR}")
@@ -65,7 +72,7 @@ if(INKSTOW_BUILD_WEBVIEW)
   configure_file(src/webview/build.mjs "${WEBVIEW_ASSET_DIR}/build.mjs" COPYONLY)
   configure_file(src/webview/editor.test.mjs "${WEBVIEW_ASSET_DIR}/editor.test.mjs" COPYONLY)
   add_custom_command(OUTPUT "${WEBVIEW_ASSET_DIR}/installed.stamp"
-    COMMAND "${NPM_EXECUTABLE}" ci --ignore-scripts --no-audit --no-fund
+    COMMAND ${NPM_COMMAND} ci --ignore-scripts --no-audit --no-fund
     COMMAND "${CMAKE_COMMAND}" -E touch "${WEBVIEW_ASSET_DIR}/installed.stamp"
     WORKING_DIRECTORY "${WEBVIEW_ASSET_DIR}"
     DEPENDS src/webview/package.json src/webview/package-lock.json
@@ -103,7 +110,7 @@ endif() # INKSTOW_BUILD_WEBVIEW
 include(CTest)
 if(BUILD_TESTING)
   if(INKSTOW_BUILD_WEBVIEW)
-    add_test(NAME webview-js-tests COMMAND "${NPM_EXECUTABLE}" test
+    add_test(NAME webview-js-tests COMMAND "${NODE_EXECUTABLE}" --test editor.test.mjs
              WORKING_DIRECTORY "${WEBVIEW_ASSET_DIR}")
   endif()
   add_subdirectory(tests)

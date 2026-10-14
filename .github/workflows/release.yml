@@ -72,6 +72,9 @@ jobs:
         run: |
           cmake --preset release
           cmake --build --preset release --target inkstow unit-tests ui-tests --parallel 2
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            cmake --build --preset release --target inkstow-webview --parallel 2
+          fi
           ctest --preset release
       - name: Bundle Qt and its runtime libraries
         env:
@@ -127,6 +130,9 @@ jobs:
         run: |
           cmake --preset release -DQt6_DIR="$QT_ROOT_DIR/lib/cmake/Qt6"
           cmake --build --preset release --target inkstow unit-tests ui-tests --parallel 2
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            cmake --build --preset release --target inkstow-webview --parallel 2
+          fi
           ctest --preset release
       - name: Bundle Qt in the app
         shell: bash
@@ -185,6 +191,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build --preset release --config Release --target inkstow unit-tests ui-tests --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            cmake --build --preset release --config Release --target inkstow-webview --parallel 2
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
           ctest --preset release -C Release --repeat until-fail:10 --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Bundle Qt DLLs and plugins
