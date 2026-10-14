@@ -42,6 +42,11 @@ std::string utf8Path(const fs::path& path)
     return std::string(text.begin(), text.end());
 }
 
+fs::path nativePath(const std::string& utf8)
+{
+    return fs::path(std::u8string(utf8.begin(), utf8.end()));
+}
+
 void write(const fs::path& path, const std::string& bytes)
 {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -737,10 +742,10 @@ void sessionNoteActions()
     CHECK(fs::exists(temp.mPath / "Trimmed.md"));
     CHECK(session.createNote("Cafe\xCC\x81", &error));
     CHECK(session.getPath() == "Caf\xC3\xA9.md");
-    CHECK(fs::exists(temp.mPath / "Caf\xC3\xA9.md"));
+    CHECK(fs::exists(temp.mPath / nativePath("Caf\xC3\xA9.md")));
     CHECK(session.moveNote("  Moved cafe\xCC\x81  ", false, &error));
     CHECK(session.getPath() == "Moved caf\xC3\xA9.md");
-    CHECK(fs::exists(temp.mPath / "Moved caf\xC3\xA9.md"));
+    CHECK(fs::exists(temp.mPath / nativePath("Moved caf\xC3\xA9.md")));
     CHECK(session.selectNote("Source.md", &error));
     CHECK(session.followWikilink("Moved", &error));
     CHECK(session.getPath() == "Moved.md");
@@ -766,7 +771,7 @@ void sessionNoteActions()
 void unicodeCasefoldedLinksSurviveMove()
 {
     TempVault temp;
-    write(temp.mPath / "Caf\xC3\xA9.md", "target");
+    write(temp.mPath / nativePath("Caf\xC3\xA9.md"), "target");
     write(temp.mPath / "Source.md", "[[CAF\xC3\x89]]");
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
