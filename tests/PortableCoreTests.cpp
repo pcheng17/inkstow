@@ -113,6 +113,31 @@ void editingAndEncoding()
     CHECK(session.isDirty());
 }
 
+void cleanOutsideChangeReloadsAndPreservesBom()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "original");
+    Session session;
+    std::string error;
+    CHECK(session.syncWithDisk(&error) == DiskChange::None);
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    CHECK(session.syncWithDisk(&error) == DiskChange::None);
+    write(
+        note,
+        "\xEF\xBB\xBF"
+        "outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Reloaded);
+    CHECK(session.getContent() == "outside" && !session.isDirty());
+    session.setContent("saved");
+    CHECK(session.save(&error));
+    CHECK(
+        read(note) == "\xEF\xBB\xBF"
+                      "saved");
+    CHECK(session.syncWithDisk(&error) == DiskChange::None);
+}
+
 void recoveryCreatesMissingNoteInExistingFolder()
 {
     TempVault temp;
@@ -286,6 +311,7 @@ int main()
     try {
         fixtureDiscovery();
         editingAndEncoding();
+        cleanOutsideChangeReloadsAndPreservesBom();
         recoveryCreatesMissingNoteInExistingFolder();
         recoveryNeverOverwritesReappearedNote();
         recoveryRejectsInvalidPathsAndMissingParent();

@@ -44,18 +44,37 @@ bool Session::selectNote(const std::string& relative, std::string* error)
     }
     std::string bytes;
     if (!mVault->readNote(relative, &bytes, error)) return false;
+    return load(relative, std::move(bytes), error);
+}
+
+bool Session::load(const std::string& path, std::string bytes, std::string* error)
+{
     const bool hasBom = bytes.compare(0, kBom.size(), kBom.data(), kBom.size()) == 0;
     const std::string text = bytes.substr(hasBom ? 3 : 0);
     if (!detail::validUtf8(text)) {
         *error = "Markdown must be valid UTF-8.";
         return false;
     }
-    mPath = relative;
+    mPath = path;
     mSavedBytes = std::move(bytes);
     mSavedContent = text;
     mContent = text;
     mHasBom = hasBom;
     return true;
+}
+
+DiskChange Session::syncWithDisk(std::string* error)
+{
+    if (!mVault || mPath.empty()) return DiskChange::None;
+    std::string bytes;
+    if (!mVault->readNote(mPath, &bytes, error)) return DiskChange::Missing;
+    if (bytes == mSavedBytes) return DiskChange::None;
+    if (isDirty()) {
+        *error = "Note changed on disk while you have unsaved edits; reload from disk or keep your "
+                 "version.";
+        return DiskChange::Conflict;
+    }
+    return load(mPath, std::move(bytes), error) ? DiskChange::Reloaded : DiskChange::Conflict;
 }
 
 bool Session::save(std::string* error)
