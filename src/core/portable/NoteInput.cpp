@@ -41,6 +41,8 @@ std::optional<std::string> normalizeNoteInput(const std::string& input)
     std::wstring normalized(static_cast<size_t>(size), L'\0');
     if (NormalizeString(NormalizationC, wide.data(), length, normalized.data(), size) <= 0)
         return std::nullopt;
+    // NormalizeString can include a terminating NUL in its reported length.
+    if (!normalized.empty() && normalized.back() == L'\0') normalized.pop_back();
     const auto space = [](wchar_t value) {
         WORD kind = 0;
         return GetStringTypeW(CT_CTYPE1, &value, 1, &kind) && (kind & C1_SPACE);
