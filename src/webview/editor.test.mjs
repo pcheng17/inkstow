@@ -258,6 +258,19 @@ test('outside change offers reload, keep mine, and unsaved editable merge marker
   } finally { ui.dom.window.close(); }
 });
 
+test('CRLF conflict markers from the session remain editable after merge', async () => {
+  const ui = await setup({ 'Note.md': Buffer.from('Base\r\nLine') });
+  try {
+    await ui.open(); await ui.select('Note.md'); await ui.type('Mine');
+    ui.disk.set('Note.md', Buffer.from('Outside\r\nLine'));
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    ui.document.querySelector('#merge').click(); await ui.pause();
+    assert.match(ui.document.querySelector('.cm-content').textContent, /<<<<<<< mine/);
+    assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'true');
+    assert.equal(ui.document.querySelector('#save').disabled, false);
+  } finally { ui.dom.window.close(); }
+});
+
 test('keep mine writes only reported outside version, and reload discards edits explicitly', async () => {
   const ui = await setup({ 'Note.md': Buffer.from('Base') });
   try {

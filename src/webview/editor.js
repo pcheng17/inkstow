@@ -63,9 +63,10 @@ function render() {
   }));
 }
 
-function newDocument(content) {
+function newDocument(content, allowMergedEndings = false) {
   const endings = lineEndings(content);
-  mixedLineEndings = endings.mixed;
+  // Core merge inserts LF markers even when the note uses CRLF or CR.
+  mixedLineEndings = endings.mixed && !allowMergedEndings;
   view.setState(EditorState.create({
     doc: content,
     extensions: [EditorState.lineSeparator.of(endings.separator), EditorState.readOnly.of(mixedLineEndings),
@@ -159,7 +160,7 @@ async function resolve(operation) {
   const reply = await request({ operation });
   if (reply.path === snapshot.path) {
     snapshot = reply;
-    if (reply.ok && view.state.sliceDoc() !== reply.content) newDocument(reply.content);
+    if (reply.ok && view.state.sliceDoc() !== reply.content) newDocument(reply.content, operation === 'merge');
   }
   showError(reply.error || (reply.ok ? '' : 'Could not resolve outside change.'));
   setLocked(false);
