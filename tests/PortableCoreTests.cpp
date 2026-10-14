@@ -83,7 +83,7 @@ void editingAndEncoding()
     CHECK(!session.selectNote("Surrogate.md", &error));
     CHECK(!session.selectNote("Truncated.md", &error));
     CHECK(session.selectNote("Note.md", &error));
-    CHECK(session.content() == "caf\xC3\xA9");
+    CHECK(session.getContent() == "caf\xC3\xA9");
     session.setContent("edited \xE2\x98\x83");
     CHECK(session.isDirty());
     CHECK(!session.selectNote("Bad.md", &error));
@@ -95,7 +95,7 @@ void editingAndEncoding()
     session.setContent("mine");
     write(temp.mPath / "Note.md", "outside");
     CHECK(!session.save(&error));
-    CHECK(session.isDirty() && session.content() == "mine");
+    CHECK(session.isDirty() && session.getContent() == "mine");
     CHECK(read(temp.mPath / "Note.md") == "outside");
     session.setContent("\xED\xA0\x80");
     CHECK(!session.save(&error));
