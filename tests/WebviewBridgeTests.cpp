@@ -30,6 +30,12 @@ std::string diskBytes(const std::filesystem::path& path)
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 }
 
+std::string pathBytes(const std::filesystem::path& path)
+{
+    const auto utf8 = path.u8string();
+    return {utf8.begin(), utf8.end()};
+}
+
 } // namespace
 
 // Test failures are allowed to propagate as a nonzero process exit.
@@ -61,7 +67,7 @@ int main() // NOLINT(bugprone-exception-escape)
             bridge,
             {
                 {"operation",          "open"},
-                {   "folder", root.u8string()}
+                {   "folder", pathBytes(root)}
     })["ok"] == true);
     CHECK(
         request(
@@ -95,7 +101,7 @@ int main() // NOLINT(bugprone-exception-escape)
             bridge,
             {
                 {"operation",          "open"},
-                {   "folder", root.u8string()}
+                {   "folder", pathBytes(root)}
     })["ok"] == false);
     CHECK(
         request(
