@@ -3,9 +3,18 @@
 #include "Vault.h"
 
 #include <span>
+#include <cstdint>
 
 namespace inkstow::portable
 {
+
+enum class DiskChange : std::uint8_t
+{
+    None,
+    Reloaded,
+    Conflict,
+    Missing
+};
 
 // UI-independent editor snapshot; callers retain edits after any failed save.
 class Session
@@ -14,6 +23,12 @@ public:
     bool openVault(const std::string& folder, std::string* error);
     bool selectNote(const std::string& relative, std::string* error);
     bool save(std::string* error);
+    DiskChange syncWithDisk(std::string* error);
+    bool overwriteDisk(std::string* error);
+    bool reloadFromDisk(std::string* error);
+    bool mergeOutsideChanges(std::string* error);
+    bool saveAsNewNote(std::string* error);
+    void discardEdits() { mContent = mSavedContent; }
     void setContent(std::string content) { mContent = std::move(content); }
     bool isDirty() const { return mContent != mSavedContent; }
     const std::string& getContent() const { return mContent; }
@@ -22,12 +37,15 @@ public:
     std::span<const std::string> getNotes() const { return mNotes; }
 
 private:
+    bool load(const std::string& path, std::string bytes, std::string* error);
+    bool write(const std::string& expected, std::string* error);
     std::optional<Vault> mVault;
     std::vector<std::string> mNotes;
     std::string mPath;
     std::string mContent;
     std::string mSavedContent;
     std::string mSavedBytes;
+    std::optional<std::string> mConflictBytes;
     bool mHasBom = false;
 };
 

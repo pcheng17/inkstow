@@ -17,6 +17,11 @@ public:
     const std::filesystem::path& root() const { return mRoot; }
     bool listNotes(std::vector<std::string>* notes, std::string* error) const;
     bool readNote(const std::string& relative, std::string* bytes, std::string* error) const;
+    // Recreate a missing note in an existing folder, using the supplied opaque bytes
+    // (including any BOM). Refuses existing destinations; a failed write may leave
+    // a partial new note. Path-swap limitations are described in README.
+    bool createNoteWithContent(
+        const std::string& relative, const std::string& bytes, std::string* error) const;
     // Best-effort comparison, not a cross-process transaction. See README.
     bool saveNote(
         const std::string& relative,

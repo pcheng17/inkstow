@@ -279,6 +279,146 @@ bool Vault::readNote(const std::string& relative, std::string* bytes, std::strin
     return path && readBytes(*path, bytes, error);
 }
 
+bool Vault::createNoteWithContent(
+    const std::string& relative, const std::string& bytes, std::string* error) const
+{
+    if (!markdownPath(relative)) {
+        *error = "Expected a visible relative Markdown path.";
+        return false;
+    }
+    const fs::path path = pathFromUtf8(relative);
+#ifdef _WIN32
+    // Existing portable path checks are best-effort against concurrent parent swaps.
+    const DWORD rootAttributes = GetFileAttributesW(mRoot.c_str());
+    if (rootAttributes == INVALID_FILE_ATTRIBUTES ||
+        (rootAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ||
+        !(rootAttributes & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        *error = "Vault folder is a reparse point or inaccessible.";
+        return false;
+    }
+    fs::path parent = mRoot;
+    std::error_code ec;
+    for (const auto& component : path.parent_path()) {
+        parent /= component;
+        const DWORD attributes = GetFileAttributesW(parent.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            *error = "Cannot open note parent folder: reparse point.";
+            return false;
+        }
+        const auto status = fs::symlink_status(parent, ec);
+        if (ec || !fs::is_directory(status)) {
+            *error = "Cannot open note parent folder: missing or not a directory.";
+            return false;
+        }
+        if (attributes == INVALID_FILE_ATTRIBUTES) {
+            *error = "Cannot inspect note parent folder.";
+            return false;
+        }
+    }
+    const auto resolved = fs::canonical(parent, ec);
+    if (ec || (resolved != mRoot && !inside(mRoot, resolved))) {
+        *error = "Note parent folder is outside the vault.";
+        return false;
+    }
+    const fs::path destination = parent / path.filename();
+    HANDLE file = CreateFileW(
+        destination.c_str(),
+        GENERIC_WRITE,
+        0,
+        nullptr,
+        CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
+        nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        const DWORD code = GetLastError();
+        *error = code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS
+                     ? "Note already exists."
+                     : "Cannot create note (Windows error " + std::to_string(code) + ").";
+        return false;
+    }
+    DWORD writeError = ERROR_SUCCESS;
+    size_t offset = 0;
+    while (offset < bytes.size()) {
+        DWORD written = 0;
+        const DWORD count = static_cast<DWORD>(std::min<size_t>(bytes.size() - offset, 1U << 20));
+        if (!WriteFile(file, bytes.data() + offset, count, &written, nullptr)) {
+            writeError = GetLastError();
+            break;
+        }
+        if (!written) {
+            writeError = ERROR_WRITE_FAULT;
+            break;
+        }
+        offset += written;
+    }
+    if (writeError == ERROR_SUCCESS && !FlushFileBuffers(file)) writeError = GetLastError();
+    if (!CloseHandle(file) && writeError == ERROR_SUCCESS) writeError = GetLastError();
+    if (writeError != ERROR_SUCCESS) {
+        *error = "Cannot finish writing new note (Windows error " + std::to_string(writeError) +
+                 "); a partial note may remain.";
+        return false;
+    }
+#else
+    // Directory handles and no-follow opens prevent traversal through symlinks,
+    // even if an ancestor is swapped after opening it. An already-open directory
+    // can itself be moved outside the vault by another process.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) -- no-follow directory open
+    int directory = ::open(mRoot.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (directory < 0) {
+        *error = "Cannot open vault folder: " +
+                 std::error_code(errno, std::generic_category()).message();
+        return false;
+    }
+    for (const auto& component : path.parent_path()) {
+        const int next =
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
+            ::openat(directory, component.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        const int savedError = errno;
+        ::close(directory);
+        if (next < 0) {
+            *error = "Cannot open note parent folder: " +
+                     std::error_code(savedError, std::generic_category()).message();
+            return false;
+        }
+        directory = next;
+    }
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) -- exclusive relative file create
+    const int file = ::openat(
+        directory,
+        path.filename().c_str(),
+        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
+        0600);
+    const int createError = errno;
+    ::close(directory);
+    if (file < 0) {
+        *error = createError == EEXIST
+                     ? "Note already exists."
+                     : "Cannot create note: " +
+                           std::error_code(createError, std::generic_category()).message();
+        return false;
+    }
+    int writeError = 0;
+    size_t offset = 0;
+    while (offset < bytes.size()) {
+        const auto written = ::write(file, bytes.data() + offset, bytes.size() - offset);
+        if (written <= 0) {
+            writeError = written == 0 ? EIO : errno;
+            break;
+        }
+        offset += static_cast<size_t>(written);
+    }
+    if (::close(file) != 0 && !writeError) writeError = errno;
+    if (writeError) {
+        *error = "Cannot finish writing new note: " +
+                 std::error_code(writeError, std::generic_category()).message() +
+                 "; a partial note may remain.";
+        return false;
+    }
+#endif
+    return true;
+}
+
 bool Vault::saveNote(
     const std::string& relative,
     const std::string& expected,

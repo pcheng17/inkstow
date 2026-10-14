@@ -11,6 +11,13 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+
+#include <cstdlib>
+#endif
+
 namespace fs = std::filesystem;
 using namespace inkstow::portable;
 
@@ -113,6 +120,426 @@ void editingAndEncoding()
     CHECK(session.isDirty());
 }
 
+void cleanOutsideChangeReloadsAndPreservesBom()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "original");
+    Session session;
+    std::string error;
+    CHECK(session.syncWithDisk(&error) == DiskChange::None);
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    CHECK(session.syncWithDisk(&error) == DiskChange::None);
+    write(
+        note,
+        "\xEF\xBB\xBF"
+        "outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Reloaded);
+    CHECK(session.getContent() == "outside");
+    CHECK(!session.isDirty());
+    session.setContent("saved");
+    CHECK(session.save(&error));
+    CHECK(
+        read(note) == "\xEF\xBB\xBF"
+                      "saved");
+    CHECK(session.syncWithDisk(&error) == DiskChange::None);
+}
+
+void dirtyOutsideChangeRetainsEditsAndReportsSnapshot()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "original");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("mine");
+    write(note, "outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.getContent() == "mine" && session.isDirty());
+    CHECK(session.overwriteDisk(&error));
+    CHECK(read(note) == "mine");
+    CHECK(!session.isDirty());
+    session.setContent("mine again");
+    write(note, "outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(!session.save(&error));
+    CHECK(read(note) == "outside");
+    write(note, "\xFF");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.getContent() == "mine again");
+    CHECK(fs::remove(note));
+    CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+    CHECK(session.getPath() == "Note.md" && session.getContent() == "mine again");
+}
+
+void resolutionRequiresReportedOutsideVersion()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "original");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("mine");
+    CHECK(!session.overwriteDisk(&error));
+    write(note, "outside A");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    write(note, "outside B");
+    CHECK(!session.overwriteDisk(&error));
+    CHECK(read(note) == "outside B" && session.getContent() == "mine");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.overwriteDisk(&error));
+    CHECK(read(note) == "mine");
+    session.setContent("new mine");
+    write(note, "new outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    write(note, "\xFF");
+    CHECK(!session.reloadFromDisk(&error));
+    CHECK(error.find("UTF-8") != std::string::npos);
+    CHECK(session.getContent() == "new mine" && session.isDirty());
+    write(note, "new outside");
+    CHECK(session.reloadFromDisk(&error)); // Explicit reload reads the latest disk version.
+    CHECK(session.getContent() == "new outside");
+    CHECK(!session.isDirty());
+    CHECK(!session.overwriteDisk(&error));
+    session.setContent("unsaved");
+    CHECK(fs::remove(note));
+    CHECK(!session.reloadFromDisk(&error));
+    CHECK(!session.overwriteDisk(&error));
+    CHECK(session.getContent() == "unsaved");
+}
+
+void mergeReportedOutsideChanges()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    Session session;
+    std::string error;
+    write(note, "one\ntwo\nthree\nfour\n");
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("ONE\ntwo\nthree\nfour\n");
+    write(note, "one\ntwo\nthree\nFOUR\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "ONE\ntwo\nthree\nFOUR\n" && session.isDirty());
+    CHECK(read(note) == "one\ntwo\nthree\nFOUR\n");
+    write(note, "newer\n");
+    CHECK(!session.save(&error));
+    CHECK(session.getContent() == "ONE\ntwo\nthree\nFOUR\n");
+    write(note, "one\ntwo\nthree\nFOUR\n");
+    CHECK(session.save(&error));
+    CHECK(read(note) == "ONE\ntwo\nthree\nFOUR\n");
+
+    write(note, "one\ntwo\nthree\n");
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent("one\nlocal\nthree\n");
+    write(note, "one\noutside\nthree\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    write(note, "one\nnewer\nthree\n");
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "one\nlocal\nthree\n");
+    write(note, "one\noutside\nthree\n");
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(
+        session.getContent() ==
+        "one\n<<<<<<< mine\nlocal\n=======\noutside\n>>>>>>> outside\nthree\n");
+    CHECK(read(note) == "one\noutside\nthree\n");
+    CHECK(session.save(&error));
+    CHECK(read(note) == session.getContent());
+
+    write(note, "one\ntwo\nthree\n");
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent("one\nthree\n");
+    write(note, "one\nchanged\nthree\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "one\n<<<<<<< mine\n=======\nchanged\n>>>>>>> outside\nthree\n");
+
+    write(note, "a\nb\nc\nd\ne");
+    CHECK(session.reloadFromDisk(&error));
+    session.setContent("a\nX\ne");
+    write(note, "a\nb\nc\nY\nd\ne");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "a\n<<<<<<< mine\nX\n=======\nb\nc\nY\nd\n>>>>>>> outside\ne");
+    CHECK(read(note) == "a\nb\nc\nY\nd\ne");
+}
+
+void mergedEditorUsesReportedOutsideBom()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "first\nsecond\n");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("FIRST\nsecond\n");
+    write(
+        note,
+        "\xEF\xBB\xBF"
+        "first\nSECOND\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "FIRST\nSECOND\n");
+    CHECK(session.save(&error));
+    CHECK(
+        read(note) == "\xEF\xBB\xBF"
+                      "FIRST\nSECOND\n");
+}
+
+void missingNoteRecoveryRefusesReappearingPath()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "Folder"));
+    const fs::path note = temp.mPath / "Folder" / "Note.md";
+    write(
+        note,
+        "\xEF\xBB\xBF"
+        "old");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Folder/Note.md", &error));
+    session.setContent("recovered");
+    CHECK(fs::remove(note));
+    CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+    write(note, "reappeared");
+    CHECK(!session.saveAsNewNote(&error));
+    CHECK(read(note) == "reappeared" && session.getContent() == "recovered");
+    CHECK(fs::remove(note));
+    CHECK(session.saveAsNewNote(&error));
+    CHECK(
+        read(note) == "\xEF\xBB\xBF"
+                      "recovered");
+    CHECK(!session.isDirty());
+    CHECK(session.syncWithDisk(&error) == DiskChange::None);
+}
+
+void discardEditsDoesNotRecreateDeletedNote()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "original");
+    write(temp.mPath / "Other.md", "other");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("unsaved");
+    CHECK(fs::remove(note));
+    CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
+    session.discardEdits();
+    CHECK(!session.isDirty());
+    CHECK(session.getContent() == "original");
+    CHECK(!fs::exists(note));
+    CHECK(session.selectNote("Other.md", &error));
+    CHECK(!fs::exists(note));
+}
+
+void mergeRefusesOversizedOrInvalidInputsWithoutLosingSnapshot()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    std::string lines;
+    for (int i = 0; i < 1500; ++i)
+        lines += "x\n";
+    write(note, lines);
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent(lines + "mine\n");
+    write(note, lines + "outside\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(error.find("too large") != std::string::npos);
+    CHECK(session.getContent() == lines + "mine\n");
+    CHECK(session.overwriteDisk(&error)); // Refused merge did not consume the reported version.
+    CHECK(read(note) == lines + "mine\n");
+
+    session.setContent("mine");
+    write(note, "\xFF");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(error.find("UTF-8") != std::string::npos);
+    CHECK(session.getContent() == "mine" && read(note) == "\xFF");
+    write(note, "outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    session.setContent("\xC0\xAF");
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(!session.overwriteDisk(&error));
+    CHECK(!session.saveAsNewNote(&error));
+    CHECK(read(note) == "outside");
+}
+
+void recoveryRespectsSelectedPathSafety()
+{
+    TempVault temp;
+    TempVault other;
+    const fs::path folder = temp.mPath / "Folder";
+    CHECK(fs::create_directory(folder));
+    const fs::path note = folder / "Note.md";
+    write(note, "original");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Folder/Note.md", &error));
+    session.setContent("mine");
+    CHECK(fs::remove(note));
+    CHECK(fs::remove(folder));
+    CHECK(!session.saveAsNewNote(&error));
+    CHECK(session.getContent() == "mine" && session.isDirty());
+    CHECK(!fs::exists(folder));
+    std::error_code ec;
+    fs::create_directory_symlink(other.mPath, folder, ec);
+    if (!ec) {
+        CHECK(!session.saveAsNewNote(&error));
+        CHECK(!fs::exists(other.mPath / "Note.md"));
+        CHECK(fs::remove(folder));
+    }
+    CHECK(fs::create_directory(folder));
+    const fs::path target = other.mPath / "Target.md";
+    write(target, "outside");
+    fs::create_symlink(target, note, ec);
+    if (!ec) {
+        CHECK(!session.saveAsNewNote(&error));
+        CHECK(!session.save(&error));
+        CHECK(read(target) == "outside");
+        CHECK(fs::remove(note));
+    }
+    CHECK(session.saveAsNewNote(&error));
+    CHECK(read(note) == "mine");
+}
+
+void recoveryCreatesMissingNoteInExistingFolder()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "Folder"));
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    const std::string bytes = "\xEF\xBB\xBF"
+                              "Recovered\n";
+    CHECK(vault->createNoteWithContent("Folder/Recovered.md", bytes, &error));
+    CHECK(read(temp.mPath / "Folder" / "Recovered.md") == bytes);
+    std::string opened;
+    CHECK(vault->readNote("Folder/Recovered.md", &opened, &error));
+    CHECK(opened == bytes);
+}
+
+void recoveryNeverOverwritesReappearedNote()
+{
+    TempVault temp;
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    const fs::path destination = temp.mPath / "Recovered.md";
+    write(destination, "outside");
+    CHECK(!vault->createNoteWithContent("Recovered.md", "mine", &error));
+    CHECK(error.find("already exists") != std::string::npos);
+    CHECK(read(destination) == "outside");
+    CHECK(fs::remove(destination));
+    CHECK(vault->createNoteWithContent("Recovered.md", "mine", &error));
+    CHECK(read(destination) == "mine");
+    CHECK(!vault->createNoteWithContent("Recovered.md", "again", &error));
+    CHECK(error.find("already exists") != std::string::npos);
+    CHECK(read(destination) == "mine");
+}
+
+void recoveryRejectsInvalidPathsAndMissingParent()
+{
+    TempVault temp;
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    const std::vector<std::string> invalid = {
+        "../Outside.md",
+        ".hidden.md",
+        "Folder/.hidden.md",
+        "Folder/../Escape.md",
+        "/Absolute.md",
+        "Folder\\Escape.md",
+        "Note.txt",
+        "Bad\xC0\xAF.md",
+        std::string("Null\0.md", 8)};
+    for (const auto& path : invalid) {
+        CHECK(!vault->createNoteWithContent(path, "mine", &error));
+        CHECK(error.find("visible relative Markdown path") != std::string::npos);
+    }
+    error.clear();
+    CHECK(!vault->createNoteWithContent("Missing/Note.md", "mine", &error));
+    CHECK(error.find("note parent folder") != std::string::npos);
+    CHECK(!fs::exists(temp.mPath / "Missing"));
+    write(temp.mPath / "File.md", "outside");
+    CHECK(!vault->createNoteWithContent("File.md/Note.md", "mine", &error));
+    CHECK(read(temp.mPath / "File.md") == "outside");
+}
+
+void recoveryRejectsSymlinkTargetsAndParents()
+{
+    TempVault temp;
+    TempVault other;
+    const fs::path outside = other.mPath / "Outside.md";
+    write(outside, "outside");
+    std::error_code ec;
+    fs::create_symlink(outside, temp.mPath / "Linked.md", ec);
+    if (ec) return; // symlinks require elevated privileges on some Windows hosts
+    fs::create_directory_symlink(other.mPath, temp.mPath / "Alias", ec);
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(!vault->createNoteWithContent("Linked.md", "mine", &error));
+    CHECK(error.find("already exists") != std::string::npos);
+    if (!ec) {
+        CHECK(!vault->createNoteWithContent("Alias/Note.md", "mine", &error));
+        CHECK(!fs::exists(other.mPath / "Note.md"));
+    }
+    CHECK(read(outside) == "outside");
+}
+
+#ifdef _WIN32
+void recoveryRejectsWindowsJunctionParent()
+{
+    TempVault outside;
+    TempVault temp;
+    const fs::path junction = temp.mPath / "Junction";
+    const fs::path outsideNote = outside.mPath / "Note.md";
+    struct JunctionCleanup
+    {
+        fs::path mPath;
+        ~JunctionCleanup()
+        {
+            std::error_code ignored;
+            fs::remove(mPath, ignored);
+        }
+    } cleanup{junction};
+    const std::wstring command =
+        L"mklink /J \"" + junction.wstring() + L"\" \"" + outside.mPath.wstring() + L"\"";
+    const int result = _wsystem(command.c_str());
+    if (result != 0)
+        throw std::runtime_error(
+            "Cannot create Windows junction with mklink /J (exit code " + std::to_string(result) +
+            "): " + utf8Path(junction) + " -> " + utf8Path(outside.mPath));
+    const DWORD attributes = GetFileAttributesW(junction.c_str());
+    CHECK(attributes != INVALID_FILE_ATTRIBUTES);
+    CHECK((attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+    CHECK((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0);
+    CHECK(!fs::exists(outsideNote));
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(!vault->createNoteWithContent("Junction/Note.md", "mine", &error));
+    CHECK(error.find("reparse point") != std::string::npos);
+    CHECK(!fs::exists(outsideNote));
+}
+#endif
+
 void symlinkRefusal()
 {
     TempVault temp;
@@ -200,6 +627,22 @@ int main()
     try {
         fixtureDiscovery();
         editingAndEncoding();
+        cleanOutsideChangeReloadsAndPreservesBom();
+        dirtyOutsideChangeRetainsEditsAndReportsSnapshot();
+        resolutionRequiresReportedOutsideVersion();
+        mergeReportedOutsideChanges();
+        mergedEditorUsesReportedOutsideBom();
+        missingNoteRecoveryRefusesReappearingPath();
+        discardEditsDoesNotRecreateDeletedNote();
+        mergeRefusesOversizedOrInvalidInputsWithoutLosingSnapshot();
+        recoveryRespectsSelectedPathSafety();
+        recoveryCreatesMissingNoteInExistingFolder();
+        recoveryNeverOverwritesReappearedNote();
+        recoveryRejectsInvalidPathsAndMissingParent();
+        recoveryRejectsSymlinkTargetsAndParents();
+#ifdef _WIN32
+        recoveryRejectsWindowsJunctionParent();
+#endif
         symlinkRefusal();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {
