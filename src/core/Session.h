@@ -79,6 +79,8 @@ private:
     bool write(const QByteArray& expected, QString* error);
     static bool decode(const QByteArray& bytes, QString* text, QString* error);
     void load(const QString& path, const QByteArray& bytes, const QString& text);
+    void rememberLineEnding(const QString& text);
+    QByteArray bytesForContent() const;
 
     TrashFunction mTrash;
     std::optional<Vault> mVault;
@@ -89,5 +91,12 @@ private:
     QString mSavedContent;
     QByteArray mSavedBytes;
     std::optional<QByteArray> mConflictBytes;
+    enum class LineEnding : uint8_t
+    {
+        Lf,
+        CrLf,
+        Cr
+    };
+    LineEnding mLineEnding = LineEnding::Lf;
     bool mHasBom = false;
 };
