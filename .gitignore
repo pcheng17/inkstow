@@ -1,4 +1,9 @@
 build/
+node_modules/
+.sandcastle/.env*
+.sandcastle/worktrees/
+.sandcastle/sandboxes/
+.sandcastle/logs/
 .DS_Store
 *.swp
 .claude/worktrees/
