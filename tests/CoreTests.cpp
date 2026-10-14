@@ -261,6 +261,39 @@ static void preservesUtf8BomWhenEditing()
     CHECK(readFile(note) == QByteArray::fromHex("efbbbf") + "updated");
 }
 
+static void preservesLineEndingsWhenEditing()
+{
+    for (const QString& name :
+         {QStringLiteral("CRLF.md"),
+          QStringLiteral("CR.md"),
+          QStringLiteral("Mixed.md"),
+          QStringLiteral("NBSP.md"),
+          QStringLiteral("Line separator.md"),
+          QStringLiteral("Paragraph separator.md")})
+    {
+        QTemporaryDir dir;
+        CHECK(dir.isValid());
+        const QByteArray original =
+            readFile(QDir(QString::fromUtf8(BYTE_FIDELITY_VAULT)).filePath(name));
+        const QString note = dir.filePath(name);
+        writeFile(note, original);
+        QString error;
+        Session session;
+        CHECK(session.openVault(dir.path(), &error));
+        CHECK(session.selectNote(name, &error));
+        CHECK(!session.dirty());
+        CHECK(session.save(&error));
+        CHECK(readFile(note) == original);
+        session.setContent(QStringLiteral("edited ") + session.content());
+        CHECK(session.save(&error));
+        const QByteArray expected = name == QStringLiteral("Mixed.md")
+                                        ? QByteArray("edited first\nsecond\nthird\nfourth\n")
+                                        : QByteArray("edited ") + original;
+        CHECK(readFile(note) == expected);
+        CHECK(!session.dirty());
+    }
+}
+
 static void rejectsInvalidUtf8AndKeepsPriorVaultOnFailure()
 {
     QTemporaryDir dir;
@@ -953,6 +986,7 @@ int main(int argc, char** argv)
 #endif
         rejectsEscapesAndSymlinks();
         preservesUtf8BomWhenEditing();
+        preservesLineEndingsWhenEditing();
         rejectsInvalidUtf8AndKeepsPriorVaultOnFailure();
         sessionListsVaultRelativeFolders();
         sessionRefusesAnotherVaultWithUnsavedEdits();

@@ -18,6 +18,8 @@ public:
 
     // Replaces the text, clearing undo history.
     void setNoteText(const QString& text);
+    // Reads literal characters without QTextDocument's lossy plain-text conversion.
+    QString rawNoteText() const;
 
 protected:
     void insertFromMimeData(const QMimeData* source) override;

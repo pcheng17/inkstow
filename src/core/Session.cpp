@@ -195,8 +195,7 @@ bool Session::write(const QByteArray& expected, QString* error)
 {
     const Vault* vault = requireNote(error);
     if (!vault) return false;
-    const QByteArray bytes =
-        (mHasBom ? QByteArray::fromHex("efbbbf") : QByteArray()) + mContent.toUtf8();
+    const QByteArray bytes = bytesForContent();
     if (!vault->saveNote(mPath, expected, bytes, error)) return false;
     mSavedContent = mContent;
     mSavedBytes = bytes;
@@ -259,6 +258,9 @@ bool Session::mergeOutsideChanges(QString* error)
         *error = QStringLiteral("Outside note changed again; refresh before merging.");
         return false;
     }
+    const QString outsideOnDisk = outside;
+    outside.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    outside.replace(u'\r', u'\n');
     const qsizetype baseLines = linesOf(mSavedContent).size();
     const qsizetype mineLines = linesOf(mContent).size();
     const qsizetype outsideLines = linesOf(outside).size();
@@ -270,6 +272,7 @@ bool Session::mergeOutsideChanges(QString* error)
         return false;
     }
     const QString merged = threeWayMerge(mSavedContent, mContent, outside);
+    rememberLineEnding(outsideOnDisk);
     mSavedBytes = current;
     mSavedContent = outside;
     mHasBom = current.startsWith("\xEF\xBB\xBF");
@@ -287,8 +290,7 @@ bool Session::saveAsNewNote(QString* error)
         *error = QStringLiteral("Note still exists; Save as new note cannot replace it.");
         return false;
     }
-    const QByteArray bytes =
-        (mHasBom ? QByteArray::fromHex("efbbbf") : QByteArray()) + mContent.toUtf8();
+    const QByteArray bytes = bytesForContent();
     if (!vault->createNoteWithContent(mPath, bytes, error)) return false;
     mSavedContent = mContent;
     mSavedBytes = bytes;
@@ -395,6 +397,7 @@ void Session::clearNote()
     mSavedBytes.clear();
     mConflictBytes.reset();
     mHasBom = false;
+    mLineEnding = LineEnding::Lf;
 }
 
 bool Session::requireClean(QString* error) const
@@ -428,12 +431,40 @@ bool Session::decode(const QByteArray& bytes, QString* text, QString* error)
     return true;
 }
 
+QByteArray Session::bytesForContent() const
+{
+    if (mContent == mSavedContent) return mSavedBytes;
+    QString text = mContent;
+    if (mLineEnding == LineEnding::CrLf)
+        text.replace(QStringLiteral("\n"), QStringLiteral("\r\n"));
+    else if (mLineEnding == LineEnding::Cr)
+        text.replace(u'\n', u'\r');
+    return (mHasBom ? QByteArray::fromHex("efbbbf") : QByteArray()) + text.toUtf8();
+}
+
+void Session::rememberLineEnding(const QString& text)
+{
+    // Mixed styles are normalized to LF only when edited; an unedited save
+    // uses the original disk bytes. Uniform styles survive subsequent edits.
+    const bool crlf = text.contains(QStringLiteral("\r\n"));
+    QString withoutPairs = text;
+    withoutPairs.replace(QStringLiteral("\r\n"), QString());
+    const bool cr = withoutPairs.contains(u'\r');
+    const bool lf = withoutPairs.contains(u'\n');
+    mLineEnding = LineEnding::Lf;
+    if (crlf && !cr && !lf) mLineEnding = LineEnding::CrLf;
+    if (cr && !crlf && !lf) mLineEnding = LineEnding::Cr;
+}
+
 void Session::load(const QString& path, const QByteArray& bytes, const QString& text)
 {
     mPath = path;
     mHasBom = bytes.startsWith("\xEF\xBB\xBF");
+    rememberLineEnding(text);
     mContent = text;
-    mSavedContent = text;
+    mContent.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    mContent.replace(u'\r', u'\n');
+    mSavedContent = mContent;
     mSavedBytes = bytes;
     mConflictBytes.reset();
 }

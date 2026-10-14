@@ -6,11 +6,20 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QScrollBar>
+#include <QTextBlock>
 #include <QTextBlockFormat>
+#include <QTextBlockUserData>
 #include <QTextCursor>
 
 #include <algorithm>
 #include <utility>
+
+namespace
+{
+class ParagraphSeparator : public QTextBlockUserData
+{
+};
+} // namespace
 
 NoteEditor::NoteEditor(std::function<void()> followLink)
     : mFollowLink(std::move(followLink))
@@ -28,6 +37,16 @@ NoteEditor::NoteEditor(std::function<void()> followLink)
 void NoteEditor::setNoteText(const QString& text)
 {
     setPlainText(text);
+    // Qt stores both a typed paragraph separator and a newline as a block
+    // boundary. Tag the boundaries that were literal U+2029 on load.
+    QTextBlock block = document()->firstBlock();
+    for (qsizetype i = 0; i < text.size() && block.next().isValid(); ++i) {
+        if (text[i] == u'\r' || text[i] == u'\n' || text[i] == u'\u2029') {
+            if (text[i] == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n') ++i;
+            block = block.next();
+            if (text[i] == u'\u2029') block.setUserData(new ParagraphSeparator);
+        }
+    }
     // New paragraphs inherit the spacing from the one they are split from.
     QTextBlockFormat spacing;
     spacing.setLineHeight(theme::kEditorLineHeightPercent, QTextBlockFormat::ProportionalHeight);
@@ -36,6 +55,16 @@ void NoteEditor::setNoteText(const QString& text)
     document()->setUndoRedoEnabled(false);
     all.mergeBlockFormat(spacing);
     document()->setUndoRedoEnabled(true);
+}
+
+QString NoteEditor::rawNoteText() const
+{
+    QString text = document()->toRawText();
+    for (QTextBlock block = document()->firstBlock(); block.isValid(); block = block.next()) {
+        if (!block.next().isValid()) break;
+        text[block.position() + block.length() - 1] = block.next().userData() ? u'\u2029' : u'\n';
+    }
+    return text;
 }
 
 void NoteEditor::insertFromMimeData(const QMimeData* source)
