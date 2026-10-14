@@ -697,6 +697,9 @@ void sessionNoteActions()
     CHECK(session.createNote("Cafe\xCC\x81", &error));
     CHECK(session.getPath() == "Caf\xC3\xA9.md");
     CHECK(fs::exists(temp.mPath / "Caf\xC3\xA9.md"));
+    CHECK(session.moveNote("  Moved cafe\xCC\x81  ", false, &error));
+    CHECK(session.getPath() == "Moved caf\xC3\xA9.md");
+    CHECK(fs::exists(temp.mPath / "Moved caf\xC3\xA9.md"));
     CHECK(session.selectNote("Source.md", &error));
     CHECK(session.followWikilink("Moved", &error));
     CHECK(session.getPath() == "Moved.md");
