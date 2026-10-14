@@ -14,7 +14,15 @@ const undoButton = document.querySelector('#undo');
 const editable = new Compartment();
 let snapshot = { notes: [], path: '', content: '', dirty: false };
 let locked = false;
+let mixedLineEndings = false;
 let syncFailed = false;
+
+const mixedEndingsError = 'This note has mixed CRLF, LF, or CR line endings. Editing and saving are disabled to preserve its bytes (see #63).';
+
+function lineEndings(content) {
+  const separators = new Set(content.match(/\r\n|\r|\n/g) || []);
+  return { mixed: separators.size > 1, separator: separators.values().next().value || '\n' };
+}
 let queue = Promise.resolve();
 
 function showError(message) {
@@ -34,9 +42,9 @@ function request(operation) {
 
 function render() {
   title.textContent = snapshot.path || 'No note selected';
-  dirty.hidden = !(snapshot.dirty || syncFailed || (snapshot.path && view.state.doc.toString() !== snapshot.content));
-  saveButton.disabled = locked || !snapshot.path;
-  undoButton.disabled = locked || !snapshot.path;
+  dirty.hidden = !(snapshot.dirty || syncFailed || (snapshot.path && view.state.sliceDoc() !== snapshot.content));
+  saveButton.disabled = locked || mixedLineEndings || !snapshot.path;
+  undoButton.disabled = locked || mixedLineEndings || !snapshot.path;
   folder.disabled = locked;
   form.querySelector('button').disabled = locked;
   notes.replaceChildren(...snapshot.notes.map((path) => {
@@ -53,20 +61,23 @@ function render() {
 }
 
 function newDocument(content) {
+  const endings = lineEndings(content);
+  mixedLineEndings = endings.mixed;
   view.setState(EditorState.create({
     doc: content,
-    extensions: [history(), keymap.of([...historyKeymap, ...defaultKeymap]),
+    extensions: [EditorState.lineSeparator.of(endings.separator), EditorState.readOnly.of(mixedLineEndings),
+      history(), keymap.of([...historyKeymap, ...defaultKeymap]),
       keymap.of([{ key: 'Mod-s', run: () => { save(); return true; } }]),
-      markdown(), editable.of(EditorView.editable.of(!locked && Boolean(snapshot.path))),
+      markdown(), editable.of(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(snapshot.path))),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
-        const text = update.state.doc.toString();
+        const text = update.state.sliceDoc();
         render();
         request({ operation: 'edit', content: text }).then((reply) => {
           if (!reply.ok) {
             syncFailed = true;
             showError(reply.error || 'Could not edit note.');
-          } else if (view.state.doc.toString() === text && snapshot.path === reply.path) {
+          } else if (view.state.sliceDoc() === text && snapshot.path === reply.path) {
             snapshot = reply;
             syncFailed = false;
             showError('');
@@ -83,7 +94,7 @@ render();
 
 function setLocked(value) {
   locked = value;
-  view.dispatch({ effects: editable.reconfigure(EditorView.editable.of(!locked && Boolean(snapshot.path))) });
+  view.dispatch({ effects: editable.reconfigure(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(snapshot.path))) });
   render();
 }
 
@@ -103,7 +114,7 @@ async function navigate(operation) {
     snapshot = reply;
     syncFailed = false;
     newDocument(reply.content);
-    showError('');
+    showError(mixedLineEndings ? mixedEndingsError : '');
   }
   setLocked(false);
 }
@@ -118,6 +129,7 @@ form.addEventListener('submit', (event) => {
 });
 
 async function save() {
+  if (mixedLineEndings) { showError(mixedEndingsError); return; }
   if (locked || !snapshot.path) return;
   setLocked(true);
   await queue;

@@ -118,6 +118,52 @@ test('open, edit, selection, undo and BOM-preserving save', async () => {
   } finally { ui.dom.window.close(); }
 });
 
+test('uniform CRLF, LF and CR notes preserve BOM, separators and special UTF-8 through edit and save', async () => {
+  for (const separator of ['\r\n', '\n', '\r']) {
+    for (const hasBom of [false, true]) {
+      const original = `Start${separator}NBSP:\u00a0 U+2028:\u2028 U+2029:\u2029${separator}End${separator}`;
+      const prefix = hasBom ? Buffer.from([0xef, 0xbb, 0xbf]) : Buffer.alloc(0);
+      const bytes = (text) => Buffer.concat([prefix, Buffer.from(text)]);
+      const ui = await setup({ 'Separators.md': bytes(original) });
+      try {
+        await ui.open(); await ui.select('Separators.md');
+        assert.equal(ui.document.querySelector('#dirty').hidden, true, `pristine ${JSON.stringify(separator)}`);
+        assert.equal(ui.document.querySelector('#error').hidden, true);
+        ui.document.querySelector('#save').click(); await ui.pause();
+        assert.deepEqual(ui.disk.get('Separators.md'), bytes(original), 'save without edits');
+        await ui.type('Edited');
+        assert.equal(ui.calls.at(-1).content, `Edited${separator}NBSP:\u00a0 U+2028:\u2028 U+2029:\u2029${separator}End${separator}`);
+        assert.equal(ui.document.querySelector('#dirty').hidden, false);
+        ui.document.querySelector('#save').click(); await ui.pause();
+        assert.deepEqual(ui.disk.get('Separators.md'), bytes(`Edited${separator}NBSP:\u00a0 U+2028:\u2028 U+2029:\u2029${separator}End${separator}`));
+        assert.equal(ui.document.querySelector('#dirty').hidden, true);
+      } finally { ui.dom.window.close(); }
+    }
+  }
+});
+
+test('mixed CRLF, LF and CR notes are read-only and cannot save, retaining disk bytes', async () => {
+  const original = 'Start\r\nMiddle\nNBSP:\u00a0 U+2028:\u2028 U+2029:\u2029\rEnd';
+  const bytes = Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode(original)]);
+  const ui = await setup({ 'Mixed.md': bytes, 'Other.md': Buffer.from('Other') });
+  try {
+    await ui.open(); await ui.select('Mixed.md');
+    assert.match(ui.document.querySelector('#error').textContent, /mixed.*line endings/i);
+    assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'false');
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+    assert.equal(ui.document.querySelector('#save').disabled, true);
+    assert.equal(ui.document.querySelector('#undo').disabled, true);
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    ui.document.dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.calls.filter((call) => ['edit', 'save'].includes(call.operation)).length, 0);
+    assert.deepEqual(ui.disk.get('Mixed.md'), bytes);
+    await ui.select('Other.md');
+    assert.equal(ui.document.querySelector('#error').hidden, true);
+    assert.equal(ui.document.querySelector('#save').disabled, false);
+  } finally { ui.dom.window.close(); }
+});
+
 test('dirty note refuses navigation, save failures and bridge errors keep text visible', async () => {
   const ui = await setup();
   try {
