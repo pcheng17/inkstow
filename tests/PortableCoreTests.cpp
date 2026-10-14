@@ -585,6 +585,29 @@ void createAction()
     }
 }
 
+void sessionMoveSelectsDestinationRatherThanHardLink()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "A"));
+    CHECK(fs::create_directory(temp.mPath / "B"));
+    CHECK(fs::create_directory(temp.mPath / "C"));
+    write(temp.mPath / "B" / "Target.md", "target");
+    std::error_code ec;
+    fs::create_hard_link(temp.mPath / "B" / "Target.md", temp.mPath / "A" / "Other.md", ec);
+    if (ec) return; // Some filesystems do not support hard links.
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("B/Target.md", &error));
+    CHECK(session.moveNote("C/Target.md", false, &error));
+    CHECK(session.getPath() == "C/Target.md");
+    CHECK(std::ranges::find(session.getNotes(), "C/Target.md") != session.getNotes().end());
+    session.setContent("edited");
+    CHECK(session.save(&error));
+    CHECK(read(temp.mPath / "C" / "Target.md") == "edited");
+    CHECK(read(temp.mPath / "A" / "Other.md") == "target");
+}
+
 void sessionFollowsAttachmentLinksSafely()
 {
     TempVault temp;
@@ -878,6 +901,7 @@ int main()
         sessionNoteActions();
         sessionUsesDiscoveredCaseOnCaseInsensitiveVolumes();
         sessionFollowsAttachmentLinksSafely();
+        sessionMoveSelectsDestinationRatherThanHardLink();
         movePreflightRefusesUnsafeLinksAndPaths();
         unicodeCasefoldedLinksSurviveMove();
         retryRechecksAndRefusals();

@@ -1,6 +1,7 @@
 #include "Session.h"
 
 #include "GuardedReplace.h"
+#include "UnicodeCase.h"
 
 #include <algorithm>
 #include <cctype>
@@ -18,9 +19,13 @@ constexpr std::string_view kBom = "\xEF\xBB\xBF";
 std::string discoveredPath(
     const Vault& vault, const std::vector<std::string>& notes, const std::string& requested)
 {
+    if (std::ranges::find(notes, requested) != notes.end()) return requested;
+    const auto folded = caseFoldUtf8(requested);
+    if (!folded) return requested;
     const auto requestedPath =
         std::filesystem::path(std::u8string(requested.begin(), requested.end()));
     for (const auto& note : notes) {
+        if (caseFoldUtf8(note) != folded) continue;
         const auto listedPath = std::filesystem::path(std::u8string(note.begin(), note.end()));
         std::error_code ec;
         if (std::filesystem::equivalent(
