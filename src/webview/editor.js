@@ -30,6 +30,10 @@ function showError(message) {
   error.hidden = !message;
 }
 
+function showReplyError(reply, fallback) {
+  showError(reply.error || (reply.ok ? '' : fallback));
+}
+
 // Serialize full-document edits before save/open/select, even when the native binding is slow.
 function request(operation) {
   const result = queue.then(async () => {
@@ -144,7 +148,7 @@ async function save() {
   }
   const reply = await request({ operation: 'save' });
   if (reply.path === snapshot.path) snapshot = reply;
-  showError(reply.error || (reply.ok ? '' : 'Could not save note.'));
+  showReplyError(reply, 'Could not save note.');
   setLocked(false);
 }
 
@@ -162,7 +166,7 @@ async function resolve(operation) {
     snapshot = reply;
     if (reply.ok && view.state.sliceDoc() !== reply.content) newDocument(reply.content, operation === 'merge');
   }
-  showError(reply.error || (reply.ok ? '' : 'Could not resolve outside change.'));
+  showReplyError(reply, 'Could not resolve outside change.');
   setLocked(false);
 }
 
@@ -176,7 +180,7 @@ async function refresh() {
       snapshot = reply;
       if (reply.ok && reply.change === 'reloaded') newDocument(reply.content);
     }
-    showError(reply.error || (reply.ok ? '' : 'Could not check for outside changes.'));
+    showReplyError(reply, 'Could not check for outside changes.');
   }
   setLocked(false);
 }
