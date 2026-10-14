@@ -263,6 +263,29 @@ void mergeReportedOutsideChanges()
     CHECK(read(note) == "a\nb\nc\nY\nd\ne");
 }
 
+void mergedEditorUsesReportedOutsideBom()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    write(note, "first\nsecond\n");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent("FIRST\nsecond\n");
+    write(
+        note,
+        "\xEF\xBB\xBF"
+        "first\nSECOND\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(session.mergeOutsideChanges(&error));
+    CHECK(session.getContent() == "FIRST\nSECOND\n");
+    CHECK(session.save(&error));
+    CHECK(
+        read(note) == "\xEF\xBB\xBF"
+                      "FIRST\nSECOND\n");
+}
+
 void missingNoteRecoveryRefusesReappearingPath()
 {
     TempVault temp;
@@ -564,6 +587,7 @@ int main()
         dirtyOutsideChangeRetainsEditsAndReportsSnapshot();
         resolutionRequiresReportedOutsideVersion();
         mergeReportedOutsideChanges();
+        mergedEditorUsesReportedOutsideBom();
         missingNoteRecoveryRefusesReappearingPath();
         discardEditsDoesNotRecreateDeletedNote();
         mergeRefusesOversizedOrInvalidInputsWithoutLosingSnapshot();
