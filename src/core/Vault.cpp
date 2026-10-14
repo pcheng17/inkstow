@@ -12,8 +12,31 @@
 
 #include <algorithm>
 
+#ifdef Q_OS_WIN
+#include <chrono>
+#include <cstdio>
+#endif
+
 namespace
 {
+#ifdef Q_OS_WIN
+// Temporary CI diagnostic for the locked-destination save race. Remove after diagnosis.
+void traceSaveRace(const char* stage, int attempt, int detail = -1)
+{
+    if (!qEnvironmentVariableIsSet("INKSTOW_TRACE_SAVE_RACE")) return;
+    const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+    std::fprintf(
+        stderr,
+        "[DEBUG-save-race] %lld vault %s attempt=%d detail=%d\n",
+        static_cast<long long>(micros),
+        stage,
+        attempt,
+        detail);
+    std::fflush(stderr);
+}
+#endif
 void conflict(QString* error)
 {
     *error = QStringLiteral(
@@ -258,8 +281,19 @@ bool Vault::saveNote(
     constexpr int kMaxAttempts = 1;
 #endif
     for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+#ifdef Q_OS_WIN
+        traceSaveRace("read-start", attempt);
+#endif
         QByteArray current;
-        if (!readBytes(*path, &current, error)) return false;
+        if (!readBytes(*path, &current, error)) {
+#ifdef Q_OS_WIN
+            traceSaveRace("read-failed", attempt);
+#endif
+            return false;
+        }
+#ifdef Q_OS_WIN
+        traceSaveRace("read-match", attempt, current == expected);
+#endif
         if (current != expected) {
             conflict(error);
             return false;
@@ -278,15 +312,28 @@ bool Vault::saveNote(
             replacement.cancelWriting();
             return false;
         }
+#ifdef Q_OS_WIN
+        traceSaveRace("precommit-read-start", attempt);
+#endif
         const auto stillThere = notePath(relative, error);
-        if (!stillThere || *stillThere != *path || !readBytes(*path, &current, error) ||
-            current != expected)
-        {
+        const bool samePath = stillThere && *stillThere == *path;
+        const bool readOk = samePath && readBytes(*path, &current, error);
+#ifdef Q_OS_WIN
+        traceSaveRace("precommit-read", attempt, readOk ? int(current == expected) : -1);
+#endif
+        if (!readOk || current != expected) {
             conflict(error);
             replacement.cancelWriting();
             return false;
         }
-        if (replacement.commit()) return true;
+#ifdef Q_OS_WIN
+        traceSaveRace("commit-start", attempt);
+#endif
+        const bool committed = replacement.commit();
+#ifdef Q_OS_WIN
+        traceSaveRace("commit-end", attempt, committed ? 0 : int(replacement.error()));
+#endif
+        if (committed) return true;
         *error = replacement.errorString();
         if (attempt + 1 == kMaxAttempts || (replacement.error() != QFileDevice::PermissionsError &&
                                             replacement.error() != QFileDevice::RenameError))
