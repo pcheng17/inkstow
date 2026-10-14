@@ -1,6 +1,7 @@
 #include "GuardedReplace.h"
 #include "Session.h"
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <filesystem>
@@ -9,6 +10,7 @@
 #include <span>
 #include <type_traits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef _WIN32
@@ -17,6 +19,11 @@
 
 #include <cstdlib>
 #endif
+
+namespace inkstow::portable
+{
+std::optional<std::string> normalizeNoteInput(const std::string& input);
+} // namespace inkstow::portable
 
 namespace fs = std::filesystem;
 using namespace inkstow::portable;
@@ -33,6 +40,11 @@ std::string utf8Path(const fs::path& path)
 {
     const auto text = path.u8string();
     return std::string(text.begin(), text.end());
+}
+
+fs::path nativePath(const std::string& utf8)
+{
+    return fs::path(std::u8string(utf8.begin(), utf8.end()));
 }
 
 void write(const fs::path& path, const std::string& bytes)
@@ -563,6 +575,302 @@ void symlinkRefusal()
     CHECK(read(temp.mPath / "Good.md") == "good");
 }
 
+void createAction()
+{
+    TempVault temp;
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(vault->createNote("Folder/Deep/New.md", &error));
+    CHECK(read(temp.mPath / "Folder" / "Deep" / "New.md").empty());
+    CHECK(!vault->createNote("Folder/Deep/New.md", &error));
+    CHECK(!vault->createNote(".hidden/Note.md", &error));
+    CHECK(!vault->createNote("Folder/../Escape.md", &error));
+    CHECK(!fs::exists(temp.mPath / "Escape.md"));
+    TempVault outside;
+    std::error_code ec;
+    fs::create_directory_symlink(outside.mPath, temp.mPath / "Alias", ec);
+    if (!ec) {
+        CHECK(!vault->createNote("Alias/Other.md", &error));
+        CHECK(!fs::exists(outside.mPath / "Other.md"));
+    }
+}
+
+void sessionMoveSelectsDestinationRatherThanHardLink()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "A"));
+    CHECK(fs::create_directory(temp.mPath / "B"));
+    CHECK(fs::create_directory(temp.mPath / "C"));
+    write(temp.mPath / "B" / "Target.md", "target");
+    std::error_code ec;
+    fs::create_hard_link(temp.mPath / "B" / "Target.md", temp.mPath / "A" / "Other.md", ec);
+    if (ec) return; // Some filesystems do not support hard links.
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("B/Target.md", &error));
+    CHECK(session.moveNote("C/Target.md", false, &error));
+    CHECK(session.getPath() == "C/Target.md");
+    CHECK(std::ranges::find(session.getNotes(), "C/Target.md") != session.getNotes().end());
+    session.setContent("edited");
+    CHECK(session.save(&error));
+    CHECK(read(temp.mPath / "C" / "Target.md") == "edited");
+    CHECK(read(temp.mPath / "A" / "Other.md") == "target");
+}
+
+void sessionFollowsAttachmentLinksSafely()
+{
+    TempVault temp;
+    TempVault outside;
+    CHECK(fs::create_directory(temp.mPath / "Folder"));
+    write(temp.mPath / "Folder" / "Source.md", "[[image.png]]");
+    write(temp.mPath / "Folder" / "image.png", "nearby");
+    write(temp.mPath / "image.png", "root");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Folder/Source.md", &error));
+    CHECK(
+        session.followAttachment("image.png", &error) ==
+        fs::canonical(temp.mPath / "Folder" / "image.png"));
+    CHECK(
+        session.followAttachment("/image.png", &error) == fs::canonical(temp.mPath / "image.png"));
+    CHECK(!session.followAttachment("missing.png", &error));
+    CHECK(!session.followAttachment("../image.png", &error));
+    CHECK(!session.followAttachment("Source", &error));
+    session.setContent("unsaved");
+    CHECK(!session.followAttachment("image.png", &error));
+    CHECK(error.find("Save or discard") != std::string::npos);
+    CHECK(session.getPath() == "Folder/Source.md" && session.getContent() == "unsaved");
+    session.discardEdits();
+    write(outside.mPath / "outside.png", "outside");
+    std::error_code ec;
+    fs::create_symlink(outside.mPath / "outside.png", temp.mPath / "Folder" / "link.png", ec);
+    if (!ec) CHECK(!session.followAttachment("link.png", &error));
+}
+
+void sessionUsesDiscoveredCaseOnCaseInsensitiveVolumes()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "Mixed"));
+    std::error_code ec;
+    if (!fs::equivalent(temp.mPath / "Mixed", temp.mPath / "mixed", ec) || ec)
+        return; // Linux's usual case-sensitive volumes cannot exercise this behavior.
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.createNote("mixed/New.md", &error));
+    CHECK(session.getPath() == "Mixed/New.md");
+    CHECK(std::ranges::find(session.getNotes(), "Mixed/New.md") != session.getNotes().end());
+    CHECK(session.moveNote("mixed/Renamed.md", false, &error));
+    CHECK(session.getPath() == "Mixed/Renamed.md");
+    CHECK(std::ranges::find(session.getNotes(), "Mixed/Renamed.md") != session.getNotes().end());
+}
+
+void linkActions()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "A"));
+    CHECK(fs::create_directory(temp.mPath / "B"));
+    write(temp.mPath / "A" / "Source.md", "\xEF\xBB\xBF[[Target]] [[/B/Target]]");
+    write(temp.mPath / "B" / "Target.md", "\xEF\xBB\xBFtarget");
+    write(temp.mPath / "B" / "image.png", "image");
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(vault->resolveWikilink("Target", "A/Source.md", &error) == "B/Target.md");
+    CHECK(vault->resolveWikilink("image.png", "A/Source.md", &error) == "B/image.png");
+    CHECK(vault->attachmentPath("B/image.png") == fs::canonical(temp.mPath / "B/image.png"));
+    CHECK(!vault->attachmentPath("B/Target.md"));
+    error = "previous failure";
+    CHECK(!vault->resolveWikilink("Missing", "A/Source.md", &error));
+    CHECK(error.empty());
+    error = "previous failure";
+    CHECK(vault->resolveWikilink("Target", "A/Source.md", &error) == "B/Target.md");
+    CHECK(error.empty());
+    CHECK(!vault->resolveWikilink("../Target", "A/Source.md", &error));
+    CHECK(error.empty());
+    CHECK(vault->moveNote("B/Target.md", "A/Moved.md", "\xEF\xBB\xBFtarget", true, &error));
+    CHECK(read(temp.mPath / "A" / "Source.md") == "\xEF\xBB\xBF[[/A/Moved]] [[/A/Moved]]");
+    CHECK(read(temp.mPath / "A" / "Moved.md") == "\xEF\xBB\xBFtarget");
+    CHECK(!vault->moveNote("A/Moved.md", "B/Target.md", "wrong", true, &error));
+    CHECK(read(temp.mPath / "A" / "Moved.md") == "\xEF\xBB\xBFtarget");
+    write(temp.mPath / "B" / "Twin.md", "twin");
+    write(temp.mPath / "A" / "Twin.md", "near");
+    CHECK(vault->resolveWikilink("Twin", "A/Source.md", &error) == "A/Twin.md");
+    CHECK(!vault->resolveWikilink("/Missing", "A/Source.md", &error));
+    write(temp.mPath / "A" / "Source.md", "[[Moved|alias]]");
+    CHECK(!vault->moveNote("A/Moved.md", "B/Other.md", "\xEF\xBB\xBFtarget", true, &error));
+    CHECK(fs::exists(temp.mPath / "A" / "Moved.md"));
+    CHECK(!fs::exists(temp.mPath / "B" / "Other.md"));
+    CHECK(vault->moveNote("A/Moved.md", "B/Other.md", "\xEF\xBB\xBFtarget", false, &error));
+    CHECK(read(temp.mPath / "A" / "Source.md") == "[[Moved|alias]]");
+}
+
+void sessionNoteActions()
+{
+    TempVault temp;
+    write(temp.mPath / "Source.md", "[[Target]]");
+    write(temp.mPath / "Target.md", "target");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Target.md", &error));
+    session.setContent("unsaved");
+    CHECK(!session.moveNote("Moved.md", true, &error));
+    CHECK(!session.trashNote(&error));
+    CHECK(!session.createNote("New.md", &error));
+    CHECK(read(temp.mPath / "Target.md") == "target");
+    session.discardEdits();
+    const auto normalized = normalizeNoteInput("  Moved.md  ");
+    if (!normalized || *normalized != "Moved.md")
+        throw std::runtime_error(
+            "Unexpected normalized path length: " +
+            std::to_string(normalized ? normalized->size() : 0));
+    if (!session.moveNote("  Moved.md  ", true, &error))
+        throw std::runtime_error("Whitespace-trimmed move failed: " + error);
+    CHECK(session.getPath() == "Moved.md" && session.getContent() == "target");
+    CHECK(read(temp.mPath / "Source.md") == "[[/Moved]]");
+    CHECK(session.createNote("New.md", &error));
+    CHECK(session.getPath() == "New.md" && session.getContent().empty());
+    CHECK(!session.createNote("New.md", &error));
+    CHECK(session.createNote("Upper.MD", &error));
+    CHECK(session.getPath() == "Upper.MD");
+    CHECK(session.createNote("  Trimmed  ", &error));
+    CHECK(session.getPath() == "Trimmed.md");
+    CHECK(fs::exists(temp.mPath / "Trimmed.md"));
+    CHECK(session.createNote("Cafe\xCC\x81", &error));
+    CHECK(session.getPath() == "Caf\xC3\xA9.md");
+    CHECK(fs::exists(temp.mPath / nativePath("Caf\xC3\xA9.md")));
+    CHECK(session.moveNote("  Moved cafe\xCC\x81  ", false, &error));
+    CHECK(session.getPath() == "Moved caf\xC3\xA9.md");
+    CHECK(fs::exists(temp.mPath / nativePath("Moved caf\xC3\xA9.md")));
+    CHECK(session.selectNote("Source.md", &error));
+    CHECK(session.followWikilink("Moved", &error));
+    CHECK(session.getPath() == "Moved.md");
+    CHECK(!session.trashNote(
+        [](const fs::path&, std::string* reason) {
+            *reason = "Trash unavailable";
+            return false;
+        },
+        &error));
+    CHECK(session.getPath() == "Moved.md" && fs::exists(temp.mPath / "Moved.md"));
+    TempVault trash;
+    CHECK(session.trashNote(
+        [&](const fs::path& path, std::string* reason) {
+            std::error_code ec;
+            fs::rename(path, trash.mPath / "Moved.md", ec);
+            if (ec) *reason = ec.message();
+            return !ec;
+        },
+        &error));
+    CHECK(session.getPath().empty() && fs::exists(trash.mPath / "Moved.md"));
+}
+
+void unicodeCasefoldedLinksSurviveMove()
+{
+    TempVault temp;
+    write(temp.mPath / nativePath("Caf\xC3\xA9.md"), "target");
+    write(temp.mPath / "Source.md", "[[CAF\xC3\x89]]");
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(vault->resolveWikilink("CAF\xC3\x89", "Source.md", &error) == "Caf\xC3\xA9.md");
+    CHECK(vault->moveNote("Caf\xC3\xA9.md", "Renamed.md", "target", true, &error));
+    CHECK(read(temp.mPath / "Source.md") == "[[/Renamed]]");
+}
+
+void movePreflightRefusesUnsafeLinksAndPaths()
+{
+    TempVault temp;
+    TempVault outside;
+    CHECK(fs::create_directory(temp.mPath / "Folder"));
+    write(temp.mPath / "Target.md", "target");
+    write(temp.mPath / "Links.md", "[[Target]]");
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    const auto refused = [&](const std::string& to) {
+        CHECK(!vault->moveNote("Target.md", to, "target", true, &error));
+        CHECK(read(temp.mPath / "Target.md") == "target");
+        CHECK(!fs::exists(temp.mPath / "Folder" / "Moved.md"));
+    };
+    refused("Missing/Moved.md");
+    refused("Folder/../Moved.md");
+    refused("Folder/Moved.md.md");
+    write(temp.mPath / "Links.md", "]] [[Target]]");
+    refused("Folder/Moved.md");
+    write(temp.mPath / "Links.md", "[[Target]extra]]");
+    refused("Folder/Moved.md");
+    write(temp.mPath / "Links.md", "[[Unrelated\nlink]]");
+    refused("Folder/Moved.md");
+    write(temp.mPath / "Links.md", "[[Target|alias]]");
+    refused("Folder/Moved.md");
+    write(temp.mPath / "Links.md", "[[Target]]");
+    write(temp.mPath / "Bad.md", "\xFF");
+    refused("Folder/Moved.md");
+    CHECK(fs::remove(temp.mPath / "Bad.md"));
+    std::error_code ec;
+    fs::create_directory_symlink(outside.mPath, temp.mPath / "Alias", ec);
+    if (!ec) refused("Alias/Moved.md");
+    write(temp.mPath / "Folder" / "Moved", "shadow");
+    refused("Folder/Moved.md");
+    CHECK(read(temp.mPath / "Folder" / "Moved") == "shadow");
+}
+
+void traversalFailuresDoNotLookLikeMissingLinks()
+{
+#ifndef _WIN32
+    TempVault temp;
+    const auto blocked = temp.mPath / "Blocked";
+    CHECK(fs::create_directory(blocked));
+    write(temp.mPath / "Source.md", "[[Target]]");
+    write(temp.mPath / "Target.md", "target");
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    Session session;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Source.md", &error));
+    fs::permissions(blocked, fs::perms::none);
+    std::error_code probe;
+    fs::directory_iterator iterator(blocked, probe);
+    if (probe) {
+        error.clear();
+        CHECK(!vault->resolveWikilink("Target", "Source.md", &error));
+        CHECK(error.find("Cannot discover vault files") != std::string::npos);
+        error.clear();
+        CHECK(!session.followWikilink("Target", &error));
+        CHECK(error.find("Cannot discover vault files") != std::string::npos);
+        error.clear();
+        CHECK(!vault->moveNote("Target.md", "Moved.md", "target", true, &error));
+        CHECK(error.find("Cannot discover vault files") != std::string::npos);
+        CHECK(fs::exists(temp.mPath / "Target.md"));
+        CHECK(!fs::exists(temp.mPath / "Moved.md"));
+    }
+    fs::permissions(blocked, fs::perms::owner_all);
+#endif
+}
+
+void trashRefusesWhenUnavailable()
+{
+    TempVault temp;
+    write(temp.mPath / "Note.md", "safe");
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(!vault->trashNote(
+        "Note.md",
+        [](const fs::path&, std::string* reason) {
+            *reason = "Trash unavailable";
+            return false;
+        },
+        &error));
+    CHECK(error == "Trash unavailable" && read(temp.mPath / "Note.md") == "safe");
+    CHECK(!vault->trashNote("../Note.md", &error));
+}
+
 void retryRechecksAndRefusals()
 {
     TempVault temp;
@@ -622,9 +930,32 @@ void retryRechecksAndRefusals()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     try {
+#ifdef _WIN32
+        if (argc == 2 && std::string_view(argv[1]) == "--trash-smoke") {
+            // Manual only: run on a Windows desktop, never in unattended CTest.
+            TempVault temp;
+            const std::string note = temp.mPath.filename().string() + ".md";
+            write(temp.mPath / note, "Disposable trash smoke test.\n");
+            std::cout << "Windows shell delete for disposable file: " << temp.mPath / note
+                      << std::endl;
+            std::string error;
+            const auto vault = Vault::open(utf8Path(temp.mPath), &error);
+            if (!vault) {
+                std::cerr << error << '\n';
+                return 1;
+            }
+            const bool deleted = vault->trashNote(note, &error);
+            std::cout << (deleted ? "Shell delete completed" : "Shell delete refused: " + error)
+                      << "; file remains: " << fs::exists(temp.mPath / note) << '\n';
+            return 0;
+        }
+#else
+        (void)argc;
+        (void)argv;
+#endif
         fixtureDiscovery();
         editingAndEncoding();
         cleanOutsideChangeReloadsAndPreservesBom();
@@ -644,6 +975,16 @@ int main()
         recoveryRejectsWindowsJunctionParent();
 #endif
         symlinkRefusal();
+        createAction();
+        linkActions();
+        traversalFailuresDoNotLookLikeMissingLinks();
+        trashRefusesWhenUnavailable();
+        sessionNoteActions();
+        sessionUsesDiscoveredCaseOnCaseInsensitiveVolumes();
+        sessionFollowsAttachmentLinksSafely();
+        sessionMoveSelectsDestinationRatherThanHardLink();
+        movePreflightRefusesUnsafeLinksAndPaths();
+        unicodeCasefoldedLinksSurviveMove();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {
         std::cerr << failure.what() << "\n";
