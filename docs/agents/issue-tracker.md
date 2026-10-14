@@ -15,6 +15,19 @@ Specs and tickets for this repo live as GitHub issues. Use the `gh` CLI for all 
 
 Infer the repo from `git remote -v` - `gh` does this automatically when run inside a clone.
 
+## Broad issue discovery
+
+Start with compact metadata (increase `--limit` if needed), then fetch full context only for selected tickets:
+
+```sh
+gh issue list --state all --limit 100 --json number,title,state,labels --jq '[.[] | {number, title, state, labels: [.labels[].name]}]'
+gh issue view <number> --comments
+gh issue view <number> --json parent --jq '.parent.number'
+gh api repos/{owner}/{repo}/issues/<number>/dependencies/blocked_by --jq '[.[].number]'
+```
+
+If a parent number is returned, read that spec with `gh issue view <parent-number> --comments`. For a known ticket, continue using the full-body listing and ticket-reading commands above.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
