@@ -277,6 +277,19 @@ int main() // NOLINT(bugprone-exception-escape)
             bridge,
             {
                 {"operation", "refresh"}
+    })["change"] == "none");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",          "edit"},
+                {  "content", "Recover again"}
+    })["dirty"] == true);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
     })["change"] == "missing");
     CHECK(
         request(
@@ -309,6 +322,6 @@ int main() // NOLINT(bugprone-exception-escape)
             bridge,
             Json{
                 {"operation", "list"}
-    })["content"] == "New recovery");
+    })["content"] == "Recover again");
     fs::remove_all(root);
 }

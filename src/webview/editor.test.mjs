@@ -19,6 +19,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let bom = false;
   let injectedError = '';
   let change = 'none';
+  let dismissedMissing = false;
   let expectedBytes;
   let reportedBytes;
   function snapshot(ok, error) {
@@ -48,18 +49,20 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             bom = bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]));
             path = request.path;
             expectedBytes = Buffer.from(bytes);
-            change = 'none';
+            change = 'none'; dismissedMissing = false;
             content = saved = decoder.decode(bom ? bytes.subarray(3) : bytes);
             return snapshot(true);
           }
           case 'edit':
             if (!path) return snapshot(false, 'No note selected.');
             content = request.content;
+            if (content !== saved) dismissedMissing = false;
             return snapshot(true);
           case 'refresh': {
             if (!path) return snapshot(true);
             const current = disk.get(path);
-            if (!current) { change = 'missing'; return snapshot(true, 'Note no longer exists.'); }
+            if (!current) { change = dismissedMissing && content === saved ? 'none' : 'missing'; return snapshot(true, 'Note no longer exists.'); }
+            dismissedMissing = false;
             if (!current.equals(expectedBytes)) {
               if (content !== saved) { change = 'conflict'; reportedBytes = Buffer.from(current); return snapshot(true, 'Note changed on disk.'); }
               expectedBytes = Buffer.from(current);
@@ -104,7 +107,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             disk.set(path, Buffer.from(expectedBytes)); saved = content; change = 'none'; return snapshot(true);
           case 'discard':
             if (change !== 'missing') return snapshot(false, 'No missing note.');
-            content = saved; change = 'none'; return snapshot(true);
+            content = saved; change = 'none'; dismissedMissing = true; return snapshot(true);
           default: return snapshot(false, 'Unknown operation.');
         }
       };
@@ -337,8 +340,13 @@ test('missing note retains edits and refuses to overwrite a reappeared file', as
     ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
     ui.document.querySelector('#discard').click(); await ui.pause();
     assert.equal(ui.document.querySelector('#missing').hidden, true);
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    assert.equal(ui.document.querySelector('#missing').hidden, true);
     assert.equal(ui.document.querySelector('#dirty').hidden, true);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'Recover');
+    await ui.type('Recovery again');
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    assert.equal(ui.document.querySelector('#missing').hidden, false);
   } finally { ui.dom.window.close(); }
 });
 

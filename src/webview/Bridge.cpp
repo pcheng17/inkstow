@@ -44,6 +44,16 @@ bool stringField(const Json& request, const char* field, std::size_t maxBytes)
 
 } // namespace
 
+void Bridge::syncWithDisk(std::string* error)
+{
+    mChange = mSession.syncWithDisk(error);
+    if (mChange == portable::DiskChange::Missing && mDismissedMissing && !mSession.isDirty()) {
+        mChange = portable::DiskChange::None;
+    } else if (mChange != portable::DiskChange::Missing || mSession.isDirty()) {
+        mDismissedMissing = false;
+    }
+}
+
 std::string Bridge::handle(const std::string& arguments)
 {
     Json reply;
@@ -65,7 +75,10 @@ std::string Bridge::handle(const std::string& arguments)
                     stringField(request, "folder", 4096))
                 {
                     success = mSession.openVault(request.at("folder").get<std::string>(), &error);
-                    if (success) mChange = portable::DiskChange::None;
+                    if (success) {
+                        mChange = portable::DiskChange::None;
+                        mDismissedMissing = false;
+                    }
                 } else if (operation == "list" && hasFields(request, {"operation"})) {
                     success = true;
                 } else if (
@@ -73,7 +86,10 @@ std::string Bridge::handle(const std::string& arguments)
                     stringField(request, "path", 4096))
                 {
                     success = mSession.selectNote(request.at("path").get<std::string>(), &error);
-                    if (success) mChange = portable::DiskChange::None;
+                    if (success) {
+                        mChange = portable::DiskChange::None;
+                        mDismissedMissing = false;
+                    }
                 } else if (
                     operation == "edit" && hasFields(request, {"operation", "content"}) &&
                     stringField(request, "content", std::size_t{4} * 1024 * 1024))
@@ -82,18 +98,20 @@ std::string Bridge::handle(const std::string& arguments)
                         error = "No note selected.";
                     } else {
                         mSession.setContent(request.at("content").get<std::string>());
+                        if (mSession.isDirty()) mDismissedMissing = false;
                         success = true;
                     }
                 } else if (operation == "refresh" && hasFields(request, {"operation"})) {
-                    mChange = mSession.syncWithDisk(&error);
+                    syncWithDisk(&error);
                     success = true;
                 } else if (operation == "save" && hasFields(request, {"operation"})) {
                     success = mSession.save(&error);
-                    if (success)
+                    if (success) {
                         mChange = portable::DiskChange::None;
-                    else {
+                        mDismissedMissing = false;
+                    } else {
                         std::string ignored;
-                        mChange = mSession.syncWithDisk(&ignored);
+                        syncWithDisk(&ignored);
                     }
                 } else if (
                     operation == "reload" && hasFields(request, {"operation"}) &&
@@ -125,6 +143,7 @@ std::string Bridge::handle(const std::string& arguments)
                 {
                     mSession.discardEdits();
                     mChange = portable::DiskChange::None;
+                    mDismissedMissing = true;
                     success = true;
                 } else {
                     error = "Unknown operation or invalid request fields.";
