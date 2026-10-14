@@ -168,8 +168,9 @@ void recoveryRejectsInvalidPathsAndMissingParent()
         CHECK(!vault->createNoteWithContent(path, "mine", &error));
         CHECK(error.find("visible relative Markdown path") != std::string::npos);
     }
+    error.clear();
     CHECK(!vault->createNoteWithContent("Missing/Note.md", "mine", &error));
-    CHECK(!error.empty());
+    CHECK(error.find("note parent folder") != std::string::npos);
     CHECK(!fs::exists(temp.mPath / "Missing"));
     write(temp.mPath / "File.md", "outside");
     CHECK(!vault->createNoteWithContent("File.md/Note.md", "mine", &error));

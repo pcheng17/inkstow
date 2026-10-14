@@ -303,12 +303,12 @@ bool Vault::createNoteWithContent(
         parent /= component;
         const auto status = fs::symlink_status(parent, ec);
         if (ec || !fs::is_directory(status)) {
-            *error = "Note parent folder is missing or not a directory.";
+            *error = "Cannot open note parent folder: missing or not a directory.";
             return false;
         }
         const DWORD attributes = GetFileAttributesW(parent.c_str());
         if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
-            *error = "Note parent folder is a reparse point or inaccessible.";
+            *error = "Cannot open note parent folder: reparse point or inaccessible.";
             return false;
         }
     }
