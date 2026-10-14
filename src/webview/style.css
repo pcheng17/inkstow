@@ -18,6 +18,8 @@ ul { list-style: none; padding: 0; margin: 0; }
 #dirty { color: #9d5211; }
 #save { margin-left: auto; }
 #error { margin: 8px 16px; padding: 8px; color: #8b1b1b; background: #ffebeb; border: 1px solid #e2aaaa; white-space: pre-wrap; }
+.decision { margin: 8px 16px; padding: 8px; background: #fff3d8; border: 1px solid #c58d34; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.decision[hidden] { display: none; }
 #editor { flex: 1; min-height: 0; overflow: auto; background: white; }
 .cm-editor { height: 100%; }
 .cm-scroller { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 15px; }
