@@ -1,0 +1,2 @@
+# These fixtures represent on-disk note bytes, not checkout-platform text.
+tests/fixtures/byte-fidelity/*.md -text

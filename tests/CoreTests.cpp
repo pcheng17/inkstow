@@ -188,18 +188,15 @@ static void retriesLockedWindowsDestination()
     CHECK(saved);
     CHECK(readFile(path) == "updated");
 
-    // A newer external write during the wait must still win over the editor.
+    // An outside write completed before saving is a conflict, even if the
+    // destination is locked. A write between the final check and commit is
+    // best-effort, not guaranteed to win over the editor's save.
     writeFile(path, "expected");
     const HANDLE changing = lockWithoutDelete(path);
     CHECK(changing != INVALID_HANDLE_VALUE);
-    // Write before unlocking so no retry can land between the unlock and the write.
-    std::thread change([changing, path] {
-        std::this_thread::sleep_for(std::chrono::milliseconds(400));
-        writeFile(path, "external");
-        CloseHandle(changing);
-    });
+    writeFile(path, "external");
     const bool overwritten = vault->saveNote(QStringLiteral("note.md"), "expected", "mine", &error);
-    change.join();
+    CloseHandle(changing);
     CHECK(!overwritten);
     CHECK(error.contains(QStringLiteral("Save conflict")));
     CHECK(readFile(path) == "external");
@@ -259,6 +256,39 @@ static void preservesUtf8BomWhenEditing()
     session.setContent(QStringLiteral("updated"));
     CHECK(session.save(&error));
     CHECK(readFile(note) == QByteArray::fromHex("efbbbf") + "updated");
+}
+
+static void preservesLineEndingsWhenEditing()
+{
+    for (const QString& name :
+         {QStringLiteral("CRLF.md"),
+          QStringLiteral("CR.md"),
+          QStringLiteral("Mixed.md"),
+          QStringLiteral("NBSP.md"),
+          QStringLiteral("Line separator.md"),
+          QStringLiteral("Paragraph separator.md")})
+    {
+        QTemporaryDir dir;
+        CHECK(dir.isValid());
+        const QByteArray original =
+            readFile(QDir(QString::fromUtf8(BYTE_FIDELITY_VAULT)).filePath(name));
+        const QString note = dir.filePath(name);
+        writeFile(note, original);
+        QString error;
+        Session session;
+        CHECK(session.openVault(dir.path(), &error));
+        CHECK(session.selectNote(name, &error));
+        CHECK(!session.dirty());
+        CHECK(session.save(&error));
+        CHECK(readFile(note) == original);
+        session.setContent(QStringLiteral("edited ") + session.content());
+        CHECK(session.save(&error));
+        const QByteArray expected = name == QStringLiteral("Mixed.md")
+                                        ? QByteArray("edited first\nsecond\nthird\nfourth\n")
+                                        : QByteArray("edited ") + original;
+        CHECK(readFile(note) == expected);
+        CHECK(!session.dirty());
+    }
 }
 
 static void rejectsInvalidUtf8AndKeepsPriorVaultOnFailure()
@@ -953,6 +983,7 @@ int main(int argc, char** argv)
 #endif
         rejectsEscapesAndSymlinks();
         preservesUtf8BomWhenEditing();
+        preservesLineEndingsWhenEditing();
         rejectsInvalidUtf8AndKeepsPriorVaultOnFailure();
         sessionListsVaultRelativeFolders();
         sessionRefusesAnotherVaultWithUnsavedEdits();

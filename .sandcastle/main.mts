@@ -106,7 +106,7 @@ export async function verify(sandbox: Pick<Sandbox, 'exec'>, base: string): Prom
   if (paths) commands.push(`clang-format --dry-run --Werror ${paths.split('\n').map(quote).join(' ')}`);
   if (changedCpp) commands.push('python3 scripts/check-clang-tidy.py');
   for (const command of commands) {
-    console.log(`Verification: ${command}`);
+    console.log(`[host] Verification: ${command}`);
     const failure = await checked(sandbox, command);
     if (failure) return failure;
   }

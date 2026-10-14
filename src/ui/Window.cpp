@@ -180,7 +180,7 @@ Window::Window(
     connect(confirmDelete, &QPushButton::clicked, this, [this] { trashNote(); });
     connect(cancelDelete, &QPushButton::clicked, mDeleteBar, &QWidget::hide);
     connect(mEditor, &QTextEdit::textChanged, this, [this] {
-        mSession.setContent(mEditor->toPlainText());
+        mSession.setContent(mEditor->rawNoteText());
         refresh();
     });
     // Watch vault folders for list changes and atomic replacements, which can
@@ -502,9 +502,7 @@ void Window::reloadFromDisk()
     {
         // Replaced through a cursor, not setPlainText, so Undo restores the edits.
         const QSignalBlocker block(mEditor);
-        QTextCursor cursor(mEditor->document());
-        cursor.select(QTextCursor::Document);
-        cursor.insertText(mSession.content());
+        mEditor->replaceNoteTextUndoable(mSession.content());
     }
     mStatus->setText(QStringLiteral("Reloaded from disk"));
     refresh();

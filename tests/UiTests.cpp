@@ -194,6 +194,204 @@ static void testReadableEditorText()
         "first\nsecond\nthird\nfourth\nfifth");
 }
 
+// A clean note stays clean after entering the editor, and editing another
+// paragraph does not rewrite its existing special characters or line endings.
+static void testSavePreservesEditorBytes()
+{
+    for (const QString& name :
+         {QStringLiteral("LF.md"),
+          QStringLiteral("CRLF.md"),
+          QStringLiteral("CR.md"),
+          QStringLiteral("Mixed.md"),
+          QStringLiteral("NBSP.md"),
+          QStringLiteral("Line separator.md"),
+          QStringLiteral("Paragraph separator.md")})
+    {
+        QTemporaryDir dir;
+        CHECK(dir.isValid());
+        const QString path = dir.filePath(name);
+        const QByteArray original =
+            readFile(QDir(QString::fromUtf8(BYTE_FIDELITY_VAULT)).filePath(name));
+        if (name == QStringLiteral("LF.md")) CHECK(original == "first\nsecond\n");
+        if (name == QStringLiteral("CRLF.md")) CHECK(original == "first\r\nsecond\r\n");
+        if (name == QStringLiteral("Paragraph separator.md"))
+            CHECK(
+                original == "first\xe2\x80\xa9"
+                            "word\nsecond\n");
+        writeFile(path, original);
+        Window window(
+            refuseTrash,
+            {},
+            [&](QWidget*) { return std::optional(dir.path()); },
+            std::make_shared<MemorySettings>());
+        auto* open = window.findChild<QPushButton*>(QStringLiteral("openVault"));
+        auto* notes = window.findChild<QTreeWidget*>(QStringLiteral("notes"));
+        auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+        auto* save = window.findChild<QAction*>(QStringLiteral("saveAction"));
+        CHECK(open && notes && editor && save);
+        open->click();
+        openNote(notes, name);
+        CHECK(!save->isEnabled());
+        save->trigger();
+        CHECK(readFile(path) == original);
+        QTextCursor cursor = editor->textCursor();
+        cursor.movePosition(QTextCursor::Start);
+        cursor.insertText(QStringLiteral("edited "));
+        CHECK(save->isEnabled());
+        save->trigger();
+        CHECK(!save->isEnabled());
+        const QByteArray expected = name == QStringLiteral("Mixed.md")
+                                        ? QByteArray("edited first\nsecond\nthird\nfourth\n")
+                                        : QByteArray("edited ") + original;
+        CHECK(readFile(path) == expected);
+        if (name == QStringLiteral("LF.md") || name == QStringLiteral("CRLF.md") ||
+            name == QStringLiteral("Paragraph separator.md"))
+        {
+            QTextCursor beginning = editor->textCursor();
+            beginning.movePosition(QTextCursor::Start);
+            beginning.insertText(QStringLiteral("new line\n"));
+            save->trigger();
+            const QByteArray newline = name == QStringLiteral("CRLF.md") ? "\r\n" : "\n";
+            CHECK(readFile(path) == QByteArray("new line") + newline + expected);
+        }
+        if (name == QStringLiteral("Paragraph separator.md")) {
+            QTextCursor remove(editor->document());
+            remove.setPosition(
+                static_cast<int>(QString::fromUtf8(readFile(path)).indexOf(u'\u2029')));
+            remove.deleteChar();
+            save->trigger();
+            QByteArray withoutSeparator = QByteArray("new line\n") + expected;
+            withoutSeparator.replace("\xe2\x80\xa9", "");
+            CHECK(readFile(path) == withoutSeparator);
+        }
+    }
+}
+
+static void testReloadPreservesParagraphSeparators()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget*) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    openSingleNote(window, dir, "original");
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* reload = window.findChild<QPushButton*>(QStringLiteral("reloadFromDisk"));
+    auto* save = window.findChild<QAction*>(QStringLiteral("saveAction"));
+    CHECK(editor && reload && save);
+    editor->insertPlainText(QStringLiteral(" mine"));
+    writeFile(dir.filePath(QStringLiteral("note.md")), "first\xe2\x80\xa9second");
+    QEvent activation(QEvent::ActivationChange);
+    QCoreApplication::sendEvent(&window, &activation);
+    CHECK(waitFor([&] { return !reload->isHidden(); }));
+    reload->click();
+    CHECK(!save->isEnabled());
+    QTextCursor cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    cursor.insertText(QStringLiteral("edited "));
+    save->trigger();
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "edited first\xe2\x80\xa9second");
+
+    cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    cursor.insertText(QStringLiteral("mine "));
+    writeFile(
+        dir.filePath(QStringLiteral("note.md")),
+        "outside\xe2\x80\xa9"
+        "again");
+    QCoreApplication::sendEvent(&window, &activation);
+    CHECK(waitFor([&] { return !reload->isHidden(); }));
+    reload->click();
+    editor->undo(); // Restore both the text and the separator kind before reload.
+    save->trigger();
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("note.md"))) == "mine edited first\xe2\x80\xa9second");
+}
+
+static void testEnterAfterParagraphSeparatorIsNewline()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget*) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    openSingleNote(window, dir, "first\xe2\x80\xa9word\nsecond\n");
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* save = window.findChild<QAction*>(QStringLiteral("saveAction"));
+    CHECK(editor && save);
+    QTextCursor cursor = editor->textCursor();
+    cursor.setPosition(7); // Inside the paragraph following U+2029.
+    editor->setTextCursor(cursor);
+    QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QApplication::sendEvent(editor, &enter);
+    save->trigger();
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "first\xe2\x80\xa9w\nord\nsecond\n");
+    editor->undo();
+    editor->redo();
+    cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    cursor.insertText(QStringLiteral("edited "));
+    save->trigger();
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("note.md"))) ==
+        "edited first\xe2\x80\xa9w\nord\nsecond\n");
+    cursor = editor->textCursor();
+    cursor.setPosition(editor->document()->findBlockByNumber(1).position());
+    editor->setTextCursor(cursor);
+    auto* pasted = new QMimeData;
+    pasted->setText(QStringLiteral("paste\n"));
+    QApplication::clipboard()->setMimeData(pasted);
+    editor->paste();
+    save->trigger();
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("note.md"))) ==
+        "edited first\xe2\x80\xa9paste\nw\nord\nsecond\n");
+}
+
+static void testTypingParagraphSeparators()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget*) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    openSingleNote(window, dir, "first\n");
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* save = window.findChild<QAction*>(QStringLiteral("saveAction"));
+    CHECK(editor && save);
+    QTextCursor cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    editor->setTextCursor(cursor);
+    auto* pasted = new QMimeData;
+    pasted->setText(QStringLiteral("pasted\u2029next"));
+    QApplication::clipboard()->setMimeData(pasted);
+    editor->paste();
+    editor->undo();
+    CHECK(!save->isEnabled());
+    CHECK(editor->toPlainText() == QStringLiteral("first\n"));
+    editor->redo();
+    save->trigger();
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "pasted\xe2\x80\xa9nextfirst\n");
+    cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    editor->setTextCursor(cursor);
+    QKeyEvent key(QEvent::KeyPress, Qt::Key_unknown, Qt::NoModifier, QStringLiteral("\u2029"));
+    QApplication::sendEvent(editor, &key);
+    editor->undo();
+    CHECK(!save->isEnabled());
+    editor->redo();
+    save->trigger();
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("note.md"))) ==
+        "pasted\xe2\x80\xa9nextfirst\n\xe2\x80\xa9");
+}
+
 // The area the editor's characters occupy, in the editor's own coordinates.
 static QRect textBounds(const QTextEdit* editor)
 {
@@ -888,6 +1086,10 @@ int main(int argc, char** argv)
         testNoNoteEmptyState();
         testReloadKeepsPlace();
         testEditorHighlightsMarkdown();
+        testSavePreservesEditorBytes();
+        testTypingParagraphSeparators();
+        testReloadPreservesParagraphSeparators();
+        testEnterAfterParagraphSeparatorIsNewline();
         testLongNoteStaysResponsive();
         runNoteActionTests();
         auto* open = window.findChild<QPushButton*>(QStringLiteral("openVault"));
