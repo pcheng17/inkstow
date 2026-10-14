@@ -148,6 +148,56 @@ void recoveryNeverOverwritesReappearedNote()
     CHECK(read(destination) == "mine");
 }
 
+void recoveryRejectsInvalidPathsAndMissingParent()
+{
+    TempVault temp;
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    const std::vector<std::string> invalid = {
+        "../Outside.md",
+        ".hidden.md",
+        "Folder/.hidden.md",
+        "Folder/../Escape.md",
+        "/Absolute.md",
+        "Folder\\Escape.md",
+        "Note.txt",
+        "Bad\xC0\xAF.md",
+        std::string("Null\0.md", 8)};
+    for (const auto& path : invalid) {
+        CHECK(!vault->createNoteWithContent(path, "mine", &error));
+        CHECK(error.find("visible relative Markdown path") != std::string::npos);
+    }
+    CHECK(!vault->createNoteWithContent("Missing/Note.md", "mine", &error));
+    CHECK(!error.empty());
+    CHECK(!fs::exists(temp.mPath / "Missing"));
+    write(temp.mPath / "File.md", "outside");
+    CHECK(!vault->createNoteWithContent("File.md/Note.md", "mine", &error));
+    CHECK(read(temp.mPath / "File.md") == "outside");
+}
+
+void recoveryRejectsSymlinkTargetsAndParents()
+{
+    TempVault temp;
+    TempVault other;
+    const fs::path outside = other.mPath / "Outside.md";
+    write(outside, "outside");
+    std::error_code ec;
+    fs::create_symlink(outside, temp.mPath / "Linked.md", ec);
+    if (ec) return; // symlinks require elevated privileges on some Windows hosts
+    fs::create_directory_symlink(other.mPath, temp.mPath / "Alias", ec);
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(!vault->createNoteWithContent("Linked.md", "mine", &error));
+    CHECK(error.find("already exists") != std::string::npos);
+    if (!ec) {
+        CHECK(!vault->createNoteWithContent("Alias/Note.md", "mine", &error));
+        CHECK(!fs::exists(other.mPath / "Note.md"));
+    }
+    CHECK(read(outside) == "outside");
+}
+
 void symlinkRefusal()
 {
     TempVault temp;
@@ -237,6 +287,8 @@ int main()
         editingAndEncoding();
         recoveryCreatesMissingNoteInExistingFolder();
         recoveryNeverOverwritesReappearedNote();
+        recoveryRejectsInvalidPathsAndMissingParent();
+        recoveryRejectsSymlinkTargetsAndParents();
         symlinkRefusal();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {

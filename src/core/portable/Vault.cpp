@@ -289,6 +289,14 @@ bool Vault::createNoteWithContent(
     const fs::path path = pathFromUtf8(relative);
 #ifdef _WIN32
     // Existing portable path checks are best-effort against concurrent parent swaps.
+    const DWORD rootAttributes = GetFileAttributesW(mRoot.c_str());
+    if (rootAttributes == INVALID_FILE_ATTRIBUTES ||
+        (rootAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ||
+        !(rootAttributes & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        *error = "Vault folder is a reparse point or inaccessible.";
+        return false;
+    }
     fs::path parent = mRoot;
     std::error_code ec;
     for (const auto& component : path.parent_path()) {
@@ -316,7 +324,7 @@ bool Vault::createNoteWithContent(
         0,
         nullptr,
         CREATE_NEW,
-        FILE_ATTRIBUTE_NORMAL,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT,
         nullptr);
     if (file == INVALID_HANDLE_VALUE) {
         const DWORD code = GetLastError();
@@ -325,19 +333,28 @@ bool Vault::createNoteWithContent(
                      : "Cannot create note (Windows error " + std::to_string(code) + ").";
         return false;
     }
-    bool ok = true;
+    DWORD writeError = ERROR_SUCCESS;
     size_t offset = 0;
     while (offset < bytes.size()) {
         DWORD written = 0;
         const DWORD count = static_cast<DWORD>(std::min<size_t>(bytes.size() - offset, 1U << 20));
-        if (!WriteFile(file, bytes.data() + offset, count, &written, nullptr) || !written) {
-            ok = false;
+        if (!WriteFile(file, bytes.data() + offset, count, &written, nullptr)) {
+            writeError = GetLastError();
+            break;
+        }
+        if (!written) {
+            writeError = ERROR_WRITE_FAULT;
             break;
         }
         offset += written;
     }
-    if (!FlushFileBuffers(file)) ok = false;
-    if (!CloseHandle(file)) ok = false;
+    if (writeError == ERROR_SUCCESS && !FlushFileBuffers(file)) writeError = GetLastError();
+    if (!CloseHandle(file) && writeError == ERROR_SUCCESS) writeError = GetLastError();
+    if (writeError != ERROR_SUCCESS) {
+        *error = "Cannot finish writing new note (Windows error " + std::to_string(writeError) +
+                 "); a partial note may remain.";
+        return false;
+    }
 #else
     // Directory handles and no-follow opens prevent traversal through symlinks,
     // even if an ancestor is swapped after opening it. An already-open directory
@@ -377,20 +394,25 @@ bool Vault::createNoteWithContent(
                            std::error_code(createError, std::generic_category()).message();
         return false;
     }
-    bool ok = true;
+    int writeError = 0;
     size_t offset = 0;
     while (offset < bytes.size()) {
         const auto written = ::write(file, bytes.data() + offset, bytes.size() - offset);
         if (written <= 0) {
-            ok = false;
+            writeError = written == 0 ? EIO : errno;
             break;
         }
         offset += static_cast<size_t>(written);
     }
-    if (::close(file) != 0) ok = false;
+    if (::close(file) != 0 && !writeError) writeError = errno;
+    if (writeError) {
+        *error = "Cannot finish writing new note: " +
+                 std::error_code(writeError, std::generic_category()).message() +
+                 "; a partial note may remain.";
+        return false;
+    }
 #endif
-    if (!ok) *error = "Cannot finish writing new note; a partial note may remain.";
-    return ok;
+    return true;
 }
 
 bool Vault::saveNote(
