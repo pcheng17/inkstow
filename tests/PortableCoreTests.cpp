@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#include <span>
+#include <type_traits>
 #include <string>
 #include <vector>
 
@@ -85,6 +87,9 @@ void editingAndEncoding()
     Session session;
     std::string error;
     CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    static_assert(std::is_same_v<decltype(session.getNotes()), std::span<const std::string>>);
+    CHECK(session.getNotes().size() == 4);
+    CHECK(session.getNotes()[1] == "Note.md");
     CHECK(!session.selectNote("Bad.md", &error));
     CHECK(!session.selectNote("Surrogate.md", &error));
     CHECK(!session.selectNote("Truncated.md", &error));
