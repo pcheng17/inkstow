@@ -1,6 +1,7 @@
 #include "GuardedReplace.h"
 #include "Session.h"
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <filesystem>
@@ -584,6 +585,24 @@ void createAction()
     }
 }
 
+void sessionUsesDiscoveredCaseOnCaseInsensitiveVolumes()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "Mixed"));
+    std::error_code ec;
+    if (!fs::equivalent(temp.mPath / "Mixed", temp.mPath / "mixed", ec) || ec)
+        return; // Linux's usual case-sensitive volumes cannot exercise this behavior.
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.createNote("mixed/New.md", &error));
+    CHECK(session.getPath() == "Mixed/New.md");
+    CHECK(std::ranges::find(session.getNotes(), "Mixed/New.md") != session.getNotes().end());
+    CHECK(session.moveNote("mixed/Renamed.md", false, &error));
+    CHECK(session.getPath() == "Mixed/Renamed.md");
+    CHECK(std::ranges::find(session.getNotes(), "Mixed/Renamed.md") != session.getNotes().end());
+}
+
 void linkActions()
 {
     TempVault temp;
@@ -633,7 +652,7 @@ void sessionNoteActions()
     CHECK(!session.createNote("New.md", &error));
     CHECK(read(temp.mPath / "Target.md") == "target");
     session.discardEdits();
-    CHECK(session.moveNote("Moved.md", true, &error));
+    CHECK(session.moveNote("  Moved.md  ", true, &error));
     CHECK(session.getPath() == "Moved.md" && session.getContent() == "target");
     CHECK(read(temp.mPath / "Source.md") == "[[/Moved]]");
     CHECK(session.createNote("New.md", &error));
@@ -641,6 +660,12 @@ void sessionNoteActions()
     CHECK(!session.createNote("New.md", &error));
     CHECK(session.createNote("Upper.MD", &error));
     CHECK(session.getPath() == "Upper.MD");
+    CHECK(session.createNote("  Trimmed  ", &error));
+    CHECK(session.getPath() == "Trimmed.md");
+    CHECK(fs::exists(temp.mPath / "Trimmed.md"));
+    CHECK(session.createNote("Cafe\xCC\x81", &error));
+    CHECK(session.getPath() == "Caf\xC3\xA9.md");
+    CHECK(fs::exists(temp.mPath / "Caf\xC3\xA9.md"));
     CHECK(session.selectNote("Source.md", &error));
     CHECK(session.followWikilink("Moved", &error));
     CHECK(session.getPath() == "Moved.md");
@@ -802,6 +827,7 @@ int main()
         linkActions();
         trashRefusesWhenUnavailable();
         sessionNoteActions();
+        sessionUsesDiscoveredCaseOnCaseInsensitiveVolumes();
         movePreflightRefusesUnsafeLinksAndPaths();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {

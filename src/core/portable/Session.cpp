@@ -9,9 +9,29 @@
 
 namespace inkstow::portable
 {
+std::optional<std::string> normalizeNoteInput(const std::string& input);
+
 namespace
 {
 constexpr std::string_view kBom = "\xEF\xBB\xBF";
+
+std::string discoveredPath(
+    const Vault& vault, const std::vector<std::string>& notes, const std::string& requested)
+{
+    const auto requestedPath =
+        std::filesystem::path(std::u8string(requested.begin(), requested.end()));
+    for (const auto& note : notes) {
+        const auto listedPath = std::filesystem::path(std::u8string(note.begin(), note.end()));
+        std::error_code ec;
+        if (std::filesystem::equivalent(
+                vault.root() / listedPath,
+                vault.root() / requestedPath,
+                ec) &&
+            !ec)
+            return note;
+    }
+    return requested;
+}
 
 bool markdownExtension(const std::string& path)
 {
@@ -318,10 +338,27 @@ bool Session::createNote(const std::string& relative, std::string* error)
         *error = "Open a vault first.";
         return false;
     }
-    const std::string path = markdownExtension(relative) ? relative : relative + ".md";
+    const auto input = normalizeNoteInput(relative);
+    if (!input) {
+        *error = "Expected a valid UTF-8 note path.";
+        return false;
+    }
+    const std::string path = markdownExtension(*input) ? *input : *input + ".md";
     if (!mVault->createNote(path, error)) return false;
-    if (!refreshNotes(error)) return false;
-    return selectNote(path, error);
+    std::string refreshError;
+    const bool refreshed = refreshNotes(&refreshError);
+    if (!refreshed && std::ranges::find(mNotes, path) == mNotes.end()) mNotes.push_back(path);
+    const auto selected = refreshed ? discoveredPath(*mVault, mNotes, path) : path;
+    std::string bytes;
+    if (!mVault->readNote(selected, &bytes, error) || !load(selected, std::move(bytes), error)) {
+        *error = "Create partially completed; check the new note: " + *error;
+        return false;
+    }
+    if (!refreshed) {
+        *error = "Create partially completed; note list could not refresh: " + refreshError;
+        return false;
+    }
+    return true;
 }
 
 bool Session::moveNote(const std::string& to, bool updateLinks, std::string* error)
@@ -331,17 +368,34 @@ bool Session::moveNote(const std::string& to, bool updateLinks, std::string* err
         return false;
     }
     if (!requireClean(error)) return false;
-    const std::string path = markdownExtension(to) ? to : to + ".md";
+    const auto input = normalizeNoteInput(to);
+    if (!input) {
+        *error = "Expected a valid UTF-8 note path.";
+        return false;
+    }
+    const std::string path = markdownExtension(*input) ? *input : *input + ".md";
+    const std::string oldPath = mPath;
     const bool moved = mVault->moveNote(mPath, path, mSavedBytes, updateLinks, error);
     const bool partial = !moved && error->starts_with("Move partially completed");
     if (!moved && !partial) return false;
     const std::string failure = *error;
     mPath = path; // The rename succeeded, even if reloading a later rewrite fails.
-    std::string ignored;
-    refreshNotes(&ignored);
+    std::string refreshError;
+    const bool refreshed = refreshNotes(&refreshError);
+    if (!refreshed) {
+        std::erase(mNotes, oldPath);
+        if (std::ranges::find(mNotes, path) == mNotes.end()) mNotes.push_back(path);
+    }
+    const auto selected = refreshed ? discoveredPath(*mVault, mNotes, path) : path;
     std::string current;
-    if (!mVault->readNote(path, &current, error) || !load(path, std::move(current), error)) {
+    if (!mVault->readNote(selected, &current, error) || !load(selected, std::move(current), error))
+    {
         *error = "Move partially completed; check the moved note: " + *error;
+        return false;
+    }
+    if (!refreshed) {
+        *error = "Move partially completed; note list could not refresh: " + refreshError +
+                 (partial ? "; " + failure : "");
         return false;
     }
     if (partial) *error = failure;
