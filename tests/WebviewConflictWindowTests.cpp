@@ -1,13 +1,17 @@
 #include "Bridge.h"
 #include "LocalHtml.h"
 #include "NavigationPolicy.h"
+#include "WebviewHeader.h"
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow"
-#include <webview/webview.h>
-#pragma GCC diagnostic pop
+#include <nlohmann/json.hpp>
 
+#if defined(__APPLE__)
+#include <CoreFoundation/CoreFoundation.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#else
 #include <glib.h>
+#endif
 
 #include <chrono>
 #include <filesystem>
@@ -28,8 +32,18 @@ void pumpFor(std::chrono::milliseconds duration)
 {
     const auto end = std::chrono::steady_clock::now() + duration;
     while (std::chrono::steady_clock::now() < end) {
+#if defined(__APPLE__)
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, true);
+#elif defined(_WIN32)
+        MSG message;
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+#else
         while (g_main_context_pending(nullptr))
             g_main_context_iteration(nullptr, FALSE);
+#endif
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
@@ -73,12 +87,15 @@ int run()
         return std::string("null");
     });
     window.set_html(kLocalHtml);
-    pumpFor(std::chrono::milliseconds(1800));
+    for (int attempt = 0; attempt < 100 && observed.find("ready") == std::string::npos; ++attempt) {
+        window.eval("if (document.querySelector('#folder')) probe('ready')");
+        pumpFor(std::chrono::milliseconds(100));
+    }
+    check(observed.find("ready") != std::string::npos, "Embedded editor did not load");
     const std::string folder = pathBytes(root);
     window.eval(
-        "document.querySelector('#folder').value='" + folder +
-        "';"
-        "document.querySelector('#vault-form button').click();");
+        "document.querySelector('#folder').value=" + nlohmann::json(folder).dump() +
+        ";document.querySelector('#vault-form button').click();");
     pumpFor(std::chrono::milliseconds(350));
     window.eval("document.querySelector('#notes button').click()");
     pumpFor(std::chrono::milliseconds(350));
