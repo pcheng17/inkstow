@@ -22,6 +22,42 @@ jobs:
       - name: Test
         run: ctest --preset debug
 
+  clang-tidy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build dependencies and clang-tidy
+        run: sudo ./scripts/install --system
+      - name: Configure with WebView enabled
+        run: cmake --preset debug -DINKSTOW_BUILD_WEBVIEW=ON
+      - name: Build all checked targets
+        run: cmake --build --preset debug --target inkstow inkstow-webview unit-tests ui-tests vault-inspect --parallel 2
+      - name: Check compilation database and run clang-tidy
+        run: |
+          python3 - <<'PY'
+          import glob
+          import json
+          from pathlib import Path
+
+          sources = [
+              *glob.glob('src/*.cpp'),
+              *glob.glob('src/core/*.cpp'),
+              *glob.glob('src/ui/*.cpp'),
+              *glob.glob('tests/*.cpp'),
+              *glob.glob('src/core/portable/*.cpp'),
+              'src/webview/Bridge.cpp',
+              'src/webview/Main.cpp',
+              'src/webview/NavigationPolicyLinux.cpp',
+          ]
+          entries = json.loads(Path('build/debug/compile_commands.json').read_text())
+          compiled = {Path(entry['file']).resolve() for entry in entries}
+          missing = [source for source in sources if Path(source).resolve() not in compiled]
+          if missing:
+              raise SystemExit('Missing clang-tidy compilation entries (configure with WebView ON and build all checked targets): ' + ', '.join(missing))
+          PY
+          clang-tidy-18 -p build/debug --warnings-as-errors='*' src/*.cpp src/core/*.cpp src/ui/*.cpp tests/*.cpp
+          clang-tidy-18 -p build/debug --warnings-as-errors='*' src/core/portable/*.cpp src/webview/Bridge.cpp src/webview/Main.cpp src/webview/NavigationPolicyLinux.cpp
+
   formatting:
     runs-on: ubuntu-24.04
     steps:
