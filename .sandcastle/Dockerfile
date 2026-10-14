@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates cmake curl git pkg-config ripgrep \
     qt6-base-dev qt6-base-dev-tools libwebkit2gtk-4.1-dev clang-tidy-18 \
-    python3-pip xz-utils \
+    python3-pip xz-utils xvfb \
   && rm -rf /var/lib/apt/lists/*
 ARG CLANG_FORMAT_VERSION=22.1.3
 RUN pip3 install --no-cache-dir --break-system-packages clang-format==${CLANG_FORMAT_VERSION}
