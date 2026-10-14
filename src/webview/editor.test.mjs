@@ -23,7 +23,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let expectedBytes;
   let reportedBytes;
   function snapshot(ok, error) {
-    return { ok, notes: [...notes], path, content, dirty: content !== saved, change, ...(error ? { error } : {}) }; 
+    return { ok, notes: [...notes], path, content, dirty: content !== saved, change, ...(error ? { error } : {}) };
   }
   const dom = new JSDOM(html, {
     url: 'https://inkstow.invalid/', runScripts: 'dangerously', pretendToBeVisual: true,
