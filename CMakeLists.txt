@@ -53,13 +53,34 @@ set(WEBVIEW_BUILD_STATIC_LIBRARY ON CACHE BOOL "Build webview for Inkstow" FORCE
 set(WEBVIEW_BUILD_SHARED_LIBRARY OFF CACHE BOOL "No shared webview library" FORCE)
 FetchContent_MakeAvailable(webview nlohmann_json)
 
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/webview/index.html" INKSTOW_LOCAL_HTML)
-configure_file(src/webview/LocalHtml.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h" @ONLY)
+# Build the offline frontend before compiling the shell; keep generated assets out of the tree.
+find_program(NPM_EXECUTABLE npm REQUIRED)
+find_program(NODE_EXECUTABLE node REQUIRED)
+set(WEBVIEW_ASSET_DIR "${CMAKE_CURRENT_BINARY_DIR}/webview-assets")
+file(MAKE_DIRECTORY "${WEBVIEW_ASSET_DIR}")
+configure_file(src/webview/package.json "${WEBVIEW_ASSET_DIR}/package.json" COPYONLY)
+configure_file(src/webview/package-lock.json "${WEBVIEW_ASSET_DIR}/package-lock.json" COPYONLY)
+configure_file(src/webview/build.mjs "${WEBVIEW_ASSET_DIR}/build.mjs" COPYONLY)
+configure_file(src/webview/editor.test.mjs "${WEBVIEW_ASSET_DIR}/editor.test.mjs" COPYONLY)
+add_custom_command(OUTPUT "${WEBVIEW_ASSET_DIR}/installed.stamp"
+  COMMAND "${NPM_EXECUTABLE}" ci --ignore-scripts --no-audit --no-fund
+  COMMAND "${CMAKE_COMMAND}" -E touch "${WEBVIEW_ASSET_DIR}/installed.stamp"
+  WORKING_DIRECTORY "${WEBVIEW_ASSET_DIR}"
+  DEPENDS src/webview/package.json src/webview/package-lock.json
+  VERBATIM)
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
+  COMMAND "${NODE_EXECUTABLE}" "${WEBVIEW_ASSET_DIR}/build.mjs"
+          "${CMAKE_CURRENT_SOURCE_DIR}/src/webview" "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
+  DEPENDS "${WEBVIEW_ASSET_DIR}/installed.stamp" src/webview/build.mjs
+          src/webview/index.html src/webview/editor.js src/webview/style.css
+  VERBATIM)
+add_custom_target(webview-assets DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h")
 add_library(webview-bridge src/webview/Bridge.cpp)
 target_include_directories(webview-bridge PUBLIC src/webview)
 target_link_libraries(webview-bridge PUBLIC portable-core nlohmann_json::nlohmann_json
                                       PRIVATE inkstow-warnings)
 add_executable(inkstow-webview src/webview/Main.cpp)
+add_dependencies(inkstow-webview webview-assets)
 target_include_directories(inkstow-webview PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_link_libraries(inkstow-webview PRIVATE webview-bridge webview::core_static inkstow-warnings)
 if(APPLE)
@@ -68,5 +89,7 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_test(NAME webview-js-tests COMMAND "${NPM_EXECUTABLE}" test
+           WORKING_DIRECTORY "${WEBVIEW_ASSET_DIR}")
   add_subdirectory(tests)
 endif()

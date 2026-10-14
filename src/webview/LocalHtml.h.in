@@ -1,4 +1,0 @@
-#pragma once
-
-// Bundled at configure time; no network or file:// origin is needed at runtime.
-inline constexpr const char *kLocalHtml = R"INKSTOW_HTML(@INKSTOW_LOCAL_HTML@)INKSTOW_HTML";

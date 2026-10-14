@@ -1,6 +1,6 @@
 # Webview shell bridge (#91, C++ component)
 
-`inkstow-webview` is a separate executable; `inkstow` and its Qt tests remain unchanged. Its sole trusted UI origin is `src/webview/index.html`, embedded at CMake configure time (reconfigure after editing it). `set_html` needs no network or runtime asset paths. The current page is deliberately only a placeholder, **not** an editor. The frontend owner may replace it with a self-contained locally built HTML/JS/CSS bundle and adjust the CSP for that bundle; it must not fetch a remote editor or navigate untrusted pages. The shell does not provide an open-folder picker yet: supply an absolute UTF-8 vault folder string from the frontend. Use disposable vaults only.
+`inkstow-webview` is a separate executable; `inkstow` and its Qt tests remain unchanged. The local `src/webview/index.html` template and pinned CodeMirror dependencies are bundled into one HTML page at build time, embedded in the executable. `set_html` needs no network or runtime asset paths. The page contains no links or remote assets; its CSP disallows connections and hashes its inline script (CodeMirror's dynamically generated styles require inline CSS). The shell must still prevent navigation to untrusted pages; a frontend CSP alone does not restrict where the native binding is exposed. The shell does not provide an open-folder picker yet: supply an absolute UTF-8 vault folder string from the frontend. Use disposable vaults only.
 
 ## Contract v1
 
