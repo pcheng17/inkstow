@@ -41,10 +41,22 @@ int main() // NOLINT(bugprone-exception-escape)
         }
         return std::string("null");
     });
-    window.set_html("<script>window.probe('trusted')</script><h1>trusted</h1>");
+    window.set_html(
+        "<script>window.probe('trusted');"
+        "window.addEventListener('message', () => window.probe('evil'))"
+        "</script><h1>trusted</h1>");
     pumpFor(std::chrono::milliseconds(2000));
     if (trusted != 1) {
         throw std::runtime_error("Embedded page did not receive its binding");
+    }
+    auto* view = WEBKIT_WEB_VIEW(window.browser_controller().value());
+    window.eval(
+        "const frame = document.createElement('iframe');"
+        "frame.src = 'data:text/html,<script>parent.postMessage(1, \"*\")<\\/script>';"
+        "document.body.append(frame);");
+    pumpFor(std::chrono::milliseconds(1000));
+    if (untrusted != 0) {
+        throw std::runtime_error("Subframe escaped navigation policy");
     }
     window.navigate("data:text/html,<script>window.probe('evil')</script>");
     pumpFor(std::chrono::milliseconds(1000));
@@ -55,7 +67,6 @@ int main() // NOLINT(bugprone-exception-escape)
     if (trusted != 2 || untrusted != 0) {
         throw std::runtime_error("Navigation replaced the embedded page or reached its binding");
     }
-    auto* view = WEBKIT_WEB_VIEW(window.browser_controller().value());
     const char* uri = webkit_web_view_get_uri(view);
     if (!uri || std::string(uri) != "about:blank") {
         throw std::runtime_error("Embedded page navigated away");

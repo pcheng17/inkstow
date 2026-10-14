@@ -23,6 +23,8 @@ add_test(NAME portable-core-tests COMMAND portable-core-tests)
 # Build headless tests without pulling in the widget tests.
 add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-tests)
 if(INKSTOW_BUILD_WEBVIEW)
+  # CTest runs the JS test too; the CI test-build path must generate its assets.
+  add_dependencies(unit-tests webview-assets)
   add_executable(webview-bridge-tests EXCLUDE_FROM_ALL WebviewBridgeTests.cpp)
   target_link_libraries(webview-bridge-tests PRIVATE webview-bridge inkstow-warnings)
   add_test(NAME webview-bridge-tests COMMAND webview-bridge-tests)
