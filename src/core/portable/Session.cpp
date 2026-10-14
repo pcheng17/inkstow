@@ -3,6 +3,7 @@
 #include "GuardedReplace.h"
 
 #include <algorithm>
+#include <cctype>
 #include <string_view>
 #include <vector>
 
@@ -11,6 +12,15 @@ namespace inkstow::portable
 namespace
 {
 constexpr std::string_view kBom = "\xEF\xBB\xBF";
+
+bool markdownExtension(const std::string& path)
+{
+    if (path.size() < 3) return false;
+    const auto suffix = path.substr(path.size() - 3);
+    return std::equal(suffix.begin(), suffix.end(), ".md", [](unsigned char a, unsigned char b) {
+        return std::tolower(a) == std::tolower(b);
+    });
+}
 
 using Lines = std::vector<std::string>;
 struct Change
@@ -308,7 +318,7 @@ bool Session::createNote(const std::string& relative, std::string* error)
         *error = "Open a vault first.";
         return false;
     }
-    const std::string path = relative.ends_with(".md") ? relative : relative + ".md";
+    const std::string path = markdownExtension(relative) ? relative : relative + ".md";
     if (!mVault->createNote(path, error)) return false;
     if (!refreshNotes(error)) return false;
     return selectNote(path, error);
@@ -321,7 +331,7 @@ bool Session::moveNote(const std::string& to, bool updateLinks, std::string* err
         return false;
     }
     if (!requireClean(error)) return false;
-    const std::string path = to.ends_with(".md") ? to : to + ".md";
+    const std::string path = markdownExtension(to) ? to : to + ".md";
     const bool moved = mVault->moveNote(mPath, path, mSavedBytes, updateLinks, error);
     const bool partial = !moved && error->starts_with("Move partially completed");
     if (!moved && !partial) return false;
@@ -379,7 +389,7 @@ bool Session::followWikilink(const std::string& link, std::string* error)
         return false;
     }
     const auto target = mVault->resolveWikilink(link, mPath);
-    if (!target || !target->ends_with(".md")) {
+    if (!target || !markdownExtension(*target)) {
         *error = "Link does not point to a supported Markdown note.";
         return false;
     }

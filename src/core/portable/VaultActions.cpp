@@ -20,6 +20,16 @@ namespace inkstow::portable
 {
 namespace
 {
+bool linkedPath(const fs::path& path, const fs::file_status& status)
+{
+#ifdef _WIN32
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT);
+#else
+    (void)path;
+    return fs::is_symlink(status);
+#endif
+}
 std::string bytes(const fs::path& path)
 {
     const auto text = path.generic_u8string();
@@ -68,7 +78,7 @@ std::vector<std::string> files(const fs::path& root)
         const auto status = it->symlink_status(ec);
         if (ec) break;
         const auto name = bytes(it->path().filename());
-        if (name.empty() || name[0] == '.' || fs::is_symlink(status))
+        if (name.empty() || name[0] == '.' || linkedPath(it->path(), status))
             it.disable_recursion_pending();
         else if (fs::is_regular_file(status))
             found.push_back(bytes(it->path().lexically_relative(root)));
@@ -146,7 +156,7 @@ bool Vault::createNote(const std::string& relative, std::string* error) const
                 created.push_back(walked);
                 continue;
             }
-        } else if (!ec && fs::is_directory(status) && !fs::is_symlink(status))
+        } else if (!ec && fs::is_directory(status) && !linkedPath(walked, status))
             continue;
         parentsReady = false;
         *error = "Cannot create note parent folder (missing, linked or inaccessible).";
@@ -177,7 +187,7 @@ std::optional<fs::path> Vault::attachmentPath(const std::string& relative) const
     for (const auto& part : pathOf(relative)) {
         walked /= part;
         const auto status = fs::symlink_status(walked, ec);
-        if (ec || fs::is_symlink(status)) return std::nullopt;
+        if (ec || linkedPath(walked, status)) return std::nullopt;
     }
     auto canonical = fs::canonical(walked, ec);
     if (ec || !fs::is_regular_file(canonical)) return std::nullopt;
@@ -204,7 +214,7 @@ bool Vault::moveNote(
     for (const auto& part : pathOf(to).parent_path()) {
         parent /= part;
         const auto status = fs::symlink_status(parent, ec);
-        if (ec || !fs::is_directory(status) || fs::is_symlink(status)) {
+        if (ec || !fs::is_directory(status) || linkedPath(parent, status)) {
             *error = "Destination folder must already exist and not be a link.";
             return false;
         }
@@ -255,7 +265,8 @@ bool Vault::moveNote(
             while (start != std::string::npos) {
                 const size_t end = text.find("]]", start + 2);
                 if (end == std::string::npos ||
-                    text.substr(start + 2, end - start - 2).find('[') != std::string::npos)
+                    text.substr(start + 2, end - start - 2).find_first_of("[]") !=
+                        std::string::npos)
                 {
                     *error = "Unsupported wikilink syntax in " + note;
                     return false;
@@ -312,7 +323,11 @@ bool Vault::moveNote(
             for (size_t pos = text.find("[["); pos != std::string::npos;
                  pos = text.find("[[", pos + 2))
                 ++opens;
-            if (count != opens || text.find("]]", cursor) != std::string::npos) {
+            size_t closes = 0;
+            for (size_t pos = text.find("]]"); pos != std::string::npos;
+                 pos = text.find("]]", pos + 2))
+                ++closes;
+            if (count != opens || count != closes) {
                 *error = "Unsupported wikilink syntax in " + note;
                 return false;
             }

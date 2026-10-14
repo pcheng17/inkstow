@@ -639,6 +639,8 @@ void sessionNoteActions()
     CHECK(session.createNote("New.md", &error));
     CHECK(session.getPath() == "New.md" && session.getContent().empty());
     CHECK(!session.createNote("New.md", &error));
+    CHECK(session.createNote("Upper.MD", &error));
+    CHECK(session.getPath() == "Upper.MD");
     CHECK(session.selectNote("Source.md", &error));
     CHECK(session.followWikilink("Moved", &error));
     CHECK(session.getPath() == "Moved.md");
@@ -659,6 +661,42 @@ void sessionNoteActions()
         },
         &error));
     CHECK(session.getPath().empty() && fs::exists(trash.mPath / "Moved.md"));
+}
+
+void movePreflightRefusesUnsafeLinksAndPaths()
+{
+    TempVault temp;
+    TempVault outside;
+    CHECK(fs::create_directory(temp.mPath / "Folder"));
+    write(temp.mPath / "Target.md", "target");
+    write(temp.mPath / "Links.md", "[[Target]]");
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    const auto refused = [&](const std::string& to) {
+        CHECK(!vault->moveNote("Target.md", to, "target", true, &error));
+        CHECK(read(temp.mPath / "Target.md") == "target");
+        CHECK(!fs::exists(temp.mPath / "Folder" / "Moved.md"));
+    };
+    refused("Missing/Moved.md");
+    refused("Folder/../Moved.md");
+    refused("Folder/Moved.md.md");
+    write(temp.mPath / "Links.md", "]] [[Target]]");
+    refused("Folder/Moved.md");
+    write(temp.mPath / "Links.md", "[[Target]extra]]");
+    refused("Folder/Moved.md");
+    write(temp.mPath / "Links.md", "[[Target|alias]]");
+    refused("Folder/Moved.md");
+    write(temp.mPath / "Links.md", "[[Target]]");
+    write(temp.mPath / "Bad.md", "\xFF");
+    refused("Folder/Moved.md");
+    CHECK(fs::remove(temp.mPath / "Bad.md"));
+    std::error_code ec;
+    fs::create_directory_symlink(outside.mPath, temp.mPath / "Alias", ec);
+    if (!ec) refused("Alias/Moved.md");
+    write(temp.mPath / "Folder" / "Moved", "shadow");
+    refused("Folder/Moved.md");
+    CHECK(read(temp.mPath / "Folder" / "Moved") == "shadow");
 }
 
 void trashRefusesWhenUnavailable()
@@ -764,6 +802,7 @@ int main()
         linkActions();
         trashRefusesWhenUnavailable();
         sessionNoteActions();
+        movePreflightRefusesUnsafeLinksAndPaths();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {
         std::cerr << failure.what() << "\n";
