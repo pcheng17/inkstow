@@ -303,6 +303,42 @@ void discardEditsDoesNotRecreateDeletedNote()
     CHECK(!fs::exists(note));
 }
 
+void mergeRefusesOversizedOrInvalidInputsWithoutLosingSnapshot()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    std::string lines;
+    for (int i = 0; i < 1500; ++i)
+        lines += "x\n";
+    write(note, lines);
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Note.md", &error));
+    session.setContent(lines + "mine\n");
+    write(note, lines + "outside\n");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(error.find("too large") != std::string::npos);
+    CHECK(session.getContent() == lines + "mine\n");
+    CHECK(session.overwriteDisk(&error)); // Refused merge did not consume the reported version.
+    CHECK(read(note) == lines + "mine\n");
+
+    session.setContent("mine");
+    write(note, "\xFF");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(error.find("UTF-8") != std::string::npos);
+    CHECK(session.getContent() == "mine" && read(note) == "\xFF");
+    write(note, "outside");
+    CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+    session.setContent("\xC0\xAF");
+    CHECK(!session.mergeOutsideChanges(&error));
+    CHECK(!session.overwriteDisk(&error));
+    CHECK(!session.saveAsNewNote(&error));
+    CHECK(read(note) == "outside");
+}
+
 void recoveryCreatesMissingNoteInExistingFolder()
 {
     TempVault temp;
@@ -482,6 +518,7 @@ int main()
         mergeReportedOutsideChanges();
         missingNoteRecoveryRefusesReappearingPath();
         discardEditsDoesNotRecreateDeletedNote();
+        mergeRefusesOversizedOrInvalidInputsWithoutLosingSnapshot();
         recoveryCreatesMissingNoteInExistingFolder();
         recoveryNeverOverwritesReappearedNote();
         recoveryRejectsInvalidPathsAndMissingParent();
