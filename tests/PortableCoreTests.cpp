@@ -563,6 +563,79 @@ void symlinkRefusal()
     CHECK(read(temp.mPath / "Good.md") == "good");
 }
 
+void createAction()
+{
+    TempVault temp;
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(vault->createNote("Folder/Deep/New.md", &error));
+    CHECK(read(temp.mPath / "Folder" / "Deep" / "New.md").empty());
+    CHECK(!vault->createNote("Folder/Deep/New.md", &error));
+    CHECK(!vault->createNote(".hidden/Note.md", &error));
+    CHECK(!vault->createNote("Folder/../Escape.md", &error));
+    CHECK(!fs::exists(temp.mPath / "Escape.md"));
+    TempVault outside;
+    std::error_code ec;
+    fs::create_directory_symlink(outside.mPath, temp.mPath / "Alias", ec);
+    if (!ec) {
+        CHECK(!vault->createNote("Alias/Other.md", &error));
+        CHECK(!fs::exists(outside.mPath / "Other.md"));
+    }
+}
+
+void linkActions()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "A"));
+    CHECK(fs::create_directory(temp.mPath / "B"));
+    write(temp.mPath / "A" / "Source.md", "\xEF\xBB\xBF[[Target]] [[/B/Target]]");
+    write(temp.mPath / "B" / "Target.md", "\xEF\xBB\xBFtarget");
+    write(temp.mPath / "B" / "image.png", "image");
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(vault->resolveWikilink("Target", "A/Source.md") == "B/Target.md");
+    CHECK(vault->resolveWikilink("image.png", "A/Source.md") == "B/image.png");
+    CHECK(vault->attachmentPath("B/image.png") == fs::canonical(temp.mPath / "B/image.png"));
+    CHECK(!vault->attachmentPath("B/Target.md"));
+    CHECK(!vault->resolveWikilink("Missing", "A/Source.md"));
+    CHECK(!vault->resolveWikilink("../Target", "A/Source.md"));
+    CHECK(vault->moveNote("B/Target.md", "A/Moved.md", "\xEF\xBB\xBFtarget", true, &error));
+    CHECK(read(temp.mPath / "A" / "Source.md") == "\xEF\xBB\xBF[[/A/Moved]] [[/A/Moved]]");
+    CHECK(read(temp.mPath / "A" / "Moved.md") == "\xEF\xBB\xBFtarget");
+    CHECK(!vault->moveNote("A/Moved.md", "B/Target.md", "wrong", true, &error));
+    CHECK(read(temp.mPath / "A" / "Moved.md") == "\xEF\xBB\xBFtarget");
+    write(temp.mPath / "B" / "Twin.md", "twin");
+    write(temp.mPath / "A" / "Twin.md", "near");
+    CHECK(vault->resolveWikilink("Twin", "A/Source.md") == "A/Twin.md");
+    CHECK(!vault->resolveWikilink("/Missing", "A/Source.md"));
+    write(temp.mPath / "A" / "Source.md", "[[Moved|alias]]");
+    CHECK(!vault->moveNote("A/Moved.md", "B/Other.md", "\xEF\xBB\xBFtarget", true, &error));
+    CHECK(fs::exists(temp.mPath / "A" / "Moved.md"));
+    CHECK(!fs::exists(temp.mPath / "B" / "Other.md"));
+    CHECK(vault->moveNote("A/Moved.md", "B/Other.md", "\xEF\xBB\xBFtarget", false, &error));
+    CHECK(read(temp.mPath / "A" / "Source.md") == "[[Moved|alias]]");
+}
+
+void trashRefusesWhenUnavailable()
+{
+    TempVault temp;
+    write(temp.mPath / "Note.md", "safe");
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(!vault->trashNote(
+        "Note.md",
+        [](const fs::path&, std::string* reason) {
+            *reason = "Trash unavailable";
+            return false;
+        },
+        &error));
+    CHECK(error == "Trash unavailable" && read(temp.mPath / "Note.md") == "safe");
+    CHECK(!vault->trashNote("../Note.md", &error));
+}
+
 void retryRechecksAndRefusals()
 {
     TempVault temp;
@@ -644,6 +717,9 @@ int main()
         recoveryRejectsWindowsJunctionParent();
 #endif
         symlinkRefusal();
+        createAction();
+        linkActions();
+        trashRefusesWhenUnavailable();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {
         std::cerr << failure.what() << "\n";
