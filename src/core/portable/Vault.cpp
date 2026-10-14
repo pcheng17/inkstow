@@ -301,14 +301,18 @@ bool Vault::createNoteWithContent(
     std::error_code ec;
     for (const auto& component : path.parent_path()) {
         parent /= component;
+        const DWORD attributes = GetFileAttributesW(parent.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            *error = "Cannot open note parent folder: reparse point.";
+            return false;
+        }
         const auto status = fs::symlink_status(parent, ec);
         if (ec || !fs::is_directory(status)) {
             *error = "Cannot open note parent folder: missing or not a directory.";
             return false;
         }
-        const DWORD attributes = GetFileAttributesW(parent.c_str());
-        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
-            *error = "Cannot open note parent folder: reparse point or inaccessible.";
+        if (attributes == INVALID_FILE_ATTRIBUTES) {
+            *error = "Cannot inspect note parent folder.";
             return false;
         }
     }
