@@ -43,6 +43,18 @@ The `.githooks/pre-commit` hook auto-formats staged `.h` and `.cpp` files with `
 git config core.hooksPath .githooks
 ```
 
+## Clang-tidy check
+
+On Linux, configure with WebView enabled and build all checked targets so the compilation database includes the shell and test sources, then run the same check as CI from the repository root:
+
+```sh
+cmake --preset debug -DINKSTOW_BUILD_WEBVIEW=ON
+cmake --build --preset debug --target inkstow inkstow-webview unit-tests ui-tests vault-inspect --parallel 2
+python3 scripts/check-clang-tidy.py
+```
+
+The script uses `clang-tidy` on your PATH by default; pass `--clang-tidy clang-tidy-18` to use CI's pinned executable. It refuses missing compilation entries and treats lint warnings as errors.
+
 ## Headless tests
 
 The default build compiles `inkstow` and its `core` dependency. Build `unit-tests` (the `core-tests`, `highlighter-tests`, and `portable-core-tests` executables) and `ui-tests` explicitly before running CTest; CTest runs all four registered tests without a graphical display. The core and portable core tests use filesystem fixtures, the highlighter tests use a headless `QGuiApplication`, and the UI tests use an offscreen `QApplication` to exercise the window. These names describe build/runtime grouping, not a strict unit-versus-end-to-end split. To inspect the fixture vault, build `vault-inspect` explicitly with `cmake --build --preset debug --target vault-inspect`, then run `./build/debug/vault-inspect tests/fixtures/sample` or pass another throwaway vault path.
