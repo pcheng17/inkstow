@@ -502,9 +502,7 @@ void Window::reloadFromDisk()
     {
         // Replaced through a cursor, not setPlainText, so Undo restores the edits.
         const QSignalBlocker block(mEditor);
-        QTextCursor cursor(mEditor->document());
-        cursor.select(QTextCursor::Document);
-        cursor.insertText(mSession.content());
+        mEditor->replaceNoteTextUndoable(mSession.content());
     }
     mStatus->setText(QStringLiteral("Reloaded from disk"));
     refresh();

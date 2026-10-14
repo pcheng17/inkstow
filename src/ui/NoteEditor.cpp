@@ -9,7 +9,6 @@
 #include <QScrollBar>
 #include <QTextBlock>
 #include <QTextBlockFormat>
-#include <QTextBlockUserData>
 #include <QTextCursor>
 
 #include <algorithm>
@@ -17,9 +16,15 @@
 
 namespace
 {
-class ParagraphSeparator : public QTextBlockUserData
+constexpr int kParagraphSeparatorProperty = QTextFormat::UserProperty + 1;
+
+void tagBlock(const QTextBlock& block, bool paragraphSeparator)
 {
-};
+    QTextBlockFormat format;
+    format.setProperty(kParagraphSeparatorProperty, paragraphSeparator);
+    QTextCursor cursor(block);
+    cursor.mergeBlockFormat(format);
+}
 } // namespace
 
 NoteEditor::NoteEditor(std::function<void()> followLink)
@@ -38,47 +43,62 @@ NoteEditor::NoteEditor(std::function<void()> followLink)
 void NoteEditor::setNoteText(const QString& text)
 {
     setPlainText(text);
-    // Qt stores both a typed paragraph separator and a newline as a block
-    // boundary. Tag the boundaries that were literal U+2029 on load.
-    QTextBlock block = document()->firstBlock();
-    for (qsizetype i = 0; i < text.size() && block.next().isValid(); ++i) {
-        if (text[i] == u'\r' || text[i] == u'\n' || text[i] == u'\u2029') {
-            if (text[i] == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n') ++i;
-            block = block.next();
-            if (text[i] == u'\u2029') block.setUserData(new ParagraphSeparator);
-        }
-    }
+    document()->setUndoRedoEnabled(false);
+    tagParagraphSeparators(text, 0);
     // New paragraphs inherit the spacing from the one they are split from.
     QTextBlockFormat spacing;
     spacing.setLineHeight(theme::kEditorLineHeightPercent, QTextBlockFormat::ProportionalHeight);
     QTextCursor all(document());
     all.select(QTextCursor::Document);
-    document()->setUndoRedoEnabled(false);
     all.mergeBlockFormat(spacing);
     document()->setUndoRedoEnabled(true);
+}
+
+void NoteEditor::replaceNoteTextUndoable(const QString& text)
+{
+    QTextCursor cursor(document());
+    cursor.select(QTextCursor::Document);
+    cursor.beginEditBlock();
+    cursor.insertText(text);
+    tagParagraphSeparators(text, 0);
+    cursor.endEditBlock();
+}
+
+void NoteEditor::tagParagraphSeparators(const QString& text, int start)
+{
+    // Qt converts U+2029, CR and LF to identical block boundaries. Store the
+    // original kind in the next block's undoable format, not transient userData.
+    int position = start;
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        if (text[i] == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n') ++i;
+        ++position;
+        if (text[i] == u'\r' || text[i] == u'\n' || text[i] == u'\u2029')
+            tagBlock(document()->findBlock(position), text[i] == u'\u2029');
+    }
 }
 
 QString NoteEditor::rawNoteText() const
 {
     QString text = document()->toRawText();
     for (QTextBlock block = document()->firstBlock(); block.next().isValid(); block = block.next())
-        text[block.position() + block.length() - 1] = block.next().userData() ? u'\u2029' : u'\n';
+        text[block.position() + block.length() - 1] =
+            block.next().blockFormat().boolProperty(kParagraphSeparatorProperty) ? u'\u2029'
+                                                                                 : u'\n';
     return text;
 }
 
 void NoteEditor::insertNoteText(const QString& text)
 {
     QTextCursor cursor = textCursor();
-    const int start = cursor.selectionStart();
-    cursor.insertText(text);
-    if (!text.contains(u'\u2029')) return;
-    int position = start;
-    for (qsizetype i = 0; i < text.size(); ++i) {
-        if (text[i] == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n') ++i;
-        ++position;
-        if (text[i] == u'\u2029')
-            document()->findBlock(position).setUserData(new ParagraphSeparator);
+    if (!text.contains(u'\u2029')) {
+        cursor.insertText(text);
+        return;
     }
+    const int start = cursor.selectionStart();
+    cursor.beginEditBlock();
+    cursor.insertText(text);
+    tagParagraphSeparators(text, start);
+    cursor.endEditBlock();
     // insertText emits textChanged before the separator tags can be applied.
     emit textChanged();
 }
