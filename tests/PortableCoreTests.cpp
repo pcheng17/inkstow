@@ -713,7 +713,8 @@ void sessionNoteActions()
     CHECK(!session.createNote("New.md", &error));
     CHECK(read(temp.mPath / "Target.md") == "target");
     session.discardEdits();
-    CHECK(session.moveNote("  Moved.md  ", true, &error));
+    if (!session.moveNote("  Moved.md  ", true, &error))
+        throw std::runtime_error("Windows-compatible move failed: " + error);
     CHECK(session.getPath() == "Moved.md" && session.getContent() == "target");
     CHECK(read(temp.mPath / "Source.md") == "[[/Moved]]");
     CHECK(session.createNote("New.md", &error));
