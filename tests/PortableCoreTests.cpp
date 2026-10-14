@@ -20,6 +20,11 @@
 #include <cstdlib>
 #endif
 
+namespace inkstow::portable
+{
+std::optional<std::string> normalizeNoteInput(const std::string& input);
+} // namespace inkstow::portable
+
 namespace fs = std::filesystem;
 using namespace inkstow::portable;
 
@@ -713,6 +718,11 @@ void sessionNoteActions()
     CHECK(!session.createNote("New.md", &error));
     CHECK(read(temp.mPath / "Target.md") == "target");
     session.discardEdits();
+    const auto normalized = normalizeNoteInput("  Moved.md  ");
+    if (!normalized || *normalized != "Moved.md")
+        throw std::runtime_error(
+            "Unexpected normalized path length: " +
+            std::to_string(normalized ? normalized->size() : 0));
     if (!session.moveNote("  Moved.md  ", true, &error))
         throw std::runtime_error("Whitespace-trimmed move failed: " + error);
     CHECK(session.getPath() == "Moved.md" && session.getContent() == "target");
