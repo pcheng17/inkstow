@@ -3,6 +3,7 @@
 #include "MarkdownHighlighter.h"
 #include "Theme.h"
 
+#include <QKeyEvent>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QScrollBar>
@@ -67,13 +68,39 @@ QString NoteEditor::rawNoteText() const
     return text;
 }
 
+void NoteEditor::insertNoteText(const QString& text)
+{
+    QTextCursor cursor = textCursor();
+    const int start = cursor.selectionStart();
+    cursor.insertText(text);
+    int position = start;
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        if (text[i] == u'\r' && i + 1 < text.size() && text[i + 1] == u'\n') ++i;
+        ++position;
+        if (text[i] == u'\u2029')
+            document()->findBlock(position).setUserData(new ParagraphSeparator);
+    }
+    // insertText emits textChanged before the separator tags can be applied.
+    if (text.contains(u'\u2029')) emit textChanged();
+}
+
 void NoteEditor::insertFromMimeData(const QMimeData* source)
 {
     // Inserted like typing so new paragraphs keep the line spacing; a pasted
     // fragment would bring default paragraph formats with it.
     if (!source->hasText()) return;
-    textCursor().insertText(source->text());
+    insertNoteText(source->text());
     ensureCursorVisible();
+}
+
+void NoteEditor::keyPressEvent(QKeyEvent* event)
+{
+    if (event->text().contains(u'\u2029') && !event->modifiers().testFlag(Qt::ControlModifier)) {
+        insertNoteText(event->text());
+        event->accept();
+        return;
+    }
+    QTextEdit::keyPressEvent(event);
 }
 
 void NoteEditor::mouseReleaseEvent(QMouseEvent* event)

@@ -255,6 +255,39 @@ static void testSavePreservesEditorBytes()
     }
 }
 
+static void testTypingParagraphSeparators()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    Window window(
+        refuseTrash,
+        {},
+        [&](QWidget*) { return std::optional(dir.path()); },
+        std::make_shared<MemorySettings>());
+    openSingleNote(window, dir, "first\n");
+    auto* editor = window.findChild<QTextEdit*>(QStringLiteral("editor"));
+    auto* save = window.findChild<QAction*>(QStringLiteral("saveAction"));
+    CHECK(editor && save);
+    QTextCursor cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::Start);
+    editor->setTextCursor(cursor);
+    auto* pasted = new QMimeData;
+    pasted->setText(QStringLiteral("pasted\u2029next"));
+    QApplication::clipboard()->setMimeData(pasted);
+    editor->paste();
+    save->trigger();
+    CHECK(readFile(dir.filePath(QStringLiteral("note.md"))) == "pasted\xe2\x80\xa9nextfirst\n");
+    cursor = editor->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    editor->setTextCursor(cursor);
+    QKeyEvent key(QEvent::KeyPress, Qt::Key_unknown, Qt::NoModifier, QStringLiteral("\u2029"));
+    QApplication::sendEvent(editor, &key);
+    save->trigger();
+    CHECK(
+        readFile(dir.filePath(QStringLiteral("note.md"))) ==
+        "pasted\xe2\x80\xa9nextfirst\n\xe2\x80\xa9");
+}
+
 // The area the editor's characters occupy, in the editor's own coordinates.
 static QRect textBounds(const QTextEdit* editor)
 {
@@ -950,6 +983,7 @@ int main(int argc, char** argv)
         testReloadKeepsPlace();
         testEditorHighlightsMarkdown();
         testSavePreservesEditorBytes();
+        testTypingParagraphSeparators();
         testLongNoteStaysResponsive();
         runNoteActionTests();
         auto* open = window.findChild<QPushButton*>(QStringLiteral("openVault"));
