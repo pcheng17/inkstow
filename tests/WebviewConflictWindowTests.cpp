@@ -12,6 +12,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -52,7 +53,7 @@ void put(const std::filesystem::path& path, const std::string& content)
 }
 } // namespace
 
-int main() // NOLINT(bugprone-exception-escape)
+int run()
 {
     namespace fs = std::filesystem;
     const auto root = fs::temp_directory_path() / "inkstow-webview-conflict-window";
@@ -147,4 +148,15 @@ int main() // NOLINT(bugprone-exception-escape)
         observed.find("\\\"dirty\\\":false") != std::string::npos,
         "Successful recovery left note dirty");
     fs::remove_all(root);
+    return 0;
+}
+
+int main()
+{
+    try {
+        return run();
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        return 1;
+    }
 }
