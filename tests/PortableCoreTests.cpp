@@ -129,7 +129,8 @@ void cleanOutsideChangeReloadsAndPreservesBom()
         "\xEF\xBB\xBF"
         "outside");
     CHECK(session.syncWithDisk(&error) == DiskChange::Reloaded);
-    CHECK(session.getContent() == "outside" && !session.isDirty());
+    CHECK(session.getContent() == "outside");
+    CHECK(!session.isDirty());
     session.setContent("saved");
     CHECK(session.save(&error));
     CHECK(
@@ -152,7 +153,8 @@ void dirtyOutsideChangeRetainsEditsAndReportsSnapshot()
     CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
     CHECK(session.getContent() == "mine" && session.isDirty());
     CHECK(session.overwriteDisk(&error));
-    CHECK(read(note) == "mine" && !session.isDirty());
+    CHECK(read(note) == "mine");
+    CHECK(!session.isDirty());
     session.setContent("mine again");
     write(note, "outside");
     CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
@@ -189,7 +191,8 @@ void resolutionRequiresReportedOutsideVersion()
     write(note, "new outside");
     CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
     CHECK(session.reloadFromDisk(&error));
-    CHECK(session.getContent() == "new outside" && !session.isDirty());
+    CHECK(session.getContent() == "new outside");
+    CHECK(!session.isDirty());
     CHECK(!session.overwriteDisk(&error));
     session.setContent("unsaved");
     CHECK(fs::remove(note));
@@ -297,7 +300,8 @@ void discardEditsDoesNotRecreateDeletedNote()
     CHECK(fs::remove(note));
     CHECK(session.syncWithDisk(&error) == DiskChange::Missing);
     session.discardEdits();
-    CHECK(!session.isDirty() && session.getContent() == "original");
+    CHECK(!session.isDirty());
+    CHECK(session.getContent() == "original");
     CHECK(!fs::exists(note));
     CHECK(session.selectNote("Other.md", &error));
     CHECK(!fs::exists(note));

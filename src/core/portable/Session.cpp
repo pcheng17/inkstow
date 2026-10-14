@@ -15,9 +15,9 @@ constexpr std::string_view kBom = "\xEF\xBB\xBF";
 using Lines = std::vector<std::string>;
 struct Change
 {
-    std::size_t start;
-    std::size_t end;
-    Lines lines;
+    std::size_t mStart;
+    std::size_t mEnd;
+    Lines mLines;
 };
 
 Lines splitLines(std::string_view text)
@@ -66,10 +66,10 @@ std::vector<Change> changes(const Lines& base, const Lines& other)
 
 bool overlaps(const Change& a, const Change& b)
 {
-    if (a.start == a.end && b.start == b.end) return a.start == b.start;
-    if (a.start == a.end) return b.start <= a.start && a.start < b.end;
-    if (b.start == b.end) return a.start <= b.start && b.start < a.end;
-    return a.start < b.end && b.start < a.end;
+    if (a.mStart == a.mEnd && b.mStart == b.mEnd) return a.mStart == b.mStart;
+    if (a.mStart == a.mEnd) return b.mStart <= a.mStart && a.mStart < b.mEnd;
+    if (b.mStart == b.mEnd) return a.mStart <= b.mStart && b.mStart < a.mEnd;
+    return a.mStart < b.mEnd && b.mStart < a.mEnd;
 }
 
 Lines apply(const Lines& base, std::size_t start, std::size_t end, const std::vector<Change>& hunks)
@@ -77,10 +77,10 @@ Lines apply(const Lines& base, std::size_t start, std::size_t end, const std::ve
     Lines result;
     auto pos = start;
     for (const Change& hunk : hunks) {
-        for (; pos < hunk.start; ++pos)
+        for (; pos < hunk.mStart; ++pos)
             result.push_back(base[pos]);
-        result.insert(result.end(), hunk.lines.begin(), hunk.lines.end());
-        pos = hunk.end;
+        result.insert(result.end(), hunk.mLines.begin(), hunk.mLines.end());
+        pos = hunk.mEnd;
     }
     for (; pos < end; ++pos)
         result.push_back(base[pos]);
@@ -99,13 +99,13 @@ std::string threeWayMerge(
     std::size_t pos = 0;
     while (a < mine.size() || b < outside.size()) {
         const auto start = std::min(
-            a < mine.size() ? mine[a].start : base.size(),
-            b < outside.size() ? outside[b].start : base.size());
+            a < mine.size() ? mine[a].mStart : base.size(),
+            b < outside.size() ? outside[b].mStart : base.size());
         for (; pos < start; ++pos)
             result.push_back(base[pos]);
         std::vector<Change> left;
         std::vector<Change> right;
-        if (a < mine.size() && (b == outside.size() || mine[a].start <= outside[b].start))
+        if (a < mine.size() && (b == outside.size() || mine[a].mStart <= outside[b].mStart))
             left.push_back(mine[a++]);
         else
             right.push_back(outside[b++]);
@@ -131,9 +131,9 @@ std::string threeWayMerge(
         }
         auto end = start;
         for (const Change& c : left)
-            end = std::max(end, c.end);
+            end = std::max(end, c.mEnd);
         for (const Change& c : right)
-            end = std::max(end, c.end);
+            end = std::max(end, c.mEnd);
         const Lines l = apply(base, start, end, left);
         const Lines r = apply(base, start, end, right);
         if (left.empty())
