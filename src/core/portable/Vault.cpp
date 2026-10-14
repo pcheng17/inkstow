@@ -53,6 +53,17 @@ bool validUtf8(const std::string& text)
 
 namespace
 {
+// Keep the public path API as UTF-8 bytes; C++20 filesystem uses char8_t.
+fs::path pathFromUtf8(const std::string& bytes)
+{
+    return fs::path(std::u8string(bytes.begin(), bytes.end()));
+}
+
+std::string utf8Bytes(const std::u8string& text)
+{
+    return std::string(text.begin(), text.end());
+}
+
 bool markdownPath(const std::string& relative)
 {
     if (!detail::validUtf8(relative) || relative.empty() || relative[0] == '/' ||
@@ -184,7 +195,7 @@ std::optional<Vault> Vault::open(const std::string& folder, std::string* error)
         return std::nullopt;
     }
     std::error_code ec;
-    const fs::path root = fs::canonical(fs::u8path(folder), ec);
+    const fs::path root = fs::canonical(pathFromUtf8(folder), ec);
     if (ec || !fs::is_directory(root)) {
         *error = "Vault must be a readable directory.";
         return std::nullopt;
@@ -200,7 +211,7 @@ bool Vault::listNotes(std::vector<std::string>* notes, std::string* error) const
     const fs::recursive_directory_iterator end;
     while (!ec && it != end) {
         const auto& entry = *it;
-        const std::string name = entry.path().filename().u8string();
+        const std::string name = utf8Bytes(entry.path().filename().u8string());
         const auto status = entry.symlink_status(ec);
         if (ec) break;
 #ifdef _WIN32
@@ -216,7 +227,8 @@ bool Vault::listNotes(std::vector<std::string>* notes, std::string* error) const
         if (name.empty() || name[0] == '.' || linked) {
             it.disable_recursion_pending();
         } else if (fs::is_regular_file(status)) {
-            const auto relative = entry.path().lexically_relative(mRoot).generic_u8string();
+            const auto relative =
+                utf8Bytes(entry.path().lexically_relative(mRoot).generic_u8string());
             if (markdownPath(relative)) found.push_back(relative);
         }
         it.increment(ec);
@@ -238,7 +250,7 @@ std::optional<fs::path> Vault::notePath(const std::string& relative, std::string
     }
     fs::path walked = mRoot;
     std::error_code ec;
-    for (const auto& segment : fs::u8path(relative)) {
+    for (const auto& segment : pathFromUtf8(relative)) {
         walked /= segment;
         const auto status = fs::symlink_status(walked, ec);
 #ifdef _WIN32

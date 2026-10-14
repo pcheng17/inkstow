@@ -39,5 +39,5 @@ install_brew() {
 case "$(uname -s)" in
   Darwin) install_brew ;;
   Linux) install_apt ;;
-  *) echo 'Unsupported system; install CMake, a C++17 compiler, and Qt 6.4+ manually.' >&2; exit 1 ;;
+  *) echo 'Unsupported system; install CMake 3.21+, a C++20 compiler (see README), and Qt 6.4+ manually.' >&2; exit 1 ;;
 esac

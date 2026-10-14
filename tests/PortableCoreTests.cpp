@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#include <span>
+#include <type_traits>
 #include <string>
 #include <vector>
 
@@ -20,6 +22,12 @@ using namespace inkstow::portable;
 
 namespace
 {
+std::string utf8Path(const fs::path& path)
+{
+    const auto text = path.u8string();
+    return std::string(text.begin(), text.end());
+}
+
 void write(const fs::path& path, const std::string& bytes)
 {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -78,7 +86,10 @@ void editingAndEncoding()
     write(temp.mPath / "Truncated.md", "\xE2\x98");
     Session session;
     std::string error;
-    CHECK(session.openVault(temp.mPath.u8string(), &error));
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    static_assert(std::is_same_v<decltype(session.getNotes()), std::span<const std::string>>);
+    CHECK(session.getNotes().size() == 4);
+    CHECK(session.getNotes()[1] == "Note.md");
     CHECK(!session.selectNote("Bad.md", &error));
     CHECK(!session.selectNote("Surrogate.md", &error));
     CHECK(!session.selectNote("Truncated.md", &error));
@@ -113,7 +124,7 @@ void symlinkRefusal()
     write(temp.mPath / "Folder" / "Inside.md", "inside");
     fs::create_directory_symlink(temp.mPath / "Folder", temp.mPath / "Alias", ec);
     std::string error;
-    auto vault = Vault::open(temp.mPath.u8string(), &error);
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
     CHECK(vault);
     std::vector<std::string> notes;
     CHECK(vault->listNotes(&notes, &error));
