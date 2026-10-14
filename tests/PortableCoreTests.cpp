@@ -129,6 +129,25 @@ void recoveryCreatesMissingNoteInExistingFolder()
     CHECK(opened == bytes);
 }
 
+void recoveryNeverOverwritesReappearedNote()
+{
+    TempVault temp;
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    const fs::path destination = temp.mPath / "Recovered.md";
+    write(destination, "outside");
+    CHECK(!vault->createNoteWithContent("Recovered.md", "mine", &error));
+    CHECK(error.find("already exists") != std::string::npos);
+    CHECK(read(destination) == "outside");
+    CHECK(fs::remove(destination));
+    CHECK(vault->createNoteWithContent("Recovered.md", "mine", &error));
+    CHECK(read(destination) == "mine");
+    CHECK(!vault->createNoteWithContent("Recovered.md", "again", &error));
+    CHECK(error.find("already exists") != std::string::npos);
+    CHECK(read(destination) == "mine");
+}
+
 void symlinkRefusal()
 {
     TempVault temp;
@@ -217,6 +236,7 @@ int main()
         fixtureDiscovery();
         editingAndEncoding();
         recoveryCreatesMissingNoteInExistingFolder();
+        recoveryNeverOverwritesReappearedNote();
         symlinkRefusal();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {
