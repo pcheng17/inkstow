@@ -16,7 +16,7 @@ include(cmake/CompilerOptions.cmake)
 # Standalone Qt-free note path; the Qt core remains available during migration.
 add_library(portable-core src/core/portable/Vault.cpp src/core/portable/VaultActions.cpp
                           src/core/portable/Trash.cpp src/core/portable/NoteInput.cpp
-                          src/core/portable/Session.cpp)
+                          src/core/portable/UnicodeCase.cpp src/core/portable/Session.cpp)
 target_include_directories(portable-core PUBLIC src/core/portable)
 target_link_libraries(portable-core PRIVATE inkstow-warnings)
 if(APPLE)

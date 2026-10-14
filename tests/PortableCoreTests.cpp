@@ -722,6 +722,19 @@ void sessionNoteActions()
     CHECK(session.getPath().empty() && fs::exists(trash.mPath / "Moved.md"));
 }
 
+void unicodeCasefoldedLinksSurviveMove()
+{
+    TempVault temp;
+    write(temp.mPath / "Caf\xC3\xA9.md", "target");
+    write(temp.mPath / "Source.md", "[[CAF\xC3\x89]]");
+    std::string error;
+    auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    CHECK(vault);
+    CHECK(vault->resolveWikilink("CAF\xC3\x89", "Source.md") == "Caf\xC3\xA9.md");
+    CHECK(vault->moveNote("Caf\xC3\xA9.md", "Renamed.md", "target", true, &error));
+    CHECK(read(temp.mPath / "Source.md") == "[[/Renamed]]");
+}
+
 void movePreflightRefusesUnsafeLinksAndPaths()
 {
     TempVault temp;
@@ -866,6 +879,7 @@ int main()
         sessionUsesDiscoveredCaseOnCaseInsensitiveVolumes();
         sessionFollowsAttachmentLinksSafely();
         movePreflightRefusesUnsafeLinksAndPaths();
+        unicodeCasefoldedLinksSurviveMove();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {
         std::cerr << failure.what() << "\n";

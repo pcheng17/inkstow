@@ -1,7 +1,7 @@
 #include "Vault.h"
+#include "UnicodeCase.h"
 
 #include <algorithm>
-#include <cctype>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -38,16 +38,15 @@ fs::path pathOf(const std::string& text)
 {
     return fs::path(std::u8string(text.begin(), text.end()));
 }
-std::string lower(std::string text)
+bool sameCase(const std::string& a, const std::string& b)
 {
-    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    return text;
+    const auto left = caseFoldUtf8(a);
+    const auto right = caseFoldUtf8(b);
+    return left && right && *left == *right;
 }
 bool markdown(const std::string& path)
 {
-    return path.size() >= 3 && lower(path.substr(path.size() - 3)) == ".md";
+    return path.size() >= 3 && sameCase(path.substr(path.size() - 3), ".md");
 }
 bool safeRelative(const std::string& path)
 {
@@ -108,15 +107,15 @@ std::optional<std::string> resolve(
         if (path.find('/') != std::string::npos) {
             if (!rootOnly)
                 for (const auto& file : found)
-                    if (lower(file) == lower(folder + spelling)) return file;
+                    if (sameCase(file, folder + spelling)) return file;
             for (const auto& file : found)
-                if (lower(file) == lower(spelling)) return file;
+                if (sameCase(file, spelling)) return file;
             continue;
         }
         if (rootOnly) continue;
         std::vector<std::string> matches;
         for (const auto& file : found)
-            if (lower(basename(file)) == lower(spelling)) matches.push_back(file);
+            if (sameCase(basename(file), spelling)) matches.push_back(file);
         if (matches.empty()) continue;
         std::sort(matches.begin(), matches.end(), [&](const auto& a, const auto& b) {
             const bool nearA = a.starts_with(folder);
@@ -147,7 +146,7 @@ bool unshadowedLinkPath(
     }
     const fs::directory_iterator end;
     while (!ec && siblings != end) {
-        if (lower(bytes(siblings->path().filename())) == lower(bytes(shadow.filename()))) {
+        if (sameCase(bytes(siblings->path().filename()), bytes(shadow.filename()))) {
             *error = "Cannot write an unambiguous extensionless link in " + note;
             return false;
         }
@@ -303,10 +302,9 @@ bool Vault::moveNote(
                     return false;
                 }
                 const auto bare = basename(link.substr(0, link.find_first_of("|#")));
-                const bool relevant = note == from || lower(bare) == lower(oldName) ||
-                                      lower(bare) == lower(newName) ||
-                                      lower(bare) == lower(oldName + ".md") ||
-                                      lower(bare) == lower(newName + ".md");
+                const bool relevant = note == from || sameCase(bare, oldName) ||
+                                      sameCase(bare, newName) || sameCase(bare, oldName + ".md") ||
+                                      sameCase(bare, newName + ".md");
                 output += text.substr(cursor, start - cursor);
                 if (relevant) {
                     if (link.find_first_of("|#") != std::string::npos || link.starts_with('.') ||
