@@ -34,7 +34,84 @@ if(APPLE)
   set_target_properties(inkstow PROPERTIES MACOSX_BUNDLE TRUE OUTPUT_NAME Inkstow)
 endif()
 
+# Qt-only builds can opt out before any WebKitGTK, npm or FetchContent discovery.
+option(INKSTOW_BUILD_WEBVIEW "Build the offline system-webview shell" ON)
+if(INKSTOW_BUILD_WEBVIEW)
+  # Pinned archives are downloaded only on first configure; builds use cached sources.
+  include(FetchContent)
+  FetchContent_Declare(webview
+    URL https://github.com/webview/webview/archive/refs/tags/0.12.0.tar.gz
+    URL_HASH SHA256=e2c8d0bed3fcd13e624074448b7d3b1d0b0d03546a15839f17ee0013f2cba1db
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  FetchContent_Declare(nlohmann_json
+    URL https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz
+    URL_HASH SHA256=4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  # Homebrew pkg-config on Linux may hide apt's WebKitGTK .pc files.
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND EXISTS "/usr/bin/pkg-config")
+    set(PKG_CONFIG_EXECUTABLE "/usr/bin/pkg-config" CACHE FILEPATH "System pkg-config" FORCE)
+  endif()
+  set(WEBVIEW_BUILD_STATIC_LIBRARY ON CACHE BOOL "Build webview for Inkstow" FORCE)
+  set(WEBVIEW_BUILD_SHARED_LIBRARY OFF CACHE BOOL "No shared webview library" FORCE)
+  FetchContent_MakeAvailable(webview nlohmann_json)
+
+  # Build the offline frontend before compiling the shell; keep generated assets out of the tree.
+  if(WIN32)
+    find_program(NPM_EXECUTABLE npm.cmd REQUIRED)
+    # MSBuild runs custom commands in a batch file; call returns to it after npm.cmd.
+    set(NPM_COMMAND cmd /c call "${NPM_EXECUTABLE}")
+  else()
+    find_program(NPM_EXECUTABLE npm REQUIRED)
+    set(NPM_COMMAND "${NPM_EXECUTABLE}")
+  endif()
+  find_program(NODE_EXECUTABLE node REQUIRED)
+  set(WEBVIEW_ASSET_DIR "${CMAKE_CURRENT_BINARY_DIR}/webview-assets")
+  file(MAKE_DIRECTORY "${WEBVIEW_ASSET_DIR}")
+  configure_file(src/webview/package.json "${WEBVIEW_ASSET_DIR}/package.json" COPYONLY)
+  configure_file(src/webview/package-lock.json "${WEBVIEW_ASSET_DIR}/package-lock.json" COPYONLY)
+  configure_file(src/webview/build.mjs "${WEBVIEW_ASSET_DIR}/build.mjs" COPYONLY)
+  configure_file(src/webview/editor.test.mjs "${WEBVIEW_ASSET_DIR}/editor.test.mjs" COPYONLY)
+  add_custom_command(OUTPUT "${WEBVIEW_ASSET_DIR}/installed.stamp"
+    COMMAND ${NPM_COMMAND} ci --ignore-scripts --no-audit --no-fund
+    COMMAND "${CMAKE_COMMAND}" -E touch "${WEBVIEW_ASSET_DIR}/installed.stamp"
+    WORKING_DIRECTORY "${WEBVIEW_ASSET_DIR}"
+    DEPENDS src/webview/package.json src/webview/package-lock.json
+    VERBATIM)
+  add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
+    COMMAND "${NODE_EXECUTABLE}" "${WEBVIEW_ASSET_DIR}/build.mjs"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/webview" "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
+    DEPENDS "${WEBVIEW_ASSET_DIR}/installed.stamp" src/webview/build.mjs
+            src/webview/index.html src/webview/editor.js src/webview/style.css
+    VERBATIM)
+  add_custom_target(webview-assets DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h")
+  add_library(webview-bridge src/webview/Bridge.cpp)
+  target_include_directories(webview-bridge PUBLIC src/webview)
+  target_link_libraries(webview-bridge PUBLIC portable-core nlohmann_json::nlohmann_json
+                                        PRIVATE inkstow-warnings)
+  if(APPLE)
+    enable_language(OBJCXX)
+    set(NAVIGATION_POLICY_SOURCE src/webview/NavigationPolicyMac.mm)
+  elseif(WIN32)
+    set(NAVIGATION_POLICY_SOURCE src/webview/NavigationPolicyWindows.cpp)
+  else()
+    set(NAVIGATION_POLICY_SOURCE src/webview/NavigationPolicyLinux.cpp)
+  endif()
+  add_executable(inkstow-webview src/webview/Main.cpp ${NAVIGATION_POLICY_SOURCE})
+  add_dependencies(inkstow-webview webview-assets)
+  target_include_directories(inkstow-webview PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+  target_link_libraries(inkstow-webview PRIVATE webview-bridge webview::core_static inkstow-warnings)
+  if(APPLE)
+    set_target_properties(inkstow-webview PROPERTIES MACOSX_BUNDLE TRUE
+                                                 OBJCXX_STANDARD 17
+                                                 OBJCXX_STANDARD_REQUIRED ON)
+  endif()
+endif() # INKSTOW_BUILD_WEBVIEW
+
 include(CTest)
 if(BUILD_TESTING)
+  if(INKSTOW_BUILD_WEBVIEW)
+    add_test(NAME webview-js-tests COMMAND "${NODE_EXECUTABLE}" --test editor.test.mjs
+             WORKING_DIRECTORY "${WEBVIEW_ASSET_DIR}")
+  endif()
   add_subdirectory(tests)
 endif()

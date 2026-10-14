@@ -10,7 +10,7 @@ usage() {
 install_apt() {
   if [[ $EUID -ne 0 ]]; then echo 'Run with sudo: sudo ./scripts/install --system' >&2; exit 1; fi
   if ! command -v apt-get >/dev/null; then echo 'Ubuntu/Debian apt is required for --system.' >&2; exit 1; fi
-  packages=(build-essential cmake qt6-base-dev qt6-base-dev-tools)
+  packages=(build-essential cmake qt6-base-dev qt6-base-dev-tools pkg-config libwebkit2gtk-4.1-dev nodejs npm)
   missing=()
   for pkg in "${packages[@]}"; do
     dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed' || missing+=("$pkg")
@@ -25,7 +25,7 @@ install_brew() {
   if [[ $EUID -eq 0 ]]; then echo 'Homebrew refuses to run as root: ./scripts/install --system' >&2; exit 1; fi
   if ! command -v brew >/dev/null; then echo 'Homebrew is required on macOS: https://brew.sh' >&2; exit 1; fi
   if ! xcode-select -p >/dev/null 2>&1; then echo 'Install a C++ compiler first: xcode-select --install' >&2; exit 1; fi
-  packages=(cmake qt)
+  packages=(cmake qt node)
   missing=()
   for pkg in "${packages[@]}"; do
     brew list --versions "$pkg" >/dev/null || missing+=("$pkg")
@@ -39,5 +39,5 @@ install_brew() {
 case "$(uname -s)" in
   Darwin) install_brew ;;
   Linux) install_apt ;;
-  *) echo 'Unsupported system; install CMake 3.21+, a C++20 compiler (see README), and Qt 6.4+ manually.' >&2; exit 1 ;;
+  *) echo 'Unsupported system; install CMake 3.21+, a C++20 compiler (see README), Qt 6.4+, and a system webview SDK manually.' >&2; exit 1 ;;
 esac
