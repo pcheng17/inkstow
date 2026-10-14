@@ -34,6 +34,38 @@ if(APPLE)
   set_target_properties(inkstow PROPERTIES MACOSX_BUNDLE TRUE OUTPUT_NAME Inkstow)
 endif()
 
+# The separate system-webview shell leaves the Qt application unchanged.
+# Pinned archives are downloaded only on first configure; builds use cached sources.
+include(FetchContent)
+FetchContent_Declare(webview
+  URL https://github.com/webview/webview/archive/refs/tags/0.12.0.tar.gz
+  URL_HASH SHA256=e2c8d0bed3fcd13e624074448b7d3b1d0b0d03546a15839f17ee0013f2cba1db
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_Declare(nlohmann_json
+  URL https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz
+  URL_HASH SHA256=4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+# Homebrew pkg-config on Linux may hide apt's WebKitGTK .pc files.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND EXISTS "/usr/bin/pkg-config")
+  set(PKG_CONFIG_EXECUTABLE "/usr/bin/pkg-config" CACHE FILEPATH "System pkg-config" FORCE)
+endif()
+set(WEBVIEW_BUILD_STATIC_LIBRARY ON CACHE BOOL "Build webview for Inkstow" FORCE)
+set(WEBVIEW_BUILD_SHARED_LIBRARY OFF CACHE BOOL "No shared webview library" FORCE)
+FetchContent_MakeAvailable(webview nlohmann_json)
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/webview/index.html" INKSTOW_LOCAL_HTML)
+configure_file(src/webview/LocalHtml.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h" @ONLY)
+add_library(webview-bridge src/webview/Bridge.cpp)
+target_include_directories(webview-bridge PUBLIC src/webview)
+target_link_libraries(webview-bridge PUBLIC portable-core nlohmann_json::nlohmann_json
+                                      PRIVATE inkstow-warnings)
+add_executable(inkstow-webview src/webview/Main.cpp)
+target_include_directories(inkstow-webview PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_link_libraries(inkstow-webview PRIVATE webview-bridge webview::core_static inkstow-warnings)
+if(APPLE)
+  set_target_properties(inkstow-webview PROPERTIES MACOSX_BUNDLE TRUE)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
   add_subdirectory(tests)

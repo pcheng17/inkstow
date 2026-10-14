@@ -20,8 +20,12 @@ target_link_libraries(portable-core-tests PRIVATE portable-core inkstow-warnings
 target_compile_definitions(portable-core-tests PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
 add_test(NAME portable-core-tests COMMAND portable-core-tests)
 
+add_executable(webview-bridge-tests EXCLUDE_FROM_ALL WebviewBridgeTests.cpp)
+target_link_libraries(webview-bridge-tests PRIVATE webview-bridge inkstow-warnings)
+add_test(NAME webview-bridge-tests COMMAND webview-bridge-tests)
+
 # Build headless tests without pulling in the widget tests.
-add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-tests)
+add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-tests webview-bridge-tests)
 
 # QTest delivers key presses through the shortcut map, as real typing does.
 find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
