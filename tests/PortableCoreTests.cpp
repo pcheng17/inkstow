@@ -618,6 +618,49 @@ void linkActions()
     CHECK(read(temp.mPath / "A" / "Source.md") == "[[Moved|alias]]");
 }
 
+void sessionNoteActions()
+{
+    TempVault temp;
+    write(temp.mPath / "Source.md", "[[Target]]");
+    write(temp.mPath / "Target.md", "target");
+    Session session;
+    std::string error;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Target.md", &error));
+    session.setContent("unsaved");
+    CHECK(!session.moveNote("Moved.md", true, &error));
+    CHECK(!session.trashNote(&error));
+    CHECK(!session.createNote("New.md", &error));
+    CHECK(read(temp.mPath / "Target.md") == "target");
+    session.discardEdits();
+    CHECK(session.moveNote("Moved.md", true, &error));
+    CHECK(session.getPath() == "Moved.md" && session.getContent() == "target");
+    CHECK(read(temp.mPath / "Source.md") == "[[/Moved]]");
+    CHECK(session.createNote("New.md", &error));
+    CHECK(session.getPath() == "New.md" && session.getContent().empty());
+    CHECK(!session.createNote("New.md", &error));
+    CHECK(session.selectNote("Source.md", &error));
+    CHECK(session.followWikilink("Moved", &error));
+    CHECK(session.getPath() == "Moved.md");
+    CHECK(!session.trashNote(
+        [](const fs::path&, std::string* reason) {
+            *reason = "Trash unavailable";
+            return false;
+        },
+        &error));
+    CHECK(session.getPath() == "Moved.md" && fs::exists(temp.mPath / "Moved.md"));
+    TempVault trash;
+    CHECK(session.trashNote(
+        [&](const fs::path& path, std::string* reason) {
+            std::error_code ec;
+            fs::rename(path, trash.mPath / "Moved.md", ec);
+            if (ec) *reason = ec.message();
+            return !ec;
+        },
+        &error));
+    CHECK(session.getPath().empty() && fs::exists(trash.mPath / "Moved.md"));
+}
+
 void trashRefusesWhenUnavailable()
 {
     TempVault temp;
@@ -720,6 +763,7 @@ int main()
         createAction();
         linkActions();
         trashRefusesWhenUnavailable();
+        sessionNoteActions();
         retryRechecksAndRefusals();
     } catch (const std::exception& failure) {
         std::cerr << failure.what() << "\n";

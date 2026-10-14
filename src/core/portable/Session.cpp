@@ -282,6 +282,118 @@ bool Session::mergeOutsideChanges(std::string* error)
     return true;
 }
 
+bool Session::requireClean(std::string* error) const
+{
+    if (!isDirty()) return true;
+    *error = "Save or discard your edits first.";
+    return false;
+}
+
+bool Session::refreshNotes(std::string* error)
+{
+    if (!mVault) {
+        *error = "Open a vault first.";
+        return false;
+    }
+    std::vector<std::string> notes;
+    if (!mVault->listNotes(&notes, error)) return false;
+    mNotes = std::move(notes);
+    return true;
+}
+
+bool Session::createNote(const std::string& relative, std::string* error)
+{
+    if (!requireClean(error)) return false;
+    if (!mVault) {
+        *error = "Open a vault first.";
+        return false;
+    }
+    const std::string path = relative.ends_with(".md") ? relative : relative + ".md";
+    if (!mVault->createNote(path, error)) return false;
+    if (!refreshNotes(error)) return false;
+    return selectNote(path, error);
+}
+
+bool Session::moveNote(const std::string& to, bool updateLinks, std::string* error)
+{
+    if (!mVault || mPath.empty()) {
+        *error = "Select a note first.";
+        return false;
+    }
+    if (!requireClean(error)) return false;
+    const std::string path = to.ends_with(".md") ? to : to + ".md";
+    const bool moved = mVault->moveNote(mPath, path, mSavedBytes, updateLinks, error);
+    const bool partial = !moved && error->starts_with("Move partially completed");
+    if (!moved && !partial) return false;
+    const std::string failure = *error;
+    mPath = path; // The rename succeeded, even if reloading a later rewrite fails.
+    std::string ignored;
+    refreshNotes(&ignored);
+    std::string current;
+    if (!mVault->readNote(path, &current, error) || !load(path, std::move(current), error)) {
+        *error = "Move partially completed; check the moved note: " + *error;
+        return false;
+    }
+    if (partial) *error = failure;
+    return moved;
+}
+
+bool Session::trashNote(const Vault::TrashFunction& trash, std::string* error)
+{
+    if (!mVault || mPath.empty()) {
+        *error = "Select a note first.";
+        return false;
+    }
+    if (!requireClean(error) || !mVault->trashNote(mPath, trash, error)) return false;
+    finishTrash();
+    return true;
+}
+
+bool Session::trashNote(std::string* error)
+{
+    if (!mVault || mPath.empty()) {
+        *error = "Select a note first.";
+        return false;
+    }
+    if (!requireClean(error) || !mVault->trashNote(mPath, error)) return false;
+    finishTrash();
+    return true;
+}
+
+void Session::finishTrash()
+{
+    std::string ignored;
+    if (!refreshNotes(&ignored)) std::erase(mNotes, mPath);
+    mPath.clear();
+    mContent.clear();
+    mSavedContent.clear();
+    mSavedBytes.clear();
+    mConflictBytes.reset();
+    mHasBom = false;
+}
+
+bool Session::followWikilink(const std::string& link, std::string* error)
+{
+    if (!mVault || mPath.empty()) {
+        *error = "Select a note first.";
+        return false;
+    }
+    const auto target = mVault->resolveWikilink(link, mPath);
+    if (!target || !target->ends_with(".md")) {
+        *error = "Link does not point to a supported Markdown note.";
+        return false;
+    }
+    if (!requireClean(error)) return false;
+    if (!refreshNotes(error)) return false;
+    return selectNote(*target, error);
+}
+
+std::optional<std::filesystem::path> Session::attachmentPath(const std::string& relative) const
+{
+    if (!mVault || mPath.empty() || isDirty()) return std::nullopt;
+    return mVault->attachmentPath(relative);
+}
+
 bool Session::saveAsNewNote(std::string* error)
 {
     if (!mVault || mPath.empty()) {
