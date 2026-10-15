@@ -278,6 +278,20 @@ test('dirty rendered navigation is refused and undo preserves source and CRLF by
   } finally { ui.dom.window.close(); }
 });
 
+test('empty wikilink labels stay visible and editable on inactive lines', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Start\n[[Target|]] and [[|Alias]]\nEnd') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent, '[[Target|]] and [[|Alias]]');
+    assert.equal(ui.document.querySelector('.cm-preview-link'), null);
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 4 },
+      changes: { from: view.state.doc.line(2).to, insert: ' more' } });
+    await ui.pause();
+    assert.equal(ui.calls.at(-1).content, 'Start\n[[Target|]] and [[|Alias]] more\nEnd');
+  } finally { ui.dom.window.close(); }
+});
+
 test('malformed links and code literals remain source, including after composition-style input', async () => {
   const ui = await setup({ 'Source.md': Buffer.from('Start\n`[[Hidden]]` [[broken] [x](bad url)\nEnd') });
   try {

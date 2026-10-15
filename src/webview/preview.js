@@ -40,8 +40,9 @@ export function sourceLinkAt(state, pos) {
     const from = line.from + match.index;
     if (pos < from || pos > from + match[0].length) continue;
     if (match[1]) {
-      const target = match[1].split('|', 1)[0];
-      if (target) return { kind: 'wiki', target };
+      const [target, alias, extra] = match[1].split('|');
+      if (target && extra === undefined && (alias === undefined || alias))
+        return { kind: 'wiki', target };
     } else {
       const kind = linkKind(match[3]);
       if (kind) return { kind, target: match[3] };
@@ -74,10 +75,10 @@ export function preview(view) {
     const from = match.index;
     const to = from + match[0].length;
     if (inCode(view.state, from + 2)) continue;
+    const [target, alias, extra] = match[1].split('|');
+    if (!target || extra !== undefined || (alias !== undefined && !alias)) continue;
     wikiRanges.push({ from, to });
     if (active(view, from, to)) continue;
-    const [target, alias] = match[1].split('|', 2);
-    if (!target) continue;
     const labelFrom = alias ? from + 2 + target.length + 1 : from + 2;
     add(from, labelFrom, hidden);
     add(labelFrom, to - 2, Decoration.mark({ class: 'cm-preview-link', attributes: { 'data-kind': 'wiki', 'data-target': target } }));
