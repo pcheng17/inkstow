@@ -31,8 +31,8 @@ let queue = Promise.resolve();
 function showError(message) {
   const text = missingVaultError && message !== missingVaultError
     ? [missingVaultError, message].filter(Boolean).join('\n') : message;
-  error.textContent = text;
-  error.hidden = !text;
+  if (error.textContent !== text) error.textContent = text;
+  if (error.hidden !== !text) error.hidden = !text;
 }
 
 function showReplyError(reply, fallback) {
@@ -49,32 +49,46 @@ function request(operation) {
   return result.catch((failure) => ({ ok: false, error: String(failure) }));
 }
 
+function setBoolean(element, property, value) {
+  if (element[property] !== value) element[property] = value;
+}
+
 function render() {
-  title.textContent = snapshot.path || 'No note selected';
-  dirty.hidden = !(snapshot.dirty || syncFailed || (snapshot.path && view.state.sliceDoc() !== snapshot.content));
-  document.querySelector('#conflict').hidden = snapshot.change !== 'conflict';
-  document.querySelector('#missing').hidden = snapshot.change !== 'missing';
-  for (const button of document.querySelectorAll('.decision button')) button.disabled = locked;
-  saveButton.disabled = locked || mixedLineEndings || !snapshot.path;
-  undoButton.disabled = locked || mixedLineEndings || !snapshot.path;
-  folder.disabled = locked;
-  form.querySelector('button').disabled = locked;
-  document.querySelector('#pick-vault').disabled = locked;
-  document.querySelector('#create-form button').disabled = locked;
+  const label = snapshot.path || 'No note selected';
+  if (title.textContent !== label) title.textContent = label;
+  setBoolean(dirty, 'hidden', !(snapshot.dirty || syncFailed ||
+    (snapshot.path && view.state.sliceDoc() !== snapshot.content)));
+  setBoolean(document.querySelector('#conflict'), 'hidden', snapshot.change !== 'conflict');
+  setBoolean(document.querySelector('#missing'), 'hidden', snapshot.change !== 'missing');
+  for (const button of document.querySelectorAll('.decision button')) setBoolean(button, 'disabled', locked);
+  setBoolean(saveButton, 'disabled', locked || mixedLineEndings || !snapshot.path);
+  setBoolean(undoButton, 'disabled', locked || mixedLineEndings || !snapshot.path);
+  setBoolean(folder, 'disabled', locked);
+  setBoolean(form.querySelector('button'), 'disabled', locked);
+  setBoolean(document.querySelector('#pick-vault'), 'disabled', locked);
+  setBoolean(document.querySelector('#create-form button'), 'disabled', locked);
   for (const id of ['move', 'trash', 'follow', 'open-attachment']) {
-    document.querySelector(`#${id}`).disabled = locked || !snapshot.path;
+    setBoolean(document.querySelector(`#${id}`), 'disabled', locked || !snapshot.path);
   }
-  notes.replaceChildren(...snapshot.notes.map((path) => {
-    const item = document.createElement('li');
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = path;
-    button.setAttribute('aria-current', String(path === snapshot.path));
-    button.disabled = locked;
-    button.addEventListener('click', () => changeNote(path));
-    item.append(button);
-    return item;
-  }));
+  const existing = new Map([...notes.children].map((item) => [item.firstElementChild.textContent, item]));
+  const paths = new Set(snapshot.notes);
+  for (const [path, item] of existing) if (!paths.has(path)) item.remove();
+  snapshot.notes.forEach((path, index) => {
+    let item = existing.get(path);
+    if (!item) {
+      item = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = path;
+      button.addEventListener('click', () => changeNote(path));
+      item.append(button);
+    }
+    const button = item.firstElementChild;
+    const selected = String(path === snapshot.path);
+    if (button.getAttribute('aria-current') !== selected) button.setAttribute('aria-current', selected);
+    setBoolean(button, 'disabled', locked);
+    if (notes.children[index] !== item) notes.insertBefore(item, notes.children[index] || null);
+  });
 }
 
 function newDocument(content) {
@@ -140,10 +154,10 @@ const view = new EditorView({ parent: document.querySelector('#editor') });
 newDocument('');
 render();
 
-function setLocked(value) {
+function setLocked(value, updateUi = true) {
   locked = value;
   view.dispatch({ effects: editable.reconfigure(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(snapshot.path))) });
-  render();
+  if (updateUi) render();
 }
 
 async function navigate(operation) {
@@ -221,12 +235,14 @@ const moveChoice = document.querySelector('#move-choice');
 const trashChoice = document.querySelector('#trash-choice');
 function dismissChoices() { moveChoice.hidden = true; trashChoice.hidden = true; }
 document.querySelector('#move').addEventListener('click', () => {
+  if (locked) return;
   dismissChoices();
   document.querySelector('#move-path').value = snapshot.path;
   moveChoice.hidden = false;
   document.querySelector('#move-path').focus();
 });
 document.querySelector('#trash').addEventListener('click', () => {
+  if (locked) return;
   dismissChoices();
   trashChoice.hidden = false;
   document.querySelector('#trash-confirm').focus();
@@ -235,12 +251,14 @@ document.querySelector('#move-cancel').addEventListener('click', dismissChoices)
 document.querySelector('#trash-cancel').addEventListener('click', dismissChoices);
 for (const [id, updateLinks] of [['move-with-links', true], ['move-without-links', false]]) {
   document.querySelector(`#${id}`).addEventListener('click', () => {
+    if (locked) return;
     const path = document.querySelector('#move-path').value;
     dismissChoices();
     noteAction({ operation: 'move', path, updateLinks }, 'Could not move note.');
   });
 }
 document.querySelector('#trash-confirm').addEventListener('click', () => {
+  if (locked) return;
   dismissChoices();
   noteAction({ operation: 'trash' }, 'Could not move note to trash.');
 });
@@ -303,7 +321,9 @@ async function resolve(operation) {
 
 async function refresh() {
   if (locked) return;
-  setLocked(true);
+  // Keep edits blocked while the bridge checks disk, but don't disable and redraw the
+  // entire UI for a background refresh that usually has nothing new to show.
+  setLocked(true, false);
   await queue;
   if (!syncFailed) {
     const reply = await request({ operation: 'refresh' });
@@ -313,7 +333,8 @@ async function refresh() {
     }
     showReplyError(reply, 'Could not check for outside changes.');
   }
-  setLocked(false);
+  setLocked(false, false);
+  render();
 }
 
 const quitPrompt = document.querySelector('#quit-prompt');

@@ -14,12 +14,14 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   const disk = new Map(Object.entries(initial));
   const calls = [];
   let notes = [];
+  let hasVault = false;
   let path = '';
   let content = '';
   let saved = '';
   let bom = false;
   let injectedError = '';
   let pendingSave;
+  let pendingRefresh;
   let exits = 0;
   let change = 'none';
   let dismissedMissing = false;
@@ -43,6 +45,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
       window.inkstowRequest = async (request) => {
         calls.push(request);
         if (request.operation === 'save' && pendingSave) await pendingSave;
+        if (request.operation === 'refresh' && pendingRefresh) await pendingRefresh;
         if (injectedError) {
           const message = injectedError; injectedError = '';
           if (message === 'Clean reload failed save') { content = saved = 'Outside'; change = 'reloaded'; }
@@ -53,11 +56,11 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
           case 'startup': return snapshot(!startupError, startupError);
           case 'pickVault':
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
-            notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
+            hasVault = true; notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
           case 'open':
             if (request.folder !== folder) return snapshot(false, 'Vault folder not found.');
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
-            notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
+            hasVault = true; notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
           case 'list': return snapshot(true);
           case 'follow':
             if (content !== saved) return snapshot(false, 'Save or discard your edits first.');
@@ -120,6 +123,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             if (content !== saved) dismissedMissing = false;
             return snapshot(true);
           case 'refresh': {
+            if (!hasVault) return snapshot(true);
             notes = [...disk.keys()].sort();
             if (!path) return snapshot(true);
             const current = disk.get(path);
@@ -200,6 +204,11 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
     delaySave: () => {
       let release;
       pendingSave = new Promise((resolve) => { release = resolve; });
+      return release;
+    },
+    delayRefresh: () => {
+      let release;
+      pendingRefresh = new Promise((resolve) => { release = resolve; });
       return release;
     } };
 }
@@ -577,15 +586,113 @@ test('quit offers cancel, save and discard; conflict and failed save keep edits'
   } finally { ui.dom.window.close(); }
 });
 
+test('unchanged refresh leaves the empty window and note view untouched', async () => {
+  const ui = await setup();
+  try {
+    for (const selected of [false, true]) {
+      if (selected) { await ui.open(); await ui.select('BOM.md'); }
+      const button = ui.document.querySelector('#notes button');
+      const editor = ui.document.querySelector('.cm-editor');
+      const mutations = [];
+      const observer = new ui.dom.window.MutationObserver((changes) => mutations.push(...changes));
+      observer.observe(ui.document.body, { attributes: true, childList: true, subtree: true, characterData: true });
+      await ui.dom.window.inkstowRefresh();
+      await ui.pause();
+      observer.disconnect();
+      assert.equal(ui.calls.at(-1).operation, 'refresh');
+      // The editor briefly toggles contenteditable while the bridge request is in flight.
+      assert.deepEqual(mutations.filter((change) => !change.target.closest?.('.cm-editor'))
+        .map((change) => `${change.target.id || change.target.tagName}:${change.type}`), []);
+      assert.equal(ui.document.querySelector('#notes button'), button);
+      assert.equal(ui.document.querySelector('.cm-editor'), editor);
+    }
+  } finally { ui.dom.window.close(); }
+});
+
+test('background refresh blocks note actions without visually disabling the window', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md');
+    const release = ui.delayRefresh();
+    const refreshing = ui.dom.window.inkstowRefresh();
+    await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'refresh');
+    assert.equal(ui.document.querySelector('#move').disabled, false);
+    ui.document.querySelector('#move').click();
+    ui.document.querySelector('#trash').click();
+    assert.equal(ui.document.querySelector('#move-choice').hidden, true);
+    assert.equal(ui.document.querySelector('#trash-choice').hidden, true);
+    release(); await refreshing;
+    ui.document.querySelector('#move').click();
+    assert.equal(ui.document.querySelector('#move-choice').hidden, false);
+    const releaseAgain = ui.delayRefresh();
+    const refreshingAgain = ui.dom.window.inkstowRefresh();
+    await ui.pause();
+    ui.document.querySelector('#move-with-links').click();
+    assert.equal(ui.document.querySelector('#move-choice').hidden, false);
+    assert.equal(ui.calls.filter((call) => call.operation === 'move').length, 0);
+    releaseAgain(); await refreshingAgain;
+  } finally { ui.dom.window.close(); }
+});
+
 test('focus refresh discovers outside folder changes without a selected note', async () => {
   const ui = await setup();
   try {
     await ui.open();
+    const existing = ui.document.querySelector('#notes button');
     ui.disk.set('Outside.md', Buffer.from('Outside'));
     ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus'));
     await ui.pause();
     assert.deepEqual([...ui.document.querySelectorAll('#notes button')].map((b) => b.textContent),
       ['BOM.md', 'Other.md', 'Outside.md']);
+    assert.equal(ui.document.querySelector('#notes button'), existing);
+  } finally { ui.dom.window.close(); }
+});
+
+test('refresh adds a note without replacing the selected note or editor', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md');
+    const existing = ui.document.querySelector('#notes button');
+    const editor = ui.document.querySelector('.cm-editor');
+    ui.disk.set('Outside.md', Buffer.from('New note'));
+    await ui.dom.window.inkstowRefresh();
+    assert.deepEqual([...ui.document.querySelectorAll('#notes button')].map((b) => b.textContent),
+      ['BOM.md', 'Other.md', 'Outside.md']);
+    assert.equal(ui.document.querySelector('#notes button'), existing);
+    assert.equal(ui.document.querySelector('.cm-editor'), editor);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Hello');
+  } finally { ui.dom.window.close(); }
+});
+
+test('refresh removes only a deleted note from the list', async () => {
+  const ui = await setup();
+  try {
+    await ui.open();
+    const remaining = ui.document.querySelector('#notes button');
+    ui.disk.delete('Other.md');
+    await ui.dom.window.inkstowRefresh();
+    assert.deepEqual([...ui.document.querySelectorAll('#notes button')].map((b) => b.textContent), ['BOM.md']);
+    assert.equal(ui.document.querySelector('#notes button'), remaining);
+  } finally { ui.dom.window.close(); }
+});
+
+test('refresh removes an early note without moving surviving buttons', async () => {
+  const ui = await setup();
+  try {
+    await ui.open();
+    const survivor = ui.document.querySelectorAll('#notes button')[1];
+    const moved = [];
+    const observer = new ui.dom.window.MutationObserver((changes) => {
+      for (const change of changes) moved.push(...change.addedNodes);
+    });
+    observer.observe(ui.document.querySelector('#notes'), { childList: true });
+    ui.disk.delete('BOM.md');
+    await ui.dom.window.inkstowRefresh();
+    observer.disconnect();
+    assert.deepEqual([...ui.document.querySelectorAll('#notes button')].map((b) => b.textContent), ['Other.md']);
+    assert.equal(ui.document.querySelector('#notes button'), survivor);
+    assert.deepEqual(moved, []);
   } finally { ui.dom.window.close(); }
 });
 
