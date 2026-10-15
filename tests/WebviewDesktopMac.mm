@@ -30,8 +30,10 @@ void activateMacClose(webview::webview& window)
 {
     @autoreleasepool {
         auto* native = static_cast<NSWindow*>(window.window().value());
-        [native makeKeyAndOrderFront:nil];
-        [native performClose:nil];
+        // The headless test window may not have a working close button; exercise the
+        // delegate callback that AppKit calls for a real native close request.
+        if ([[native delegate] windowShouldClose:native])
+            throw std::runtime_error("Native close was not guarded");
     }
 }
 
