@@ -161,6 +161,14 @@ int run()
     window.eval("document.querySelector('#save').click()");
     pumpFor(std::chrono::milliseconds(350));
     check(bytes(note) == "Outside", "Stale save replaced outside file");
+    window.eval(
+        "probe(JSON.stringify({error:document.querySelector('#error').textContent,"
+        "text:document.querySelector('.cm-content').textContent}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("Mine") != std::string::npos &&
+            observed.find("changed on disk") != std::string::npos,
+        "Stale save did not explain the conflict or retain unsaved text");
     window.eval("document.querySelector('#merge').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
@@ -172,6 +180,14 @@ int run()
             observed.find("Outside") != std::string::npos &&
             observed.find("\\\"dirty\\\":true") != std::string::npos,
         "Merge did not show editable unsaved markers");
+    window.eval(
+        "{const editor=document.querySelector('#editor [contenteditable=true]');"
+        "editor.focus();document.execCommand('selectAll');"
+        "document.execCommand('insertText',false,'Resolved merge');}");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("probe(document.querySelector('.cm-content').textContent)");
+    pumpFor(std::chrono::milliseconds(150));
+    check(observed.find("Resolved merge") != std::string::npos, "Merge markers were not editable");
     fs::remove(note);
     window.eval("window.dispatchEvent(new Event('focus'));");
     pumpFor(std::chrono::milliseconds(350));
@@ -181,8 +197,8 @@ int run()
     pumpFor(std::chrono::milliseconds(150));
     check(
         observed.find("\\\"missing\\\":true") != std::string::npos &&
-            observed.find("<<<<<<< mine") != std::string::npos,
-        "Missing note lost merged edits");
+            observed.find("Resolved merge") != std::string::npos,
+        "Missing note lost resolved merge edits");
     put(note, "Reappeared");
     window.eval("document.querySelector('#save-as-new').click()");
     pumpFor(std::chrono::milliseconds(350));
@@ -192,7 +208,7 @@ int run()
         "text:document.querySelector('.cm-content').textContent}));");
     pumpFor(std::chrono::milliseconds(150));
     check(
-        observed.find("<<<<<<< mine") != std::string::npos &&
+        observed.find("Resolved merge") != std::string::npos &&
             observed.find("error") != std::string::npos &&
             observed.find("exists") != std::string::npos,
         "Refused recovery did not explain error or retain editor text");
@@ -200,8 +216,8 @@ int run()
     window.eval("document.querySelector('#save-as-new').click()");
     pumpFor(std::chrono::milliseconds(350));
     check(
-        bytes(note).find("<<<<<<< mine") != std::string::npos,
-        "Recovery did not save unsaved text as a new note");
+        bytes(note) == "Resolved merge",
+        "Recovery did not save resolved merge text as a new note");
     window.eval("probe(JSON.stringify({dirty:!document.querySelector('#dirty').hidden}));");
     pumpFor(std::chrono::milliseconds(150));
     check(
