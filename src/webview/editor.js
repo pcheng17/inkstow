@@ -10,15 +10,19 @@ const notes = document.querySelector('#notes');
 const title = document.querySelector('#title');
 const dirty = document.querySelector('#dirty');
 const error = document.querySelector('#error');
+const busy = document.querySelector('#busy');
+const quitPrompt = document.querySelector('#quit-prompt');
 const saveButton = document.querySelector('#save');
 const undoButton = document.querySelector('#undo');
 const editable = new Compartment();
 let snapshot = { notes: [], path: '', content: '', dirty: false };
 let locked = false;
+let controlsLocked = false;
 let mixedLineEndings = false;
 let syncFailed = false;
 let missingVaultError = '';
 let composing = false;
+let busyTimer;
 
 const mixedEndingsError = 'This note has mixed CRLF, LF, or CR line endings. Editing and saving are disabled to preserve its bytes (see #63).';
 
@@ -31,8 +35,8 @@ let queue = Promise.resolve();
 function showError(message) {
   const text = missingVaultError && message !== missingVaultError
     ? [missingVaultError, message].filter(Boolean).join('\n') : message;
-  error.textContent = text;
-  error.hidden = !text;
+  if (error.textContent !== text) error.textContent = text;
+  if (error.hidden !== !text) error.hidden = !text;
 }
 
 function showReplyError(reply, fallback) {
@@ -49,32 +53,46 @@ function request(operation) {
   return result.catch((failure) => ({ ok: false, error: String(failure) }));
 }
 
+function setBoolean(element, property, value) {
+  if (element[property] !== value) element[property] = value;
+}
+
 function render() {
-  title.textContent = snapshot.path || 'No note selected';
-  dirty.hidden = !(snapshot.dirty || syncFailed || (snapshot.path && view.state.sliceDoc() !== snapshot.content));
-  document.querySelector('#conflict').hidden = snapshot.change !== 'conflict';
-  document.querySelector('#missing').hidden = snapshot.change !== 'missing';
-  for (const button of document.querySelectorAll('.decision button')) button.disabled = locked;
-  saveButton.disabled = locked || mixedLineEndings || !snapshot.path;
-  undoButton.disabled = locked || mixedLineEndings || !snapshot.path;
-  folder.disabled = locked;
-  form.querySelector('button').disabled = locked;
-  document.querySelector('#pick-vault').disabled = locked;
-  document.querySelector('#create-form button').disabled = locked;
+  const label = snapshot.path || 'No note selected';
+  if (title.textContent !== label) title.textContent = label;
+  setBoolean(dirty, 'hidden', !(snapshot.dirty || syncFailed ||
+    (snapshot.path && view.state.sliceDoc() !== snapshot.content)));
+  setBoolean(document.querySelector('#conflict'), 'hidden', snapshot.change !== 'conflict');
+  setBoolean(document.querySelector('#missing'), 'hidden', snapshot.change !== 'missing');
+  for (const button of document.querySelectorAll('.decision button')) setBoolean(button, 'disabled', controlsLocked);
+  setBoolean(saveButton, 'disabled', controlsLocked || mixedLineEndings || !snapshot.path);
+  setBoolean(undoButton, 'disabled', controlsLocked || mixedLineEndings || !snapshot.path);
+  setBoolean(folder, 'disabled', controlsLocked);
+  setBoolean(form.querySelector('button'), 'disabled', controlsLocked);
+  setBoolean(document.querySelector('#pick-vault'), 'disabled', controlsLocked);
+  setBoolean(document.querySelector('#create-form button'), 'disabled', controlsLocked);
   for (const id of ['move', 'trash']) {
-    document.querySelector(`#${id}`).disabled = locked || !snapshot.path;
+    setBoolean(document.querySelector(`#${id}`), 'disabled', controlsLocked || !snapshot.path);
   }
-  notes.replaceChildren(...snapshot.notes.map((path) => {
-    const item = document.createElement('li');
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = path;
-    button.setAttribute('aria-current', String(path === snapshot.path));
-    button.disabled = locked;
-    button.addEventListener('click', () => changeNote(path));
-    item.append(button);
-    return item;
-  }));
+  const existing = new Map([...notes.children].map((item) => [item.firstElementChild.textContent, item]));
+  const paths = new Set(snapshot.notes);
+  for (const [path, item] of existing) if (!paths.has(path)) item.remove();
+  snapshot.notes.forEach((path, index) => {
+    let item = existing.get(path);
+    if (!item) {
+      item = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = path;
+      button.addEventListener('click', () => changeNote(path));
+      item.append(button);
+    }
+    const button = item.firstElementChild;
+    const selected = String(path === snapshot.path);
+    if (button.getAttribute('aria-current') !== selected) button.setAttribute('aria-current', selected);
+    setBoolean(button, 'disabled', controlsLocked);
+    if (notes.children[index] !== item) notes.insertBefore(item, notes.children[index] || null);
+  });
 }
 
 function newDocument(content) {
@@ -140,15 +158,31 @@ const view = new EditorView({ parent: document.querySelector('#editor') });
 newDocument('');
 render();
 
-function setLocked(value) {
+function setLocked(value, updateUi = true) {
   locked = value;
+  // Only modal locks visually disable controls. Bridge work blocks competing actions
+  // and editing without making every button flash gray on an unrelated render().
+  controlsLocked = value && updateUi;
+  if (!value) {
+    window.clearTimeout(busyTimer);
+    if (busy.textContent) busy.textContent = '';
+  }
   view.dispatch({ effects: editable.reconfigure(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(snapshot.path))) });
-  render();
+  if (updateUi) render();
+}
+
+function lockForAction() {
+  setLocked(true, false);
+  // Fast bridge replies need no indicator; slow ones should explain why clicks wait.
+  busyTimer = window.setTimeout(() => { if (locked) busy.textContent = 'Working…'; }, 150);
 }
 
 async function navigate(operation) {
   if (locked) return;
-  setLocked(true);
+  // Ignore competing actions and pause editor input without dimming every control.
+  // The new note replaces the visible one only after the bridge replies.
+  if (operation.operation === 'startup') setLocked(true, false);
+  else lockForAction();
   await queue;
   if (syncFailed) {
     showError('Unsaved text was not accepted by the bridge; edit it again before switching notes.');
@@ -188,7 +222,7 @@ function followLink(kind, target) {
 
 async function noteAction(operation, fallback) {
   if (locked) return;
-  setLocked(true);
+  lockForAction();
   await queue;
   if (syncFailed) {
     showError('Unsaved text was not accepted by the bridge; edit it again before continuing.');
@@ -221,12 +255,14 @@ const moveChoice = document.querySelector('#move-choice');
 const trashChoice = document.querySelector('#trash-choice');
 function dismissChoices() { moveChoice.hidden = true; trashChoice.hidden = true; }
 document.querySelector('#move').addEventListener('click', () => {
+  if (locked) return;
   dismissChoices();
   document.querySelector('#move-path').value = snapshot.path;
   moveChoice.hidden = false;
   document.querySelector('#move-path').focus();
 });
 document.querySelector('#trash').addEventListener('click', () => {
+  if (locked) return;
   dismissChoices();
   trashChoice.hidden = false;
   document.querySelector('#trash-confirm').focus();
@@ -235,12 +271,14 @@ document.querySelector('#move-cancel').addEventListener('click', dismissChoices)
 document.querySelector('#trash-cancel').addEventListener('click', dismissChoices);
 for (const [id, updateLinks] of [['move-with-links', true], ['move-without-links', false]]) {
   document.querySelector(`#${id}`).addEventListener('click', () => {
+    if (locked) return;
     const path = document.querySelector('#move-path').value;
     dismissChoices();
     noteAction({ operation: 'move', path, updateLinks }, 'Could not move note.');
   });
 }
 document.querySelector('#trash-confirm').addEventListener('click', () => {
+  if (locked) return;
   dismissChoices();
   noteAction({ operation: 'trash' }, 'Could not move note to trash.');
 });
@@ -261,7 +299,8 @@ form.addEventListener('submit', (event) => {
 async function save() {
   if (mixedLineEndings) { showError(mixedEndingsError); return; }
   if (locked || !snapshot.path) return;
-  setLocked(true);
+  if (quitPrompt.hidden) lockForAction();
+  else setLocked(true); // Keep the modal lock while Save and quit is in flight.
   await queue;
   if (syncFailed) {
     showError('Unsaved text was not accepted by the bridge; edit it again before saving.');
@@ -280,7 +319,7 @@ async function save() {
 
 async function resolve(operation) {
   if (locked || !snapshot.path) return;
-  setLocked(true);
+  lockForAction();
   await queue;
   if (syncFailed) {
     showError('Unsaved text was not accepted by the bridge; edit it again before resolving.');
@@ -298,7 +337,9 @@ async function resolve(operation) {
 
 async function refresh() {
   if (locked) return;
-  setLocked(true);
+  // Keep edits blocked while the bridge checks disk, but don't disable and redraw the
+  // entire UI for a background refresh that usually has nothing new to show.
+  setLocked(true, false);
   await queue;
   if (!syncFailed) {
     const reply = await request({ operation: 'refresh' });
@@ -308,10 +349,10 @@ async function refresh() {
     }
     showReplyError(reply, 'Could not check for outside changes.');
   }
-  setLocked(false);
+  setLocked(false, false);
+  render();
 }
 
-const quitPrompt = document.querySelector('#quit-prompt');
 let quitAttempt = 0;
 window.inkstowAskQuit = async () => {
   const attempt = quitAttempt;
@@ -334,7 +375,7 @@ document.querySelector('#quit-discard').addEventListener('click', () => window.i
 document.querySelector('#quit-save').addEventListener('click', async () => {
   if (quitPrompt.hidden) return;
   const attempt = quitAttempt;
-  setLocked(false);
+  setLocked(false, false); // Let save run without briefly re-enabling controls behind the prompt.
   const saved = await save();
   if (attempt !== quitAttempt) return;
   if (saved && !syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) {
