@@ -60,6 +60,10 @@ int main() // NOLINT(bugprone-exception-escape)
         std::string mLast;
         std::string mPicked;
         std::string mOpenedAttachment;
+        std::string mWatchingVault;
+        std::string mWatchingNote;
+        void watchVault(const std::string& folder) override { mWatchingVault = folder; }
+        void watchNote(const std::string& note) override { mWatchingNote = note; }
         bool openAttachment(const std::filesystem::path& path) override
         {
             mOpenedAttachment = pathBytes(path);
@@ -90,6 +94,7 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation", "pickVault"}
     })["ok"] == true);
     CHECK(shell.mLast == pathBytes(root));
+    CHECK(shell.mWatchingVault == pathBytes(root));
     CHECK(
         request(
             bridge,
@@ -152,6 +157,7 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation", "select"},
                 {     "path", "BOM.md"}
     })["content"] == "Original");
+    CHECK(shell.mWatchingNote == "BOM.md");
     {
         std::ofstream attachment(root / "image.png");
         attachment << "image";

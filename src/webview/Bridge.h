@@ -23,6 +23,8 @@ public:
     // Empty means the picker was cancelled.
     virtual std::string pickVault() = 0;
     virtual bool openAttachment(const std::filesystem::path& path) = 0;
+    virtual void watchVault(const std::string& folder) = 0;
+    virtual void watchNote(const std::string& note) = 0;
 };
 
 // Accepts the JSON argument array supplied by webview_bind, returns a JSON object.

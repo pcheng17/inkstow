@@ -77,6 +77,7 @@ std::string Bridge::handle(const std::string& arguments)
                         success = true;
                     } else {
                         success = mSession.openVault(folder, &error);
+                        if (success) mServices->watchVault(folder);
                         if (!success)
                             error = "Could not reopen last vault (" + folder + "): " + error;
                     }
@@ -91,7 +92,10 @@ std::string Bridge::handle(const std::string& arguments)
                         error = "Folder selection cancelled.";
                     } else {
                         success = mSession.openVault(folder, &error);
-                        if (success) mServices->setLastVault(folder);
+                        if (success) {
+                            mServices->setLastVault(folder);
+                            mServices->watchVault(folder);
+                        }
                     }
                 } else if (
                     operation == "open" && hasFields(request, {"operation", "folder"}) &&
@@ -99,8 +103,11 @@ std::string Bridge::handle(const std::string& arguments)
                 {
                     success = mSession.openVault(request.at("folder").get<std::string>(), &error);
                     if (success) {
-                        if (mServices)
-                            mServices->setLastVault(request.at("folder").get<std::string>());
+                        if (mServices) {
+                            const auto folder = request.at("folder").get<std::string>();
+                            mServices->setLastVault(folder);
+                            mServices->watchVault(folder);
+                        }
                         mChange = portable::DiskChange::None;
                         mDismissedMissing = false;
                     }
@@ -120,7 +127,10 @@ std::string Bridge::handle(const std::string& arguments)
                                 error = "Could not open attachment in the default application.";
                         }
                     }
-                    if (success) mChange = portable::DiskChange::None;
+                    if (success) {
+                        mChange = portable::DiskChange::None;
+                        if (mServices) mServices->watchNote(mSession.getPath());
+                    }
                 } else if (operation == "list" && hasFields(request, {"operation"})) {
                     success = true;
                 } else if (
@@ -131,6 +141,7 @@ std::string Bridge::handle(const std::string& arguments)
                     if (success) {
                         mChange = portable::DiskChange::None;
                         mDismissedMissing = false;
+                        if (mServices) mServices->watchNote(mSession.getPath());
                     }
                 } else if (
                     operation == "edit" && hasFields(request, {"operation", "content"}) &&

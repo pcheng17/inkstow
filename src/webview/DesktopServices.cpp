@@ -33,6 +33,16 @@ std::string utf8FromWide(const wchar_t* text)
 } // namespace
 #endif
 
+void DesktopServices::watchVault(const std::string& folder)
+{
+    if (mWatcher)
+        mWatcher->open(std::filesystem::path(std::u8string(folder.begin(), folder.end())), {});
+}
+void DesktopServices::watchNote(const std::string& note)
+{
+    if (mWatcher) mWatcher->select(note);
+}
+
 std::filesystem::path DesktopServices::settingsFile()
 {
 #if defined(_WIN32)

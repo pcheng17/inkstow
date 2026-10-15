@@ -109,6 +109,9 @@ if(INKSTOW_BUILD_WEBVIEW)
   else()
     set(NAVIGATION_POLICY_SOURCE src/webview/NavigationPolicyLinux.cpp)
   endif()
+  add_library(webview-watch src/webview/VaultWatch.cpp)
+  target_include_directories(webview-watch PUBLIC src/webview)
+  target_link_libraries(webview-watch PRIVATE inkstow-warnings)
   add_executable(inkstow-webview src/webview/Main.cpp src/webview/DesktopServices.cpp
                                   ${NAVIGATION_POLICY_SOURCE})
   if(APPLE)
@@ -127,7 +130,7 @@ if(INKSTOW_BUILD_WEBVIEW)
   target_link_libraries(inkstow-webview PRIVATE ${DESKTOP_WINDOW_LIBRARIES})
   add_dependencies(inkstow-webview webview-assets)
   target_include_directories(inkstow-webview PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
-  target_link_libraries(inkstow-webview PRIVATE webview-bridge webview::core_static inkstow-warnings)
+  target_link_libraries(inkstow-webview PRIVATE webview-bridge webview-watch webview::core_static inkstow-warnings)
   if(APPLE)
     set_target_properties(inkstow-webview PROPERTIES MACOSX_BUNDLE TRUE
                                                  OBJCXX_STANDARD 17

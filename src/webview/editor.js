@@ -221,6 +221,7 @@ document.querySelector('#quit-save').addEventListener('click', async () => {
   }
 });
 
+window.inkstowRefresh = refresh;
 window.addEventListener('focus', refresh);
 window.setInterval(() => { if (!document.hidden) refresh(); }, 3000);
 for (const [id, operation] of [['reload', 'reload'], ['keep-mine', 'keepMine'], ['merge', 'merge'],
