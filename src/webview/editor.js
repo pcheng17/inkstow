@@ -2,6 +2,7 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, undo } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
+import { livePreview } from './preview.js';
 
 const folder = document.querySelector('#folder');
 const form = document.querySelector('#vault-form');
@@ -79,7 +80,7 @@ function newDocument(content) {
     extensions: [EditorState.lineSeparator.of(endings.separator), EditorState.readOnly.of(mixedLineEndings),
       history(), keymap.of([...historyKeymap, ...defaultKeymap]),
       keymap.of([{ key: 'Mod-s', run: () => { save(); return true; } }]),
-      markdown(), editable.of(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(snapshot.path))),
+      markdown(), livePreview, editable.of(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(snapshot.path))),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         const text = update.state.sliceDoc();

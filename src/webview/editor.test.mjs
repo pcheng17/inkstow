@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
+import { EditorView } from '@codemirror/view';
 
 const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
 const folder = '/tmp/inkstow-throwaway';
@@ -164,6 +165,31 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   return { dom, document, disk, opened, calls, open, select, type, pause,
     enableTrash: () => { trashAvailable = true; }, injectError: (message) => { injectedError = message; } };
 }
+
+test('inactive Markdown renders but selection across lines exposes source without changing saved bytes', async () => {
+  const source = '# Heading\n**bold** and *italic* with `code`\n- list\n> quote\n[broken](x';
+  const ui = await setup({ 'Note.md': Buffer.from(source) });
+  try {
+    await ui.open(); await ui.select('Note.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    assert.ok(view);
+    view.dispatch({ selection: { anchor: 0 } });
+    assert.equal(ui.document.querySelectorAll('.cm-line')[0].textContent, '# Heading');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent.includes('**'), false);
+    assert.ok(ui.document.querySelector('.cm-strong'));
+    assert.ok(ui.document.querySelector('.cm-emphasis'));
+    assert.ok(ui.document.querySelector('.cm-inline-code'));
+    assert.equal(ui.document.querySelectorAll('.cm-line')[2].textContent.includes('-'), false);
+    assert.equal(ui.document.querySelectorAll('.cm-line')[3].textContent.includes('>'), false);
+    assert.equal(ui.document.querySelectorAll('.cm-line')[4].textContent, '[broken](x');
+    view.dispatch({ selection: { anchor: 11, head: view.state.doc.line(3).from + 1 } });
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent, '**bold** and *italic* with `code`');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[2].textContent, '- list');
+    view.dispatch({ selection: { anchor: 0 } });
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(source));
+  } finally { ui.dom.window.close(); }
+});
 
 test('bundled editor has no remote runtime assets or links', () => {
   assert.match(html, /cm-editor/); // CodeMirror is bundled into the script, not imported at runtime.
