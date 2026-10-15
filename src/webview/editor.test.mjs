@@ -37,6 +37,10 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
         calls.push(request);
         if (injectedError) { const message = injectedError; injectedError = ''; return snapshot(false, message); }
         switch (request.operation) {
+          case 'startup': return snapshot(true);
+          case 'pickVault':
+            if (content !== saved) return snapshot(false, 'Unsaved changes.');
+            notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
           case 'open':
             if (request.folder !== folder) return snapshot(false, 'Vault folder not found.');
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
@@ -132,6 +136,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
     document.querySelector('.cm-content').dispatchEvent(new Event('input', { bubbles: true }));
     await pause();
   }
+  await pause(); // Let the initial last-vault lookup finish before driving controls.
   return { dom, document, disk, calls, open, select, type, pause, injectError: (message) => { injectedError = message; } };
 }
 
@@ -142,6 +147,19 @@ test('bundled editor has no remote runtime assets or links', () => {
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   assert.ok(html.includes(`script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'`));
   assert.doesNotMatch(html, /script-src 'unsafe-inline'/);
+});
+
+test('native picker opens vault and startup failure remains visible', async () => {
+  const ui = await setup();
+  try {
+    await ui.pause();
+    ui.document.querySelector('#pick-vault').click();
+    await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'pickVault');
+    assert.equal(ui.document.querySelectorAll('#notes button').length, 2);
+    // Startup is requested when the editor first loads, not on a button click.
+    assert.ok(ui.calls.some((call) => call.operation === 'startup'));
+  } finally { ui.dom.window.close(); }
 });
 
 test('open, edit, selection, undo and BOM-preserving save', async () => {

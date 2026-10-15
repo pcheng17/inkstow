@@ -54,6 +54,7 @@ function render() {
   undoButton.disabled = locked || mixedLineEndings || !snapshot.path;
   folder.disabled = locked;
   form.querySelector('button').disabled = locked;
+  document.querySelector('#pick-vault').disabled = locked;
   notes.replaceChildren(...snapshot.notes.map((path) => {
     const item = document.createElement('li');
     const button = document.createElement('button');
@@ -130,6 +131,8 @@ function changeNote(path) {
   if (path !== snapshot.path) navigate({ operation: 'select', path });
 }
 
+document.querySelector('#pick-vault').addEventListener('click', () => navigate({ operation: 'pickVault' }));
+
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   navigate({ operation: 'open', folder: folder.value });
@@ -195,6 +198,8 @@ for (const [id, operation] of [['reload', 'reload'], ['keep-mine', 'keepMine'], 
 }
 saveButton.addEventListener('click', save);
 undoButton.addEventListener('click', () => { if (!locked) undo(view); });
+navigate({ operation: 'startup' });
+
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
     event.preventDefault();

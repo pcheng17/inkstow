@@ -55,7 +55,59 @@ int main() // NOLINT(bugprone-exception-escape)
         std::ofstream output(root / "Second.md", std::ios::binary);
         output << "Second";
     }
-    inkstow::webview_shell::Bridge bridge;
+    struct Shell : inkstow::webview_shell::ShellServices
+    {
+        std::string mLast;
+        std::string mPicked;
+        std::string lastVault() override { return mLast; }
+        void setLastVault(const std::string& path) override { mLast = path; }
+        std::string pickVault() override { return mPicked; }
+    } shell;
+    inkstow::webview_shell::Bridge bridge(&shell);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "startup"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == false);
+    shell.mPicked = pathBytes(root);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == true);
+    CHECK(shell.mLast == pathBytes(root));
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "startup"}
+    })["notes"] == Json::array({"BOM.md", "Second.md"}));
+    shell.mLast = pathBytes(root / "missing");
+    inkstow::webview_shell::Bridge reopened(&shell);
+    const Json missingVault = request(
+        reopened,
+        {
+            {"operation", "startup"}
+    });
+    CHECK(missingVault["ok"] == false && missingVault["notes"].empty());
+    CHECK(missingVault["error"].get<std::string>().find("missing") != std::string::npos);
+    CHECK(shell.mLast == pathBytes(root / "missing"));
+    shell.mPicked.clear();
+    CHECK(
+        request(
+            reopened,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == false);
+    CHECK(shell.mLast == pathBytes(root / "missing"));
     CHECK(
         request(
             bridge,

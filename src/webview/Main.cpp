@@ -1,4 +1,5 @@
 #include "Bridge.h"
+#include "DesktopServices.h"
 #include "LocalHtml.h"
 #include "NavigationPolicy.h"
 #include "WebviewHeader.h"
@@ -10,7 +11,8 @@
 int main()
 {
     try {
-        inkstow::webview_shell::Bridge bridge;
+        inkstow::webview_shell::DesktopServices services;
+        inkstow::webview_shell::Bridge bridge(&services);
         webview::webview window(false, nullptr);
         window.set_title("Inkstow");
         window.set_size(960, 720, WEBVIEW_HINT_NONE);

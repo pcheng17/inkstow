@@ -71,11 +71,33 @@ std::string Bridge::handle(const std::string& arguments)
             } else {
                 const Json& request = args[0];
                 const std::string operation = request.at("operation").get<std::string>();
-                if (operation == "open" && hasFields(request, {"operation", "folder"}) &&
+                if (operation == "startup" && hasFields(request, {"operation"}) && mServices) {
+                    const std::string folder = mServices->lastVault();
+                    if (folder.empty()) {
+                        success = true;
+                    } else {
+                        success = mSession.openVault(folder, &error);
+                        if (!success)
+                            error = "Could not reopen last vault (" + folder + "): " + error;
+                    }
+                } else if (
+                    operation == "pickVault" && hasFields(request, {"operation"}) && mServices)
+                {
+                    const std::string folder = mServices->pickVault();
+                    if (folder.empty()) {
+                        error = "Folder selection cancelled.";
+                    } else {
+                        success = mSession.openVault(folder, &error);
+                        if (success) mServices->setLastVault(folder);
+                    }
+                } else if (
+                    operation == "open" && hasFields(request, {"operation", "folder"}) &&
                     stringField(request, "folder", 4096))
                 {
                     success = mSession.openVault(request.at("folder").get<std::string>(), &error);
                     if (success) {
+                        if (mServices)
+                            mServices->setLastVault(request.at("folder").get<std::string>());
                         mChange = portable::DiskChange::None;
                         mDismissedMissing = false;
                     }
