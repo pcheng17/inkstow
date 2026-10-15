@@ -17,9 +17,25 @@
     </form>
   </header>
   <main>
-    <aside aria-label="Notes"><h2>Notes</h2><ul id="notes"></ul></aside>
+    <aside aria-label="Notes"><h2>Notes</h2>
+      <form id="create-form"><label for="new-path">New note path</label><input id="new-path" required autocomplete="off"><button type="submit">Create note</button></form>
+      <ul id="notes"></ul>
+    </aside>
     <section id="workspace" aria-label="Editor">
-      <div class="toolbar"><span id="title">No note selected</span><span id="dirty" aria-label="Unsaved changes" hidden>● Unsaved</span><button id="undo" type="button" disabled>Undo</button><button id="save" type="button" disabled>Save</button></div>
+      <div class="toolbar"><span id="title">No note selected</span><span id="dirty" aria-label="Unsaved changes" hidden>● Unsaved</span><button id="undo" type="button" disabled>Undo</button><button id="save" type="button" disabled>Save</button><button id="move" type="button" disabled>Rename or move</button><button id="trash" type="button" disabled>Move to trash</button></div>
+      <div id="move-choice" class="decision" role="group" aria-label="Rename or move note" hidden>
+        <label for="move-path">New note path (existing folder)</label><input id="move-path" autocomplete="off">
+        <button id="move-with-links" type="button">Move and update links</button>
+        <button id="move-without-links" type="button">Move without updating links (links may break)</button>
+        <button id="move-cancel" type="button">Cancel move</button>
+      </div>
+      <div id="trash-choice" class="decision" role="group" aria-label="Confirm move to system trash" hidden>
+        <span>Move this note to system trash?</span><button id="trash-confirm" type="button">Confirm move to trash</button><button id="trash-cancel" type="button">Cancel trash</button>
+      </div>
+      <div id="link-actions" role="group" aria-label="Follow a wikilink">
+        <label for="link">Wikilink target (without brackets)</label><input id="link" autocomplete="off">
+        <button id="follow" type="button" disabled>Follow note link</button><button id="open-attachment" type="button" disabled>Open attachment</button>
+      </div>
       <p id="error" role="alert" hidden></p>
       <div id="conflict" class="decision" role="group" aria-label="Outside change" hidden>
         <span>This note changed outside Inkstow. Choose how to resolve your unsaved edits.</span>

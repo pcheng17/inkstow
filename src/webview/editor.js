@@ -54,6 +54,10 @@ function render() {
   undoButton.disabled = locked || mixedLineEndings || !snapshot.path;
   folder.disabled = locked;
   form.querySelector('button').disabled = locked;
+  document.querySelector('#create-form button').disabled = locked;
+  for (const id of ['move', 'trash', 'follow', 'open-attachment']) {
+    document.querySelector(`#${id}`).disabled = locked || !snapshot.path;
+  }
   notes.replaceChildren(...snapshot.notes.map((path) => {
     const item = document.createElement('li');
     const button = document.createElement('button');
@@ -128,6 +132,73 @@ async function navigate(operation) {
 
 function changeNote(path) {
   if (path !== snapshot.path) navigate({ operation: 'select', path });
+}
+
+async function noteAction(operation, fallback) {
+  if (locked) return;
+  setLocked(true);
+  await queue;
+  if (syncFailed) {
+    showError('Unsaved text was not accepted by the bridge; edit it again before continuing.');
+    setLocked(false);
+    return;
+  }
+  const reply = await request(operation);
+  if (reply.path !== snapshot.path || (reply.ok && reply.content !== snapshot.content)) {
+    snapshot = reply;
+    syncFailed = false;
+    newDocument(reply.content);
+  } else {
+    snapshot = reply;
+  }
+  showReplyError(reply, fallback);
+  setLocked(false);
+}
+
+const createForm = document.querySelector('#create-form');
+createForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  noteAction({ operation: 'create', path: document.querySelector('#new-path').value }, 'Could not create note.');
+});
+const moveChoice = document.querySelector('#move-choice');
+const trashChoice = document.querySelector('#trash-choice');
+function dismissChoices() { moveChoice.hidden = true; trashChoice.hidden = true; }
+document.querySelector('#move').addEventListener('click', () => {
+  dismissChoices();
+  document.querySelector('#move-path').value = snapshot.path;
+  moveChoice.hidden = false;
+  document.querySelector('#move-path').focus();
+});
+document.querySelector('#trash').addEventListener('click', () => {
+  dismissChoices();
+  trashChoice.hidden = false;
+  document.querySelector('#trash-confirm').focus();
+});
+document.querySelector('#move-cancel').addEventListener('click', dismissChoices);
+document.querySelector('#trash-cancel').addEventListener('click', dismissChoices);
+for (const [id, updateLinks] of [['move-with-links', true], ['move-without-links', false]]) {
+  document.querySelector(`#${id}`).addEventListener('click', () => {
+    const path = document.querySelector('#move-path').value;
+    dismissChoices();
+    noteAction({ operation: 'move', path, updateLinks }, 'Could not move note.');
+  });
+}
+document.querySelector('#trash-confirm').addEventListener('click', () => {
+  dismissChoices();
+  noteAction({ operation: 'trash' }, 'Could not move note to trash.');
+});
+for (const [id, operation] of [['follow', 'follow'], ['open-attachment', 'attachment']]) {
+  document.querySelector(`#${id}`).addEventListener('click', () => {
+    noteAction({ operation, link: document.querySelector('#link').value }, 'Could not follow link.');
+  });
+}
+for (const panel of [moveChoice, trashChoice]) {
+  panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); dismissChoices(); }
+    if (event.key === 'Enter' && panel === moveChoice && event.target.id === 'move-path') {
+      event.preventDefault(); document.querySelector('#move-with-links').click();
+    }
+  });
 }
 
 form.addEventListener('submit', (event) => {

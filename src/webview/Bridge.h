@@ -2,6 +2,8 @@
 
 #include "Session.h"
 
+#include <functional>
+#include <filesystem>
 #include <string>
 
 namespace inkstow::webview_shell
@@ -11,11 +13,15 @@ namespace inkstow::webview_shell
 class Bridge
 {
 public:
+    using OpenAttachment = std::function<bool(const std::filesystem::path&, std::string*)>;
+    explicit Bridge(OpenAttachment openAttachment = {}, portable::Vault::TrashFunction trash = {});
     std::string handle(const std::string& arguments);
 
 private:
     void syncWithDisk(std::string* error);
     portable::Session mSession;
+    OpenAttachment mOpenAttachment;
+    portable::Vault::TrashFunction mTrash;
     portable::DiskChange mChange = portable::DiskChange::None;
     // A dismissed missing-note decision stays hidden on focus refresh until new edits or disk
     // change.
