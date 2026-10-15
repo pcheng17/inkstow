@@ -338,6 +338,28 @@ int run()
     window.eval("document.querySelector('#quit-cancel').click()");
     pumpFor(std::chrono::milliseconds(150));
     check(!exited, "Cancel terminated the window");
+#if defined(_WIN32)
+    // The webview owns GetMessage; use the real queue so the thread's native accelerator hook runs.
+    BYTE originalKeys[256]{};
+    check(GetKeyboardState(originalKeys) != 0, "Could not read keyboard state");
+    BYTE shortcutKeys[256]{};
+    std::copy(std::begin(originalKeys), std::end(originalKeys), std::begin(shortcutKeys));
+    shortcutKeys[VK_CONTROL] |= 0x80;
+    check(SetKeyboardState(shortcutKeys) != 0, "Could not set keyboard state");
+    check(
+        PostMessageW(static_cast<HWND>(window.window().value()), WM_KEYDOWN, 'Q', 0) != 0,
+        "Could not queue Ctrl+Q");
+    pumpFor(std::chrono::milliseconds(350));
+    SetKeyboardState(originalKeys);
+    window.eval(
+        "probe(JSON.stringify({prompt:!document.querySelector('#quit-prompt').hidden,"
+        "text:document.querySelector('.cm-content').textContent}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("\\\"prompt\\\":true") != std::string::npos &&
+            observed.find("Quit draft") != std::string::npos && !exited,
+        "Native Ctrl+Q did not offer safe quit");
+#endif
     return 0;
 }
 

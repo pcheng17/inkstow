@@ -2,6 +2,9 @@
 
 #include <windows.h>
 
+#include <iterator>
+#include <stdexcept>
+
 namespace inkstow::webview_shell
 {
 namespace
@@ -11,6 +14,20 @@ constexpr UINT_PTR kSave = 1002;
 constexpr UINT_PTR kQuit = 1003;
 constexpr UINT_PTR kUndo = 1004;
 constexpr UINT_PTR kFollow = 1005;
+
+LRESULT CALLBACK acceleratorHook(int code, WPARAM wparam, LPARAM lparam)
+{
+    if (code == HC_ACTION && wparam == PM_REMOVE) {
+        auto* message = reinterpret_cast<MSG*>(lparam);
+        if (message->hwnd && (message->message == WM_KEYDOWN || message->message == WM_SYSKEYDOWN))
+        {
+            auto* root = GetAncestor(message->hwnd, GA_ROOT);
+            auto* shell = static_cast<DesktopWindow*>(GetPropW(root, L"InkstowDesktopWindow"));
+            if (shell && shell->translate(message)) message->message = WM_NULL;
+        }
+    }
+    return CallNextHookEx(nullptr, code, wparam, lparam);
+}
 
 LRESULT CALLBACK windowProc(HWND handle, UINT message, WPARAM wparam, LPARAM lparam)
 {
@@ -61,6 +78,10 @@ DesktopWindow::DesktopWindow(webview::webview& window)
         throw std::runtime_error("Could not attach close guard");
     mPrevious = reinterpret_cast<void*>(
         SetWindowLongPtrW(native, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&windowProc)));
+    if (!mPrevious) {
+        RemovePropW(native, L"InkstowDesktopWindow");
+        throw std::runtime_error("Could not guard native window close");
+    }
     HMENU bar = CreateMenu();
     HMENU file = CreatePopupMenu();
     HMENU note = CreatePopupMenu();
@@ -72,10 +93,31 @@ DesktopWindow::DesktopWindow(webview::webview& window)
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"File");
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(note), L"Note");
     SetMenu(native, bar);
+    ACCEL shortcuts[] = {
+        {FVIRTKEY | FCONTROL,       'O',   kOpen},
+        {FVIRTKEY | FCONTROL,       'S',   kSave},
+        {FVIRTKEY | FCONTROL,       'Q',   kQuit},
+        {FVIRTKEY | FCONTROL,       'Z',   kUndo},
+        {    FVIRTKEY | FALT, VK_RETURN, kFollow},
+    };
+    mAccelerators = CreateAcceleratorTableW(shortcuts, static_cast<int>(std::size(shortcuts)));
+    if (mAccelerators)
+        mKeyboardHook =
+            SetWindowsHookExW(WH_GETMESSAGE, acceleratorHook, nullptr, GetCurrentThreadId());
+    if (!mKeyboardHook) {
+        if (mAccelerators) DestroyAcceleratorTable(static_cast<HACCEL>(mAccelerators));
+        SetMenu(native, nullptr);
+        DestroyMenu(bar);
+        SetWindowLongPtrW(native, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(mPrevious));
+        RemovePropW(native, L"InkstowDesktopWindow");
+        throw std::runtime_error("Could not register native menu shortcuts");
+    }
 }
 
 DesktopWindow::~DesktopWindow()
 {
+    if (mKeyboardHook) UnhookWindowsHookEx(static_cast<HHOOK>(mKeyboardHook));
+    if (mAccelerators) DestroyAcceleratorTable(static_cast<HACCEL>(mAccelerators));
     if (mHandle && IsWindow(static_cast<HWND>(mHandle))) {
         SetWindowLongPtrW(
             static_cast<HWND>(mHandle),
@@ -90,6 +132,13 @@ DesktopWindow::~DesktopWindow()
 void* DesktopWindow::previous() const
 {
     return mPrevious;
+}
+bool DesktopWindow::translate(void* message) const
+{
+    return TranslateAcceleratorW(
+               static_cast<HWND>(mHandle),
+               static_cast<HACCEL>(mAccelerators),
+               static_cast<MSG*>(message)) != 0;
 }
 void DesktopWindow::invoke(const char* script)
 {

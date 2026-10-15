@@ -21,6 +21,7 @@ public:
     void invoke(const char* script);
 #if defined(_WIN32)
     void* previous() const;
+    bool translate(void* message) const;
 #endif
 
 private:
@@ -28,6 +29,8 @@ private:
 #if defined(_WIN32)
     void* mHandle = nullptr;
     void* mPrevious = nullptr;
+    void* mAccelerators = nullptr;
+    void* mKeyboardHook = nullptr;
 #elif defined(__APPLE__)
     void* mHandle = nullptr;
     void* mDelegate = nullptr;
