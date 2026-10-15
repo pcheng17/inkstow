@@ -9,14 +9,14 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LINUX_ONLY_SOURCES = {"tests/WebviewNativeNavigationTests.cpp", "src/webview/NavigationPolicyLinux.cpp"}
+LINUX_ONLY_SOURCES = {"tests/WebviewNativeNavigationTests.cpp", "src/desktop/NavigationPolicyLinux.cpp"}
 SOURCE_GROUPS = (
     ("src/*.cpp", "src/core/*.cpp", "src/ui/*.cpp", "tests/*.cpp"),
     (
         "src/core/portable/*.cpp",
-        "src/webview/Bridge.cpp",
-        "src/webview/Main.cpp",
-        "src/webview/NavigationPolicyLinux.cpp",
+        "src/desktop/Bridge.cpp",
+        "src/desktop/Main.cpp",
+        "src/desktop/NavigationPolicyLinux.cpp",
     ),
 )
 
