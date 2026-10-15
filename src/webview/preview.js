@@ -26,6 +26,19 @@ function linkKind(target) {
   return target.includes(':') ? null : 'wiki';
 }
 
+function escaped(text, from) {
+  let slashes = 0;
+  for (let index = from - 1; index >= 0 && text[index] === '\\'; index--) slashes++;
+  return slashes % 2 === 1;
+}
+
+function parsedLink(state, from, to) {
+  for (let node = syntaxTree(state).resolveInner(from + 1); node; node = node.parent) {
+    if (node.name === 'Link' && node.from === from && node.to === to) return true;
+  }
+  return false;
+}
+
 function inCode(state, pos) {
   for (let node = syntaxTree(state).resolveInner(pos); node; node = node.parent) {
     if (['InlineCode', 'FencedCode', 'CodeBlock'].includes(node.name)) return true;
@@ -39,12 +52,13 @@ export function sourceLinkAt(state, pos) {
   const line = state.doc.lineAt(pos);
   for (const match of line.text.matchAll(/\[\[([^\[\]\r\n]+)\]\]|\[([^\]\r\n]+)\]\(([^\s()]+)\)/g)) {
     const from = line.from + match.index;
-    if (pos < from || pos > from + match[0].length) continue;
+    const to = from + match[0].length;
+    if (pos < from || pos > to || escaped(line.text, match.index)) continue;
     if (match[1]) {
       const [target, alias, extra] = match[1].split('|');
       if (target && extra === undefined && (alias === undefined || alias))
         return { kind: 'wiki', target };
-    } else {
+    } else if (parsedLink(state, from, to)) {
       const kind = linkKind(match[3]);
       if (kind) return { kind, target: match[3] };
     }
@@ -75,7 +89,7 @@ export function preview(view) {
   for (const match of source.matchAll(/\[\[([^\[\]\r\n]+)\]\]/g)) {
     const from = match.index;
     const to = from + match[0].length;
-    if (inCode(view.state, from + 2)) continue;
+    if (escaped(source, from) || inCode(view.state, from + 2)) continue;
     const [target, alias, extra] = match[1].split('|');
     if (!target || extra !== undefined || (alias !== undefined && !alias)) continue;
     wikiRanges.push({ from, to });

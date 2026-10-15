@@ -289,6 +289,26 @@ test('wikilink dots and Markdown fragments use core target type, not an extensio
   } finally { ui.dom.window.close(); }
 });
 
+test('escaped link delimiters remain literal and cannot follow by shortcut', async () => {
+  const source = 'Intro\n\\[[Target]] \\[Target](Target.md) \\[Site](https://example.org) \\\\[[Target]]\nEnd';
+  const ui = await setup({ 'Source.md': Buffer.from(source), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    assert.deepEqual([...ui.document.querySelectorAll('.cm-preview-link')].map((node) => node.textContent), ['Target']);
+    assert.match(ui.document.querySelectorAll('.cm-line')[1].textContent, /\\\[\[Target\]\] \\\[Target\]\(Target\.md\)/);
+    for (const marker of ['\\[[Target]]', '\\[Target](Target.md)', '\\[Site](https://example.org)']) {
+      const pos = view.state.doc.line(2).from + view.state.doc.line(2).text.indexOf(marker) + marker.length - 2;
+      view.dispatch({ selection: { anchor: pos } });
+      ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+        { key: 'Enter', altKey: true, bubbles: true }));
+      await ui.pause();
+      assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+      assert.equal(ui.calls.filter((call) => ['link', 'external'].includes(call.operation)).length, 0);
+    }
+  } finally { ui.dom.window.close(); }
+});
+
 test('dirty rendered navigation is refused and undo preserves source and CRLF bytes', async () => {
   const source = '# Title\r\n[[Target]]\r\nNBSP:\u00a0 U+2028:\u2028 U+2029:\u2029';
   const ui = await setup({ 'Source.md': Buffer.from(source), 'Target.md': Buffer.from('Target') });
