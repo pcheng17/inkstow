@@ -6,12 +6,21 @@ namespace inkstow::webview_shell
 {
 // The embedded page is the only permitted document. Install the native policy
 // before loading it; every later navigation (including another about:blank) fails.
+// WebView2 reports NavigateToString as a base64 data URL rather than about:blank.
 class NavigationGate
 {
 public:
     bool allowInitialDocument(std::string_view uri)
     {
-        if (mInitialDocumentAllowed || uri != "about:blank") {
+        if (mInitialDocumentAllowed || uri != "about:blank") return false;
+        mInitialDocumentAllowed = true;
+        return true;
+    }
+
+    bool allowInitialWebView2Document(std::wstring_view uri)
+    {
+        constexpr std::wstring_view prefix = L"data:text/html;charset=utf-8;base64,";
+        if (mInitialDocumentAllowed || !uri.starts_with(prefix) || uri.size() == prefix.size()) {
             return false;
         }
         mInitialDocumentAllowed = true;
