@@ -32,11 +32,24 @@ function escaped(text, from) {
   return slashes % 2 === 1;
 }
 
-function parsedLink(state, from, to) {
-  for (let node = syntaxTree(state).resolveInner(from + 1); node; node = node.parent) {
-    if (node.name === 'Link' && node.from === from && node.to === to) return true;
+function markdownLink(source, node) {
+  if (node.name !== 'Link') return null;
+  const url = node.getChild('URL');
+  if (!url) return null; // Reference links have no inline destination.
+  let labelEnd;
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.name === 'LinkMark' && source.slice(child.from, child.to) === ']') {
+      labelEnd = child.from;
+      break;
+    }
   }
-  return false;
+  if (labelEnd === undefined) return null;
+  const raw = source.slice(url.from, url.to);
+  const destination = raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
+  // Markdown escapes ASCII punctuation in destinations; the vault expects literal paths.
+  const target = destination.replace(/\\([!-/:-@\[-`{-~])/g, '$1');
+  const kind = target && linkKind(target);
+  return kind ? { kind, target, labelEnd } : null;
 }
 
 function inCode(state, pos) {
@@ -50,17 +63,20 @@ function inCode(state, pos) {
 export function sourceLinkAt(state, pos) {
   if (inCode(state, pos)) return null;
   const line = state.doc.lineAt(pos);
-  for (const match of line.text.matchAll(/\[\[([^\[\]\r\n]+)\]\]|\[([^\]\r\n]+)\]\(([^\s()]+)\)/g)) {
+  for (const match of line.text.matchAll(/\[\[([^\[\]\r\n]+)\]\]/g)) {
     const from = line.from + match.index;
     const to = from + match[0].length;
     if (pos < from || pos > to || escaped(line.text, match.index)) continue;
-    if (match[1]) {
-      const [target, alias, extra] = match[1].split('|');
-      if (target && extra === undefined && (alias === undefined || alias))
-        return { kind: 'wiki', target };
-    } else if (parsedLink(state, from, to)) {
-      const kind = linkKind(match[3]);
-      if (kind) return { kind, target: match[3] };
+    const [target, alias, extra] = match[1].split('|');
+    if (target && extra === undefined && (alias === undefined || alias))
+      return { kind: 'wiki', target };
+  }
+  const source = state.doc.toString();
+  for (const side of [-1, 1]) {
+    for (let node = syntaxTree(state).resolveInner(pos, side); node; node = node.parent) {
+      if (node.from > pos || node.to < pos) continue;
+      const link = markdownLink(source, node);
+      if (link) return { kind: link.kind, target: link.target };
     }
   }
   return null;
@@ -131,15 +147,13 @@ export function preview(view) {
       return;
     }
     if (node.name === 'Link') {
-      const text = source.slice(node.from, node.to);
-      const match = /^\[([^\]\r\n]+)\]\(([^\s()]+)\)$/.exec(text);
-      if (match && linkKind(match[2])) {
-        const labelEnd = node.from + 1 + match[1].length;
+      const link = markdownLink(source, node.node);
+      if (link) {
         add(node.from, node.from + 1, hidden);
-        add(node.from + 1, labelEnd, Decoration.mark({ class: 'cm-preview-link', attributes: {
-          'data-kind': linkKind(match[2]), 'data-target': match[2]
+        add(node.from + 1, link.labelEnd, Decoration.mark({ class: 'cm-preview-link', attributes: {
+          'data-kind': link.kind, 'data-target': link.target
         } }));
-        add(labelEnd, node.to, hidden);
+        add(link.labelEnd, node.to, hidden);
         return false;
       }
     }

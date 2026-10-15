@@ -273,6 +273,73 @@ test('relative Markdown note links render and use core link resolution, not webv
   } finally { ui.dom.window.close(); }
 });
 
+test('Markdown angle destinations and titled links render and follow through the bridge', async () => {
+  const source = 'Intro\n[Second](<Second note.md>) [Target](Target.md "title") [Site](https://example.org/a "site")';
+  const ui = await setup({ 'Source.md': Buffer.from(source),
+    'Second note.md': Buffer.from('Second'), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const links = () => [...ui.document.querySelectorAll('.cm-preview-link')];
+    assert.deepEqual(links().map((link) => link.textContent), ['Second', 'Target', 'Site']);
+    assert.deepEqual(links().map((link) => link.dataset.target),
+      ['Second note.md', 'Target.md', 'https://example.org/a']);
+    links()[2].click(); await ui.pause();
+    assert.deepEqual(ui.external, ['https://example.org/a']);
+    links()[0].click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Second note.md');
+    await ui.select('Source.md');
+    links()[1].click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+  } finally { ui.dom.window.close(); }
+});
+
+test('source shortcut follows parsed Markdown destinations with spaces and titles', async () => {
+  const source = 'Intro\n[Second](<Second note.md>) [Target](Target.md "title") [Site](https://example.org/a "site")';
+  const ui = await setup({ 'Source.md': Buffer.from(source),
+    'Second note.md': Buffer.from('Second'), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const shortcut = async (label) => {
+      const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+      const line = view.state.doc.line(2);
+      view.dispatch({ selection: { anchor: line.from + line.text.indexOf(label) + 2 } });
+      assert.match(ui.document.querySelectorAll('.cm-line')[1].textContent, /\[Second\]\(<Second note\.md>\)/);
+      ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+        { key: 'Enter', altKey: true, bubbles: true }));
+      await ui.pause();
+    };
+    await shortcut('[Second]');
+    assert.equal(ui.document.querySelector('#title').textContent, 'Second note.md');
+    await ui.select('Source.md');
+    await shortcut('[Target]');
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+    await ui.select('Source.md');
+    await shortcut('[Site]');
+    assert.deepEqual(ui.external, ['https://example.org/a']);
+    assert.deepEqual(ui.calls.filter((call) => call.operation === 'link').map((call) => call.link),
+      ['Second note.md', 'Target.md']);
+  } finally { ui.dom.window.close(); }
+});
+
+test('escaped Markdown punctuation resolves the same note from preview and source', async () => {
+  const source = 'Intro\n[Target](Target\\(1\\).md)';
+  const ui = await setup({ 'Source.md': Buffer.from(source), 'Target(1).md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const rendered = ui.document.querySelector('.cm-preview-link');
+    assert.equal(rendered?.dataset.target, 'Target(1).md');
+    rendered.click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target(1).md');
+    await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 2 } });
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'Enter', altKey: true, bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target(1).md');
+  } finally { ui.dom.window.close(); }
+});
+
 test('wikilink dots and Markdown fragments use core target type, not an extension guess', async () => {
   const ui = await setup({ 'Source.md': Buffer.from('Intro\n[[Foo.bar]] [Target](Target.md#Section)'),
     'Foo.bar.md': Buffer.from('Note with a dot'), 'Target.md': Buffer.from('Target') });
