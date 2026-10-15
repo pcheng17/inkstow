@@ -37,7 +37,11 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
       window.inkstowExit = () => { exits++; };
       window.inkstowRequest = async (request) => {
         calls.push(request);
-        if (injectedError) { const message = injectedError; injectedError = ''; return snapshot(false, message); }
+        if (injectedError) {
+          const message = injectedError; injectedError = '';
+          if (message === 'Clean reload failed save') { content = saved = 'Outside'; change = 'reloaded'; }
+          return snapshot(false, message);
+        }
         switch (request.operation) {
           case 'startup': return snapshot(true);
           case 'pickVault':
@@ -180,6 +184,20 @@ test('follow shortcut requests the cursor link and refuses dirty attachment navi
     ui.document.querySelector('#follow').click(); await ui.pause();
     assert.equal(ui.document.querySelector('#dirty').hidden, false);
     assert.match(ui.document.querySelector('#error').textContent, /Save or discard/);
+  } finally { ui.dom.window.close(); }
+});
+
+test('failed save on quit never exits even when outside clean reload clears dirty', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md'); await ui.type('Mine');
+    ui.disk.set('BOM.md', Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Outside')]));
+    ui.dom.window.inkstowAskQuit(); await ui.pause();
+    // The bridge can reject a save and report a clean reload after a concurrent edit reversal.
+    ui.injectError('Clean reload failed save');
+    ui.document.querySelector('#quit-save').click(); await ui.pause();
+    assert.equal(ui.exits(), 0);
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, false);
   } finally { ui.dom.window.close(); }
 });
 

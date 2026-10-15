@@ -158,6 +158,7 @@ async function save() {
   }
   showReplyError(reply, 'Could not save note.');
   setLocked(false);
+  return reply.ok;
 }
 
 async function resolve(operation) {
@@ -201,13 +202,23 @@ window.inkstowAskQuit = async () => {
     return;
   }
   quitPrompt.hidden = false;
+  setLocked(true);
   document.querySelector('#quit-cancel').focus();
 };
-document.querySelector('#quit-cancel').addEventListener('click', () => { quitPrompt.hidden = true; });
+document.querySelector('#quit-cancel').addEventListener('click', () => {
+  quitPrompt.hidden = true;
+  setLocked(false);
+});
 document.querySelector('#quit-discard').addEventListener('click', () => window.inkstowExit());
 document.querySelector('#quit-save').addEventListener('click', async () => {
-  await save();
-  if (!syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) window.inkstowExit();
+  setLocked(false);
+  const saved = await save();
+  if (saved && !syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) {
+    window.inkstowExit();
+  } else {
+    setLocked(true);
+    document.querySelector('#quit-cancel').focus();
+  }
 });
 
 window.addEventListener('focus', refresh);
@@ -240,6 +251,7 @@ document.addEventListener('keydown', (event) => {
   if (!quitPrompt.hidden && event.key === 'Escape') {
     event.preventDefault();
     quitPrompt.hidden = true;
+    setLocked(false);
     return;
   }
   if (event.altKey && event.key === 'Enter') {
