@@ -240,7 +240,9 @@ int run()
             observed.find("\\\"conflict\\\":true") != std::string::npos,
         "Outside change lost unsaved edits before Keep mine");
     window.eval("document.querySelector('#keep-mine').click()");
-    pumpFor(std::chrono::milliseconds(350));
+    for (int attempt = 0; attempt < 50 && bytes(note) != "Local for keep"; ++attempt) {
+        pumpFor(std::chrono::milliseconds(100));
+    }
     check(bytes(note) == "Local for keep", "Keep mine did not save the reported version");
     window.eval(
         "probe(JSON.stringify({dirty:!document.querySelector('#dirty').hidden,"
