@@ -133,7 +133,7 @@ if(INKSTOW_BUILD_WEBVIEW)
   target_link_libraries(inkstow-webview PRIVATE webview-bridge webview-watch webview::core_static inkstow-warnings)
   if(APPLE)
     set_target_properties(inkstow-webview PROPERTIES MACOSX_BUNDLE TRUE
-                                                 OBJCXX_STANDARD 17
+                                                 OBJCXX_STANDARD 20
                                                  OBJCXX_STANDARD_REQUIRED ON)
   endif()
 endif() # INKSTOW_BUILD_WEBVIEW
