@@ -403,14 +403,19 @@ test('note actions require explicit move and trash choices and preserve errors a
     assert.equal(ui.disk.get('New.md').toString(), '');
     ui.document.querySelector('#move').click();
     ui.document.querySelector('#move-path').value = 'Moved';
-    ui.document.querySelector('#move-cancel').click();
+    ui.document.querySelector('#move-path').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(ui.document.querySelector('#move-choice').hidden, true);
     assert.equal(ui.calls.filter((call) => call.operation === 'move').length, 0);
     ui.document.querySelector('#move').click();
     ui.document.querySelector('#move-path').value = 'Moved';
-    ui.document.querySelector('#move-with-links').click(); await ui.pause();
+    ui.document.querySelector('#move-path').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await ui.pause();
     assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find((call) => call.operation === 'move'))),
       { operation: 'move', path: 'Moved', updateLinks: true });
     assert.equal(ui.document.querySelector('#title').textContent, 'Moved.md');
+    for (const id of ['move', 'trash', 'follow', 'open-attachment']) {
+      assert.ok(ui.document.querySelector(`#${id}`).textContent.trim(), `${id} has an accessible name`);
+    }
     ui.document.querySelector('#trash').click();
     ui.document.querySelector('#trash-cancel').click();
     assert.equal(ui.calls.filter((call) => call.operation === 'trash').length, 0);
