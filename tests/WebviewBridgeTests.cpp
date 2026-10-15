@@ -330,11 +330,11 @@ int main() // NOLINT(bugprone-exception-escape)
         std::ofstream(root / "Target.md") << "Target";
         std::ofstream(root / "image.png") << "image";
     }
-    std::string opened;
+    fs::path opened;
     bool trashAvailable = false;
     inkstow::webview_shell::Bridge actions(
         [&](const fs::path& path, std::string*) {
-            opened = pathBytes(path);
+            opened = path;
             return true;
         },
         [&](const fs::path&, std::string* error) {
@@ -415,7 +415,8 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation", "attachment"},
                 {     "link",  "image.png"}
     })["ok"] == true);
-    CHECK(opened == pathBytes(root / "image.png"));
+    // Vault canonicalizes attachments; temp paths can be aliases on macOS and Windows.
+    CHECK(!opened.empty() && fs::equivalent(opened, root / "image.png"));
     inkstow::webview_shell::Bridge noShell;
     CHECK(
         request(
@@ -481,7 +482,7 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation", "attachment"},
                 {     "link",  "image.png"}
     })["ok"] == false);
-    CHECK(opened == pathBytes(root / "image.png"));
+    CHECK(!opened.empty() && fs::equivalent(opened, root / "image.png"));
     CHECK(
         request(
             actions,

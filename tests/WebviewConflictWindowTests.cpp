@@ -129,11 +129,11 @@ int run()
     const auto& root = temp.mPath;
     const auto note = root / "Note.md";
     put(note, "Base");
-    std::string openedAttachment;
+    fs::path openedAttachment;
     bool trashAvailable = false;
     inkstow::webview_shell::Bridge bridge(
         [&](const fs::path& path, std::string*) {
-            openedAttachment = pathBytes(path);
+            openedAttachment = path;
             return true;
         },
         [&](const fs::path& path, std::string* error) {
@@ -383,7 +383,7 @@ int run()
         "document.querySelector('#open-attachment').click()");
     pumpFor(std::chrono::milliseconds(350));
     check(
-        openedAttachment == pathBytes(root / "image.png"),
+        !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
         "Attachment did not use shell service");
     window.eval(
         "document.querySelector('#trash').click();"
