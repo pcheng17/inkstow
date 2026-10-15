@@ -1,4 +1,5 @@
 #include "Bridge.h"
+#include "DesktopWindow.h"
 #include "LocalHtml.h"
 #include "NavigationPolicy.h"
 #include "WebviewHeader.h"
@@ -11,6 +12,7 @@
 #include <windows.h>
 #else
 #include <glib.h>
+#include <gtk/gtk.h>
 #endif
 
 #include <chrono>
@@ -132,6 +134,12 @@ int run()
     inkstow::webview_shell::Bridge bridge;
     webview::webview window(false, nullptr);
     inkstow::webview_shell::NavigationPolicy navigation(window.browser_controller().value());
+    inkstow::webview_shell::DesktopWindow desktop(window);
+    bool exited = false;
+    window.bind("inkstowExit", [&exited](const std::string&) {
+        exited = true;
+        return std::string("null");
+    });
     window.bind("inkstowRequest", [&bridge](const std::string& args) {
         return bridge.handle(args);
     });
@@ -308,6 +316,28 @@ int run()
             observed.find("\\\"missing\\\":false") != std::string::npos &&
             observed.find("\\\"dirty\\\":false") != std::string::npos && !fs::exists(note),
         "Discard did not resolve the missing note without writing");
+    replaceEditor(window, "Quit draft");
+#if defined(_WIN32)
+    SendMessageW(static_cast<HWND>(window.window().value()), WM_CLOSE, 0, 0);
+#elif defined(__APPLE__)
+    desktop.invoke("inkstowAskQuit()");
+#else
+    gtk_window_close(GTK_WINDOW(window.window().value()));
+#endif
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "probe(JSON.stringify({prompt:!document.querySelector('#quit-prompt').hidden,"
+        "focused:document.activeElement.id,text:document.querySelector('.cm-content').textContent})"
+        ")");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("\\\"prompt\\\":true") != std::string::npos &&
+            observed.find("quit-cancel") != std::string::npos &&
+            observed.find("Quit draft") != std::string::npos && !exited,
+        "Native close did not protect unsaved edits with Cancel as default");
+    window.eval("document.querySelector('#quit-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    check(!exited, "Cancel terminated the window");
     return 0;
 }
 

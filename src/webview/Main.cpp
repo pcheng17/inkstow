@@ -1,5 +1,6 @@
 #include "Bridge.h"
 #include "DesktopServices.h"
+#include "DesktopWindow.h"
 #include "LocalHtml.h"
 #include "NavigationPolicy.h"
 #include "WebviewHeader.h"
@@ -20,6 +21,11 @@ int main()
         window.bind("inkstowRequest", [&bridge](const std::string& args) {
             return bridge.handle(args);
         });
+        window.bind("inkstowExit", [&window](const std::string&) {
+            window.terminate();
+            return std::string("null");
+        });
+        inkstow::webview_shell::DesktopWindow desktop(window);
         window.set_html(kLocalHtml);
         window.run();
     } catch (const std::exception& error) {

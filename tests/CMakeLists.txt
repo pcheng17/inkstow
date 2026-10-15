@@ -54,13 +54,14 @@ if(INKSTOW_BUILD_WEBVIEW)
   if(APPLE OR WIN32 OR XVFB_RUN_EXECUTABLE)
     add_executable(webview-conflict-window-tests EXCLUDE_FROM_ALL
                    WebviewConflictWindowTests.cpp
-                   ${PROJECT_SOURCE_DIR}/${NAVIGATION_POLICY_SOURCE})
+                   ${PROJECT_SOURCE_DIR}/${NAVIGATION_POLICY_SOURCE}
+                   ${PROJECT_SOURCE_DIR}/${DESKTOP_WINDOW_SOURCE})
     add_dependencies(webview-conflict-window-tests webview-assets)
     target_include_directories(webview-conflict-window-tests PRIVATE
                                ${PROJECT_SOURCE_DIR}/src/webview
                                "${PROJECT_BINARY_DIR}/generated")
     target_link_libraries(webview-conflict-window-tests PRIVATE webview-bridge
-                          webview::core_static inkstow-warnings)
+                          webview::core_static inkstow-warnings ${DESKTOP_WINDOW_LIBRARIES})
     if(APPLE)
       set_target_properties(webview-conflict-window-tests PROPERTIES OBJCXX_STANDARD 17
                                                                 OBJCXX_STANDARD_REQUIRED ON)

@@ -36,6 +36,12 @@
       <div id="editor" aria-label="Note content"></div>
     </section>
   </main>
+  <div id="quit-prompt" role="dialog" aria-modal="true" aria-label="Unsaved edits" hidden>
+    <p>You have unsaved edits. What would you like to do?</p>
+    <button id="quit-cancel" type="button">Cancel</button>
+    <button id="quit-save" type="button">Save and quit</button>
+    <button id="quit-discard" type="button">Discard and quit</button>
+  </div>
   <script>/* INKSTOW_JS */</script>
 </body>
 </html>

@@ -18,6 +18,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let saved = '';
   let bom = false;
   let injectedError = '';
+  let exits = 0;
   let change = 'none';
   let dismissedMissing = false;
   let expectedBytes;
@@ -33,6 +34,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
       window.Range.prototype.getBoundingClientRect = () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 });
       window.HTMLElement.prototype.getClientRects = () => [];
       window.HTMLElement.prototype.getBoundingClientRect = () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 });
+      window.inkstowExit = () => { exits++; };
       window.inkstowRequest = async (request) => {
         calls.push(request);
         if (injectedError) { const message = injectedError; injectedError = ''; return snapshot(false, message); }
@@ -138,7 +140,8 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
     await pause();
   }
   await pause(); // Let the initial last-vault lookup finish before driving controls.
-  return { dom, document, disk, calls, open, select, type, pause, injectError: (message) => { injectedError = message; } };
+  return { dom, document, disk, calls, open, select, type, pause, exits: () => exits,
+    injectError: (message) => { injectedError = message; } };
 }
 
 test('bundled editor has no remote runtime assets or links', () => {
@@ -160,6 +163,28 @@ test('native picker opens vault and startup failure remains visible', async () =
     assert.equal(ui.document.querySelectorAll('#notes button').length, 2);
     // Startup is requested when the editor first loads, not on a button click.
     assert.ok(ui.calls.some((call) => call.operation === 'startup'));
+  } finally { ui.dom.window.close(); }
+});
+
+test('quit offers cancel, save and discard; conflict and failed save keep edits', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md'); await ui.type('Mine');
+    ui.dom.window.inkstowAskQuit(); await ui.pause();
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, false);
+    assert.equal(ui.document.activeElement.id, 'quit-cancel');
+    ui.document.querySelector('#quit-cancel').click(); await ui.pause();
+    assert.equal(ui.exits(), 0);
+    ui.disk.set('BOM.md', Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Outside')]));
+    ui.dom.window.inkstowAskQuit(); await ui.pause();
+    ui.document.querySelector('#quit-save').click(); await ui.pause();
+    assert.equal(ui.exits(), 0);
+    assert.equal(ui.document.querySelector('#dirty').hidden, false);
+    assert.match(ui.document.querySelector('#error').textContent, /changed on disk/);
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, false);
+    ui.document.querySelector('#quit-discard').click(); await ui.pause();
+    assert.equal(ui.exits(), 1);
+    assert.equal(ui.disk.get('BOM.md').subarray(3).toString(), 'Outside');
   } finally { ui.dom.window.close(); }
 });
 

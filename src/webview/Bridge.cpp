@@ -83,8 +83,11 @@ std::string Bridge::handle(const std::string& arguments)
                 } else if (
                     operation == "pickVault" && hasFields(request, {"operation"}) && mServices)
                 {
-                    const std::string folder = mServices->pickVault();
-                    if (folder.empty()) {
+                    const std::string folder =
+                        mSession.isDirty() ? std::string{} : mServices->pickVault();
+                    if (mSession.isDirty()) {
+                        error = "Save the current note before opening another vault.";
+                    } else if (folder.empty()) {
                         error = "Folder selection cancelled.";
                     } else {
                         success = mSession.openVault(folder, &error);

@@ -131,7 +131,8 @@ function changeNote(path) {
   if (path !== snapshot.path) navigate({ operation: 'select', path });
 }
 
-document.querySelector('#pick-vault').addEventListener('click', () => navigate({ operation: 'pickVault' }));
+window.inkstowOpenPicker = () => navigate({ operation: 'pickVault' });
+document.querySelector('#pick-vault').addEventListener('click', window.inkstowOpenPicker);
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -190,19 +191,48 @@ async function refresh() {
   setLocked(false);
 }
 
+const quitPrompt = document.querySelector('#quit-prompt');
+window.inkstowAskQuit = async () => {
+  await queue;
+  if (!syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) {
+    window.inkstowExit();
+    return;
+  }
+  quitPrompt.hidden = false;
+  document.querySelector('#quit-cancel').focus();
+};
+document.querySelector('#quit-cancel').addEventListener('click', () => { quitPrompt.hidden = true; });
+document.querySelector('#quit-discard').addEventListener('click', () => window.inkstowExit());
+document.querySelector('#quit-save').addEventListener('click', async () => {
+  await save();
+  if (!syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) window.inkstowExit();
+});
+
 window.addEventListener('focus', refresh);
 window.setInterval(() => { if (!document.hidden) refresh(); }, 3000);
 for (const [id, operation] of [['reload', 'reload'], ['keep-mine', 'keepMine'], ['merge', 'merge'],
   ['save-as-new', 'saveAsNew'], ['discard', 'discard']]) {
   document.querySelector(`#${id}`).addEventListener('click', () => resolve(operation));
 }
-saveButton.addEventListener('click', save);
-undoButton.addEventListener('click', () => { if (!locked) undo(view); });
+window.inkstowSave = save;
+window.inkstowUndo = () => { if (!locked) undo(view); };
+saveButton.addEventListener('click', window.inkstowSave);
+undoButton.addEventListener('click', window.inkstowUndo);
 navigate({ operation: 'startup' });
 
 document.addEventListener('keydown', (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+  if (!quitPrompt.hidden && event.key === 'Escape') {
     event.preventDefault();
-    save();
+    quitPrompt.hidden = true;
+    return;
+  }
+  if (event.ctrlKey || event.metaKey) {
+    const key = event.key.toLowerCase();
+    if (key === 's' || key === 'o' || key === 'q') {
+      event.preventDefault();
+      if (key === 's') save();
+      if (key === 'o') window.inkstowOpenPicker();
+      if (key === 'q') window.inkstowAskQuit();
+    }
   }
 });
