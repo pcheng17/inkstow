@@ -10,7 +10,7 @@ const folder = '/tmp/inkstow-throwaway';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello')]), 'Other.md': Buffer.from('Second') }, startupError = '') {
+async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello')]), 'Other.md': Buffer.from('Second') }, startupError = '', startupDelay = 0) {
   const disk = new Map(Object.entries(initial));
   const calls = [];
   let notes = [];
@@ -21,6 +21,9 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let bom = false;
   let injectedError = '';
   let pendingSave;
+  let pendingEdit;
+  let pendingSelect;
+  let pendingMove;
   let pendingRefresh;
   let exits = 0;
   let change = 'none';
@@ -45,6 +48,9 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
       window.inkstowRequest = async (request) => {
         calls.push(request);
         if (request.operation === 'save' && pendingSave) await pendingSave;
+        if (request.operation === 'edit' && pendingEdit) await pendingEdit;
+        if (request.operation === 'select' && pendingSelect) await pendingSelect;
+        if (request.operation === 'move' && pendingMove) await pendingMove;
         if (request.operation === 'refresh' && pendingRefresh) await pendingRefresh;
         if (injectedError) {
           const message = injectedError; injectedError = '';
@@ -53,7 +59,9 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
           return snapshot(false, message);
         }
         switch (request.operation) {
-          case 'startup': return snapshot(!startupError, startupError);
+          case 'startup':
+            if (startupDelay) await new Promise((resolve) => setTimeout(resolve, startupDelay));
+            return snapshot(!startupError, startupError);
           case 'pickVault':
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             hasVault = true; notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
@@ -206,9 +214,24 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
       pendingSave = new Promise((resolve) => { release = resolve; });
       return release;
     },
+    delayEdit: () => {
+      let release;
+      pendingEdit = new Promise((resolve) => { release = resolve; });
+      return release;
+    },
     delayRefresh: () => {
       let release;
       pendingRefresh = new Promise((resolve) => { release = resolve; });
+      return release;
+    },
+    delaySelect: () => {
+      let release;
+      pendingSelect = new Promise((resolve) => { release = resolve; });
+      return release;
+    },
+    delayMove: () => {
+      let release;
+      pendingMove = new Promise((resolve) => { release = resolve; });
       return release;
     } };
 }
@@ -553,6 +576,8 @@ test('Cancel during a pending Save and quit ignores queued quit requests after s
     ui.dom.window.inkstowAskQuit(); await ui.pause();
     ui.document.querySelector('#quit-save').click(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'save');
+    assert.equal(ui.document.querySelector('#save').disabled, true);
+    assert.equal(ui.document.querySelector('#notes button').disabled, true);
     ui.dom.window.inkstowAskQuit(); // A second Quit waits behind the pending save.
     ui.document.querySelector('#quit-cancel').click();
     assert.equal(ui.document.querySelector('#quit-prompt').hidden, true);
@@ -617,6 +642,8 @@ test('background refresh blocks note actions without visually disabling the wind
     const refreshing = ui.dom.window.inkstowRefresh();
     await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'refresh');
+    await new Promise((resolve) => setTimeout(resolve, 170));
+    assert.equal(ui.document.querySelector('#busy').textContent, '');
     assert.equal(ui.document.querySelector('#move').disabled, false);
     ui.document.querySelector('#move').click();
     ui.document.querySelector('#trash').click();
@@ -646,6 +673,91 @@ test('focus refresh discovers outside folder changes without a selected note', a
     assert.deepEqual([...ui.document.querySelectorAll('#notes button')].map((b) => b.textContent),
       ['BOM.md', 'Other.md', 'Outside.md']);
     assert.equal(ui.document.querySelector('#notes button'), existing);
+  } finally { ui.dom.window.close(); }
+});
+
+test('slow startup does not display a user-action busy status', async () => {
+  const ui = await setup(undefined, '', 250);
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 170));
+    assert.equal(ui.document.querySelector('#busy').textContent, '');
+    await new Promise((resolve) => setTimeout(resolve, 90));
+    assert.equal(ui.calls.at(-1).operation, 'startup');
+  } finally { ui.dom.window.close(); }
+});
+
+test('selecting another note does not dim the entire window while loading', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md');
+    const release = ui.delaySelect();
+    const current = ui.document.querySelector('#notes button[aria-current="true"]');
+    const next = [...ui.document.querySelectorAll('#notes button')].find((b) => b.textContent === 'Other.md');
+    next.click(); await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'select');
+    assert.equal(ui.document.querySelector('#folder').disabled, false);
+    assert.equal(ui.document.querySelector('#save').disabled, false);
+    assert.equal(current.disabled, false);
+    assert.equal(next.disabled, false);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Hello');
+    await new Promise((resolve) => setTimeout(resolve, 170));
+    assert.equal(ui.document.querySelector('#busy').textContent, 'Working…');
+    next.click(); current.click();
+    assert.equal(ui.calls.filter((call) => call.operation === 'select').length, 2);
+    release(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Other.md');
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Second');
+    assert.equal(ui.document.querySelector('#busy').textContent, '');
+  } finally { ui.dom.window.close(); }
+});
+
+test('an edit reply during a pending selection cannot dim the window', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md');
+    const releaseEdit = ui.delayEdit();
+    const releaseSelect = ui.delaySelect();
+    await ui.type('Changed');
+    const next = [...ui.document.querySelectorAll('#notes button')].find((b) => b.textContent === 'Other.md');
+    next.click(); await ui.pause();
+    releaseEdit(); await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'select');
+    assert.equal(ui.document.querySelector('#folder').disabled, false);
+    assert.equal(ui.document.querySelector('#save').disabled, false);
+    assert.equal(next.disabled, false);
+    releaseSelect(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Changed');
+  } finally { ui.dom.window.close(); }
+});
+
+test('saving does not dim unrelated controls while the bridge is busy', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md'); await ui.type('Changed');
+    const release = ui.delaySave();
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'save');
+    assert.equal(ui.document.querySelector('#folder').disabled, false);
+    assert.equal(ui.document.querySelector('#notes button').disabled, false);
+    release(); await ui.pause();
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+  } finally { ui.dom.window.close(); }
+});
+
+test('moving a note does not dim the window while the bridge is busy', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md');
+    const release = ui.delayMove();
+    ui.document.querySelector('#move').click();
+    ui.document.querySelector('#move-path').value = 'Renamed';
+    ui.document.querySelector('#move-with-links').click(); await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'move');
+    assert.equal(ui.document.querySelector('#folder').disabled, false);
+    assert.equal(ui.document.querySelector('#notes button').disabled, false);
+    release(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Renamed.md');
   } finally { ui.dom.window.close(); }
 });
 
