@@ -16,13 +16,18 @@ target_link_libraries(highlighter-tests PRIVATE Qt6::Gui Qt6::Widgets inkstow-wa
 add_test(NAME highlighter-tests COMMAND highlighter-tests)
 set_tests_properties(highlighter-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+add_executable(inkstow-tests EXCLUDE_FROM_ALL DoctestMain.cpp PortableDoctest.cpp)
+target_link_libraries(inkstow-tests PRIVATE portable-core doctest::doctest inkstow-warnings)
+target_compile_definitions(inkstow-tests PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
+add_test(NAME inkstow-tests COMMAND inkstow-tests)
+
 add_executable(portable-core-tests EXCLUDE_FROM_ALL PortableCoreTests.cpp)
 target_link_libraries(portable-core-tests PRIVATE portable-core inkstow-warnings)
 target_compile_definitions(portable-core-tests PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
 add_test(NAME portable-core-tests COMMAND portable-core-tests)
 
 # Build headless tests without pulling in the widget tests.
-add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-tests)
+add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-tests inkstow-tests)
 if(INKSTOW_BUILD_WEBVIEW)
   # CTest runs the JS test too; the CI test-build path must generate its assets.
   add_dependencies(unit-tests webview-assets)
