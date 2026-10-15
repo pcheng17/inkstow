@@ -427,5 +427,135 @@ int main() // NOLINT(bugprone-exception-escape)
             Json{
                 {"operation", "list"}
     })["content"] == "Recover again");
+    const fs::path alternative = root / "Alternative";
+    fs::create_directories(alternative);
+    {
+        std::ofstream output(alternative / "New.md");
+        output << "New";
+    }
+    {
+        std::ofstream output(root / "Safe.md");
+        output << "Safe";
+    }
+    inkstow::webview_shell::Bridge picker(&shell);
+    shell.mPicked = pathBytes(root);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation",  "select"},
+                {     "path", "Safe.md"}
+    })["ok"] == true);
+    fs::remove(root / "Safe.md");
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "refresh"}
+    })["change"] == "missing");
+    shell.mPicked = pathBytes(alternative);
+    const Json switchedMissing = request(
+        picker,
+        {
+            {"operation", "pickVault"}
+    });
+    CHECK(
+        switchedMissing["ok"] == true && switchedMissing["change"] == "none" &&
+        switchedMissing["path"].get<std::string>().empty() &&
+        switchedMissing["notes"] == Json::array({"New.md"}));
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "reload"}
+    })["ok"] == false);
+
+    shell.mPicked = pathBytes(root);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "select"},
+                {     "path", "BOM.md"}
+    })["ok"] == true);
+    {
+        std::ofstream output(root / "BOM.md", std::ios::binary);
+        output << "\xFF";
+    }
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "refresh"}
+    })["change"] == "conflict");
+    shell.mPicked = pathBytes(alternative);
+    const Json switchedConflict = request(
+        picker,
+        {
+            {"operation", "pickVault"}
+    });
+    CHECK(
+        switchedConflict["ok"] == true && switchedConflict["change"] == "none" &&
+        switchedConflict["path"].get<std::string>().empty() &&
+        switchedConflict["notes"] == Json::array({"New.md"}));
+
+    // A dismissed missing note must not suppress a new missing-note decision after switching.
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "select"},
+                {     "path", "New.md"}
+    })["ok"] == true);
+    fs::remove(alternative / "New.md");
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "refresh"}
+    })["change"] == "missing");
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "discard"}
+    })["ok"] == true);
+    {
+        std::ofstream output(root / "Fresh.md");
+        output << "Fresh";
+    }
+    shell.mPicked = pathBytes(root);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation",   "select"},
+                {     "path", "Fresh.md"}
+    })["ok"] == true);
+    fs::remove(root / "Fresh.md");
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "refresh"}
+    })["change"] == "missing");
     fs::remove_all(root);
 }

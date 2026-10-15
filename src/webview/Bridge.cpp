@@ -54,10 +54,12 @@ void Bridge::syncWithDisk(std::string* error)
     }
 }
 
-void Bridge::rememberVault(const std::string& folder)
+void Bridge::finishVaultOpen(const std::string& folder, bool remember)
 {
+    mChange = portable::DiskChange::None;
+    mDismissedMissing = false;
     if (!mServices) return;
-    mServices->setLastVault(folder);
+    if (remember) mServices->setLastVault(folder);
     mServices->watchVault(folder);
 }
 
@@ -84,7 +86,7 @@ std::string Bridge::handle(const std::string& arguments)
                         success = true;
                     } else {
                         success = mSession.openVault(folder, &error);
-                        if (success) mServices->watchVault(folder);
+                        if (success) finishVaultOpen(folder, false);
                         if (!success)
                             error = "Could not reopen last vault (" + folder + "): " + error;
                     }
@@ -99,18 +101,14 @@ std::string Bridge::handle(const std::string& arguments)
                         error = "Folder selection cancelled.";
                     } else {
                         success = mSession.openVault(folder, &error);
-                        if (success) rememberVault(folder);
+                        if (success) finishVaultOpen(folder, true);
                     }
                 } else if (
                     operation == "open" && hasFields(request, {"operation", "folder"}) &&
                     stringField(request, "folder", 4096))
                 {
                     success = mSession.openVault(request.at("folder").get<std::string>(), &error);
-                    if (success) {
-                        rememberVault(request.at("folder").get<std::string>());
-                        mChange = portable::DiskChange::None;
-                        mDismissedMissing = false;
-                    }
+                    if (success) finishVaultOpen(request.at("folder").get<std::string>(), true);
                 } else if (
                     operation == "follow" && hasFields(request, {"operation", "link"}) &&
                     stringField(request, "link", 4096))
