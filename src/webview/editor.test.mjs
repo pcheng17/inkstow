@@ -18,6 +18,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let saved = '';
   let bom = false;
   let injectedError = '';
+  let pendingSave;
   let exits = 0;
   let change = 'none';
   let dismissedMissing = false;
@@ -37,6 +38,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
       window.inkstowExit = () => { exits++; };
       window.inkstowRequest = async (request) => {
         calls.push(request);
+        if (request.operation === 'save' && pendingSave) await pendingSave;
         if (injectedError) {
           const message = injectedError; injectedError = '';
           if (message === 'Clean reload failed save') { content = saved = 'Outside'; change = 'reloaded'; }
@@ -149,7 +151,12 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   }
   await pause(); // Let the initial last-vault lookup finish before driving controls.
   return { dom, document, disk, calls, open, select, type, pause, exits: () => exits,
-    injectError: (message) => { injectedError = message; } };
+    injectError: (message) => { injectedError = message; },
+    delaySave: () => {
+      let release;
+      pendingSave = new Promise((resolve) => { release = resolve; });
+      return release;
+    } };
 }
 
 test('bundled editor has no remote runtime assets or links', () => {
@@ -212,6 +219,24 @@ test('failed save on quit never exits even when outside clean reload clears dirt
     ui.document.querySelector('#quit-save').click(); await ui.pause();
     assert.equal(ui.exits(), 0);
     assert.equal(ui.document.querySelector('#quit-prompt').hidden, false);
+  } finally { ui.dom.window.close(); }
+});
+
+test('Cancel during a pending Save and quit saves without exiting or reopening the prompt', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md'); await ui.type('Mine');
+    const releaseSave = ui.delaySave();
+    ui.dom.window.inkstowAskQuit(); await ui.pause();
+    ui.document.querySelector('#quit-save').click(); await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'save');
+    ui.document.querySelector('#quit-cancel').click();
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, true);
+    releaseSave(); await ui.pause();
+    assert.equal(ui.exits(), 0);
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, true);
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+    assert.equal(ui.disk.get('BOM.md').subarray(3).toString(), 'Mine');
   } finally { ui.dom.window.close(); }
 });
 

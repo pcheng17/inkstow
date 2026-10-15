@@ -200,6 +200,7 @@ async function refresh() {
 }
 
 const quitPrompt = document.querySelector('#quit-prompt');
+let quitAttempt = 0;
 window.inkstowAskQuit = async () => {
   await queue;
   if (!syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) {
@@ -211,13 +212,17 @@ window.inkstowAskQuit = async () => {
   document.querySelector('#quit-cancel').focus();
 };
 document.querySelector('#quit-cancel').addEventListener('click', () => {
+  quitAttempt++;
   quitPrompt.hidden = true;
   setLocked(false);
 });
 document.querySelector('#quit-discard').addEventListener('click', () => window.inkstowExit());
 document.querySelector('#quit-save').addEventListener('click', async () => {
+  if (quitPrompt.hidden) return;
+  const attempt = quitAttempt;
   setLocked(false);
   const saved = await save();
+  if (attempt !== quitAttempt) return;
   if (saved && !syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) {
     window.inkstowExit();
   } else {
