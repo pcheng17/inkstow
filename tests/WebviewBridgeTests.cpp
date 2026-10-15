@@ -169,7 +169,8 @@ int run()
                 {"operation",    "follow"},
                 {     "link", "image.png"}
     })["ok"] == true);
-    CHECK(shell.mOpenedAttachment == pathBytes(root / "image.png"));
+    const auto expectedAttachment = pathBytes(fs::canonical(root / "image.png"));
+    CHECK(shell.mOpenedAttachment == expectedAttachment);
     CHECK(
         request(
             bridge,
@@ -192,7 +193,7 @@ int run()
                 {"operation",    "follow"},
                 {     "link", "image.png"}
     })["ok"] == false);
-    CHECK(shell.mOpenedAttachment == pathBytes(root / "image.png"));
+    CHECK(shell.mOpenedAttachment == expectedAttachment);
     const Json refused = request(
         bridge,
         {

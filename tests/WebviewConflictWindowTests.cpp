@@ -433,7 +433,19 @@ int run()
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Source.md').click()");
-    pumpFor(std::chrono::milliseconds(350));
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "ready:!document.querySelector('#follow').disabled}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Source.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        observed.find("Source.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos,
+        "Source note was not ready for Follow");
     window.eval(
         "document.querySelector('#link').value='Renamed';"
         "document.querySelector('#follow').click()");
@@ -442,7 +454,14 @@ int run()
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Renamed.md") != std::string::npos) break;
     }
-    check(observed.find("Renamed.md") != std::string::npos, "Follow did not navigate");
+    if (observed.find("Renamed.md") == std::string::npos) {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "error:document.querySelector('#error').textContent,"
+            "disabled:document.querySelector('#follow').disabled}))");
+        pumpFor(std::chrono::milliseconds(150));
+        throw std::runtime_error("Follow did not navigate: " + observed);
+    }
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Source.md').click()");

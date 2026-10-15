@@ -29,7 +29,9 @@ void activateMacMenu(webview::webview& window, const char* action)
 void activateMacClose(webview::webview& window)
 {
     @autoreleasepool {
-        [static_cast<NSWindow*>(window.window().value()) performClose:nil];
+        auto* native = static_cast<NSWindow*>(window.window().value());
+        [native makeKeyAndOrderFront:nil];
+        [native performClose:nil];
     }
 }
 
