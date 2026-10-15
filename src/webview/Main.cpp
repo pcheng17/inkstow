@@ -1,3 +1,4 @@
+#include "AttachmentShell.h"
 #include "Bridge.h"
 #include "LocalHtml.h"
 #include "NavigationPolicy.h"
@@ -10,7 +11,7 @@
 int main()
 {
     try {
-        inkstow::webview_shell::Bridge bridge;
+        inkstow::webview_shell::Bridge bridge(inkstow::webview_shell::openAttachment);
         webview::webview window(false, nullptr);
         window.set_title("Inkstow");
         window.set_size(960, 720, WEBVIEW_HINT_NONE);

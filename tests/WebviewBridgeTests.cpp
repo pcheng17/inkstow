@@ -324,4 +324,160 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation", "list"}
     })["content"] == "Recover again");
     fs::remove_all(root);
+    fs::create_directories(root / "Folder");
+    {
+        std::ofstream(root / "Source.md") << "[[Target]] [[image.png]]";
+        std::ofstream(root / "Target.md") << "Target";
+        std::ofstream(root / "image.png") << "image";
+    }
+    std::string opened;
+    bool trashAvailable = false;
+    inkstow::webview_shell::Bridge actions(
+        [&](const fs::path& path, std::string*) {
+            opened = pathBytes(path);
+            return true;
+        },
+        [&](const fs::path&, std::string* error) {
+            *error = "System trash unavailable.";
+            return trashAvailable;
+        });
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",          "open"},
+                {   "folder", pathBytes(root)}
+    })["ok"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "create"},
+                {     "path", "Target"}
+    })["ok"] == false);
+    CHECK(!fs::exists(root / "Target"));
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",     "create"},
+                {     "path", "Folder/New"}
+    })["path"] == "Folder/New.md");
+    CHECK(
+        request(
+            actions,
+            {
+                {  "operation",   "move"},
+                {       "path", "Target"},
+                {"updateLinks",     true}
+    })["ok"] == false);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",    "select"},
+                {     "path", "Target.md"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {  "operation",           "move"},
+                {       "path", "Folder/Renamed"},
+                {"updateLinks",             true}
+    })["ok"] == true);
+    CHECK(diskBytes(root / "Source.md") == "[[/Folder/Renamed]] [[image.png]]");
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",    "select"},
+                {     "path", "Source.md"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",          "follow"},
+                {     "link", "/Folder/Renamed"}
+    })["path"] == "Folder/Renamed.md");
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",    "select"},
+                {     "path", "Source.md"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "attachment"},
+                {     "link",  "image.png"}
+    })["ok"] == true);
+    CHECK(opened == pathBytes(root / "image.png"));
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",     "attachment"},
+                {     "link", "../outside.png"}
+    })["ok"] == false);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "trash"}
+    })["ok"] == false);
+    CHECK(fs::exists(root / "Source.md"));
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",  "edit"},
+                {  "content", "draft"}
+    })["dirty"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "trash"}
+    })["ok"] == false);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "create"},
+                {     "path",  "Draft"}
+    })["ok"] == false);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "attachment"},
+                {     "link",  "image.png"}
+    })["ok"] == false);
+    CHECK(opened == pathBytes(root / "image.png"));
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "save"}
+    })["ok"] == true);
+    trashAvailable = true;
+    // Injected trash service does not remove the file; the bridge must still call it.
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "trash"}
+    })["ok"] == true);
+    CHECK(request(
+              actions,
+              {
+                  {"operation", "list"}
+    })["path"]
+              .get<std::string>()
+              .empty());
+    fs::remove_all(root);
 }
