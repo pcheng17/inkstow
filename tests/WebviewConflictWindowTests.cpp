@@ -102,6 +102,14 @@ void put(const std::filesystem::path& path, const std::string& content)
     file << content;
 }
 
+void clickDecision(webview::webview& window, const char* selector)
+{
+    window.eval(
+        "{const button=document.querySelector(" + nlohmann::json(selector).dump() +
+        ");function "
+        "click(){if(button.disabled){setTimeout(click,25);return;}button.click();}click();}");
+}
+
 void replaceEditor(webview::webview& window, const std::string& text)
 {
     // Browser editing commands follow CodeMirror's real input path (selection, beforeinput, input).
@@ -169,7 +177,7 @@ int run()
         observed.find("Mine") != std::string::npos &&
             observed.find("changed on disk") != std::string::npos,
         "Stale save did not explain the conflict or retain unsaved text");
-    window.eval("document.querySelector('#merge').click()");
+    clickDecision(window, "#merge");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
         "probe(JSON.stringify({dirty:!document.querySelector('#dirty').hidden,"
@@ -200,7 +208,7 @@ int run()
             observed.find("Resolved merge") != std::string::npos,
         "Missing note lost resolved merge edits");
     put(note, "Reappeared");
-    window.eval("document.querySelector('#save-as-new').click()");
+    clickDecision(window, "#save-as-new");
     pumpFor(std::chrono::milliseconds(350));
     check(bytes(note) == "Reappeared", "Save as new overwrote reappeared file");
     window.eval(
@@ -213,7 +221,7 @@ int run()
             observed.find("exists") != std::string::npos,
         "Refused recovery did not explain error or retain editor text");
     fs::remove(note);
-    window.eval("document.querySelector('#save-as-new').click()");
+    clickDecision(window, "#save-as-new");
     pumpFor(std::chrono::milliseconds(350));
     check(
         bytes(note) == "Resolved merge",
@@ -239,19 +247,9 @@ int run()
         observed.find("Local for keep") != std::string::npos &&
             observed.find("\\\"conflict\\\":true") != std::string::npos,
         "Outside change lost unsaved edits before Keep mine");
-    window.eval("document.querySelector('#keep-mine').click()");
+    clickDecision(window, "#keep-mine");
     for (int attempt = 0; attempt < 50 && bytes(note) != "Local for keep"; ++attempt) {
         pumpFor(std::chrono::milliseconds(100));
-    }
-    if (bytes(note) != "Local for keep") {
-        window.eval(
-            "probe(JSON.stringify({error:document.querySelector('#error').textContent,"
-            "text:document.querySelector('.cm-content').textContent,"
-            "conflict:!document.querySelector('#conflict').hidden,"
-            "dirty:!document.querySelector('#dirty').hidden}))");
-        pumpFor(std::chrono::milliseconds(300));
-        std::cerr << "[DEBUG-WV92] Keep mine disk=" << nlohmann::json(bytes(note)).dump()
-                  << " browser=" << observed << '\n';
     }
     check(bytes(note) == "Local for keep", "Keep mine did not save the reported version");
     window.eval(
@@ -272,7 +270,7 @@ int run()
     check(
         observed.find("Local for reload") != std::string::npos,
         "Outside change lost unsaved edits before Reload");
-    window.eval("document.querySelector('#reload').click()");
+    clickDecision(window, "#reload");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
         "probe(JSON.stringify({text:document.querySelector('.cm-content').textContent,"
@@ -296,7 +294,7 @@ int run()
         observed.find("Local for discard") != std::string::npos &&
             observed.find("\\\"missing\\\":true") != std::string::npos,
         "Missing note lost unsaved edits before Discard");
-    window.eval("document.querySelector('#discard').click()");
+    clickDecision(window, "#discard");
     pumpFor(std::chrono::milliseconds(350));
     window.eval("window.dispatchEvent(new Event('focus'))");
     pumpFor(std::chrono::milliseconds(350));
