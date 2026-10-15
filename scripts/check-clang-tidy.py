@@ -13,7 +13,7 @@ LINUX_ONLY_SOURCES = {"tests/WebviewNativeNavigationTests.cpp", "src/webview/Nav
 SOURCE_GROUPS = (
     ("src/*.cpp", "src/core/*.cpp", "src/ui/*.cpp", "tests/*.cpp"),
     (
-        "src/core/portable/*.cpp",
+        "src/core/vault/*.cpp",
         "src/webview/Bridge.cpp",
         "src/webview/Main.cpp",
         "src/webview/NavigationPolicyLinux.cpp",
