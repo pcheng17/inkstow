@@ -530,16 +530,41 @@ int run()
     check(
         !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
         "Attachment did not use shell service");
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "ready:!document.querySelector('#trash').disabled}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Source.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        observed.find("Source.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos,
+        "Source note was not ready for Trash");
     window.eval(
         "document.querySelector('#trash').click();"
         "document.querySelector('#trash-cancel').click()");
     pumpFor(std::chrono::milliseconds(150));
     check(fs::exists(root / "Source.md"), "Cancelled trash removed note");
-    window.eval(
-        "document.querySelector('#trash').click();"
-        "document.querySelector('#trash-confirm').click()");
-    pumpFor(std::chrono::milliseconds(350));
-    check(fs::exists(root / "Source.md"), "Unavailable trash removed note");
+    clickDecision(window, "#trash");
+    pumpFor(std::chrono::milliseconds(150));
+    clickDecision(window, "#trash-confirm");
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({error:document.querySelector('#error').textContent,"
+            "ready:!document.querySelector('#trash').disabled}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("System trash unavailable") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        fs::exists(root / "Source.md") &&
+            observed.find("System trash unavailable") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos,
+        "Unavailable trash did not refuse removal");
     trashAvailable = true;
     clickDecision(window, "#trash");
     pumpFor(std::chrono::milliseconds(150));
