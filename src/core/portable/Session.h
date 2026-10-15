@@ -33,6 +33,11 @@ public:
     bool trashNote(std::string* error);
     bool trashNote(const Vault::TrashFunction& trash, std::string* error);
     bool followWikilink(const std::string& link, std::string* error);
+    // Resolve a rendered link once; select a note or return a validated attachment for the shell.
+    bool followLink(
+        const std::string& link,
+        std::optional<std::filesystem::path>* attachment,
+        std::string* error);
     // Resolve and revalidate an attachment link before the shell opens it.
     std::optional<std::filesystem::path> followAttachment(
         const std::string& link, std::string* error) const;

@@ -72,6 +72,15 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             disk.set(name, disk.get(path)); disk.delete(path); path = name;
             notes = [...disk.keys()].sort(); return snapshot(true);
           }
+          case 'link': {
+            if (content !== saved) return snapshot(false, 'Unsaved changes.');
+            const target = request.link.split('#', 1)[0];
+            const note = disk.has(target) ? target : `${target}.md`;
+            if (disk.has(note) && note.endsWith('.md'))
+              return window.inkstowRequest({ operation: 'select', path: note });
+            if (!disk.has(target)) return snapshot(false, 'Link not found.');
+            opened.push(target); return snapshot(true);
+          }
           case 'follow':
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             if (!disk.has(request.link.endsWith('.md') ? request.link : `${request.link}.md`)) return snapshot(false, 'Link not found.');
@@ -235,6 +244,22 @@ test('relative Markdown note links render and use core link resolution, not webv
   } finally { ui.dom.window.close(); }
 });
 
+test('wikilink dots and Markdown fragments use core target type, not an extension guess', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Intro\n[[Foo.bar]] [Target](Target.md#Section)'),
+    'Foo.bar.md': Buffer.from('Note with a dot'), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    ui.document.querySelector('.cm-preview-link').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Foo.bar.md');
+    await ui.select('Source.md');
+    ui.document.querySelectorAll('.cm-preview-link')[1].click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+    assert.deepEqual(ui.opened, []);
+    assert.deepEqual(ui.calls.filter((call) => call.operation === 'link').map((call) => call.link),
+      ['Foo.bar', 'Target.md#Section']);
+  } finally { ui.dom.window.close(); }
+});
+
 test('dirty rendered navigation is refused and undo preserves source and CRLF bytes', async () => {
   const source = '# Title\r\n[[Target]]\r\nNBSP:\u00a0 U+2028:\u2028 U+2029:\u2029';
   const ui = await setup({ 'Source.md': Buffer.from(source), 'Target.md': Buffer.from('Target') });
@@ -263,7 +288,7 @@ test('malformed links and code literals remain source, including after compositi
     ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
       { key: 'Enter', altKey: true, bubbles: true }));
     await ui.pause();
-    assert.equal(ui.calls.filter((call) => call.operation === 'follow').length, 0);
+    assert.equal(ui.calls.filter((call) => ['follow', 'link'].includes(call.operation)).length, 0);
     const editor = ui.document.querySelector('.cm-content');
     editor.dispatchEvent(new ui.dom.window.CompositionEvent('compositionstart', { bubbles: true, data: '語' }));
     view.dispatch({ changes: { from: view.state.doc.length, insert: '語' } });

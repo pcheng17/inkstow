@@ -56,10 +56,25 @@ int main() // NOLINT(bugprone-exception-escape)
         output << "Second";
     }
     std::string openedUrl;
-    inkstow::webview_shell::Bridge bridge({}, {}, [&](const std::string& url, std::string*) {
-        openedUrl = url;
-        return true;
-    });
+    {
+        std::ofstream output(root / "Foo.bar.md", std::ios::binary);
+        output << "Dot note";
+    }
+    {
+        std::ofstream output(root / "image.png", std::ios::binary);
+        output << "image";
+    }
+    std::filesystem::path openedLink;
+    inkstow::webview_shell::Bridge bridge(
+        [&](const std::filesystem::path& path, std::string*) {
+            openedLink = path;
+            return true;
+        },
+        {},
+        [&](const std::string& url, std::string*) {
+            openedUrl = url;
+            return true;
+        });
     CHECK(
         request(
             bridge,
@@ -86,7 +101,8 @@ int main() // NOLINT(bugprone-exception-escape)
             bridge,
             {
                 {"operation", "list"}
-    })["notes"] == Json::array({"BOM.md", "Second.md"}));
+    })["notes"] ==
+        Json::array({"BOM.md", "Foo.bar.md", "Second.md"}));
     CHECK(
         request(
             bridge,
@@ -94,6 +110,43 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation", "select"},
                 {     "path", "BOM.md"}
     })["content"] == "Original");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",    "link"},
+                {     "link", "Foo.bar"}
+    })["path"] == "Foo.bar.md");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",           "link"},
+                {     "link", "BOM.md#Section"}
+    })["path"] == "BOM.md");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",      "link"},
+                {     "link", "image.png"}
+    })["ok"] == true);
+    CHECK(openedLink == root / "image.png");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",         "link"},
+                {     "link", "../image.png"}
+    })["ok"] == false);
+    CHECK(openedLink == root / "image.png");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "select"},
+                {     "path", "BOM.md"}
+    })["ok"] == true);
     CHECK(
         request(
             bridge,

@@ -169,8 +169,7 @@ function followLink(kind, target) {
     noteAction({ operation: 'external', url: target }, 'Could not follow link.');
     return;
   }
-  const attachment = /\.[^./]+$/.test(target) && !/\.md$/i.test(target);
-  noteAction({ operation: attachment ? 'attachment' : 'follow', link: target }, 'Could not follow link.');
+  noteAction({ operation: 'link', link: target }, 'Could not follow link.');
 }
 
 async function noteAction(operation, fallback) {

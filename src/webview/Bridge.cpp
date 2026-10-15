@@ -153,6 +153,24 @@ std::string Bridge::handle(const std::string& arguments)
                         mSession.followWikilink(request.at("link").get<std::string>(), &error);
                     if (success) mChange = portable::DiskChange::None;
                 } else if (
+                    operation == "link" && hasFields(request, {"operation", "link"}) &&
+                    stringField(request, "link", 4096))
+                {
+                    std::optional<std::filesystem::path> attachment;
+                    success = mSession.followLink(
+                        request.at("link").get<std::string>(),
+                        &attachment,
+                        &error);
+                    if (success && attachment) {
+                        if (mOpenAttachment)
+                            success = mOpenAttachment(*attachment, &error);
+                        else {
+                            success = false;
+                            error = "Attachment shell service is unavailable.";
+                        }
+                    }
+                    if (success && !attachment) mChange = portable::DiskChange::None;
+                } else if (
                     operation == "attachment" && hasFields(request, {"operation", "link"}) &&
                     stringField(request, "link", 4096))
                 {
