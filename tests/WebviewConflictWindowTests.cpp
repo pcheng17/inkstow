@@ -514,11 +514,14 @@ int run()
         "focused:document.activeElement.id,text:document.querySelector('.cm-content').textContent})"
         ")");
     pumpFor(std::chrono::milliseconds(150));
-    check(
-        observed.find("\\\"prompt\\\":true") != std::string::npos &&
-            observed.find("quit-cancel") != std::string::npos &&
-            observed.find("Quit draft") != std::string::npos && !exited,
-        "Native close did not protect unsaved edits with Cancel as default");
+    if (observed.find("\\\"prompt\\\":true") == std::string::npos ||
+        observed.find("quit-cancel") == std::string::npos ||
+        observed.find("Quit draft") == std::string::npos || exited)
+    {
+        throw std::runtime_error(
+            "Native close did not protect unsaved edits with Cancel as default: " + observed +
+            ", exited=" + std::to_string(exited));
+    }
     window.eval("document.querySelector('#quit-cancel').click()");
     pumpFor(std::chrono::milliseconds(150));
     check(!exited, "Cancel terminated the window");

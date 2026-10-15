@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <filesystem>
 #include <functional>
 #include <mutex>
@@ -16,18 +17,19 @@ public:
     VaultWatch& operator=(const VaultWatch&) = delete;
     VaultWatch(VaultWatch&&) = delete;
     VaultWatch& operator=(VaultWatch&&) = delete;
-    ~VaultWatch() = default;
+    ~VaultWatch();
 
     void open(const std::filesystem::path& root, const std::string& note);
     void select(const std::string& note);
 
 private:
-    void run(const std::stop_token& stop);
+    void run();
     std::mutex mMutex;
     std::filesystem::path mRoot;
     std::string mNote;
     std::size_t mGeneration = 0;
     std::function<void()> mChanged;
-    std::jthread mThread;
+    std::atomic_bool mStop{false};
+    std::thread mThread;
 };
 } // namespace inkstow::webview_shell

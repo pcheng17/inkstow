@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -38,8 +39,7 @@ std::string pathBytes(const std::filesystem::path& path)
 
 } // namespace
 
-// Test failures are allowed to propagate as a nonzero process exit.
-int main() // NOLINT(bugprone-exception-escape)
+int run()
 {
     namespace fs = std::filesystem;
     const fs::path root = fs::temp_directory_path() / "inkstow-webview-bridge-tests";
@@ -739,4 +739,15 @@ int main() // NOLINT(bugprone-exception-escape)
               .get<std::string>()
               .empty());
     fs::remove_all(root);
+    return 0;
+}
+
+int main()
+{
+    try {
+        return run();
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        return 1;
+    }
 }

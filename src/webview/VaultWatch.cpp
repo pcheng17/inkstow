@@ -64,8 +64,13 @@ Snapshot observe(const std::filesystem::path& root, const std::string& note)
 } // namespace
 
 VaultWatch::VaultWatch(std::function<void()> changed)
-    : mChanged(std::move(changed)), mThread([this](const std::stop_token& stop) { run(stop); })
+    : mChanged(std::move(changed)), mThread([this] { run(); })
 {
+}
+VaultWatch::~VaultWatch()
+{
+    mStop.store(true);
+    if (mThread.joinable()) mThread.join();
 }
 void VaultWatch::open(const std::filesystem::path& root, const std::string& note)
 {
@@ -80,12 +85,12 @@ void VaultWatch::select(const std::string& note)
     mNote = note;
     ++mGeneration;
 }
-void VaultWatch::run(const std::stop_token& stop)
+void VaultWatch::run()
 {
     Snapshot previous;
     std::size_t generation = 0;
     bool initialized = false;
-    while (!stop.stop_requested()) {
+    while (!mStop.load()) {
         std::filesystem::path root;
         std::string note;
         std::size_t current = 0;
