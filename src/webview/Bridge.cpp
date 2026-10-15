@@ -87,10 +87,20 @@ bool stringField(const Json& request, const char* field, std::size_t maxBytes)
 } // namespace
 
 Bridge::Bridge(
-    OpenAttachment openAttachment, portable::Vault::TrashFunction trash, OpenExternal openExternal)
-    : mOpenAttachment(std::move(openAttachment))
+    ShellServices* services,
+    OpenAttachment openAttachment,
+    portable::Vault::TrashFunction trash,
+    OpenExternal openExternal)
+    : mServices(services)
+    , mOpenAttachment(std::move(openAttachment))
     , mOpenExternal(std::move(openExternal))
     , mTrash(std::move(trash))
+{
+}
+
+Bridge::Bridge(
+    OpenAttachment openAttachment, portable::Vault::TrashFunction trash, OpenExternal openExternal)
+    : Bridge(nullptr, std::move(openAttachment), std::move(trash), std::move(openExternal))
 {
 }
 
@@ -102,6 +112,15 @@ void Bridge::syncWithDisk(std::string* error)
     } else if (mChange != portable::DiskChange::Missing || mSession.isDirty()) {
         mDismissedMissing = false;
     }
+}
+
+void Bridge::finishVaultOpen(const std::string& folder, bool remember)
+{
+    mChange = portable::DiskChange::None;
+    mDismissedMissing = false;
+    if (!mServices) return;
+    if (remember) mServices->setLastVault(folder);
+    mServices->watchVault(folder);
 }
 
 std::string Bridge::handle(const std::string& arguments)
@@ -121,13 +140,54 @@ std::string Bridge::handle(const std::string& arguments)
             } else {
                 const Json& request = args[0];
                 const std::string operation = request.at("operation").get<std::string>();
-                if (operation == "open" && hasFields(request, {"operation", "folder"}) &&
+                if (operation == "startup" && hasFields(request, {"operation"}) && mServices) {
+                    const std::string folder = mServices->lastVault();
+                    if (folder.empty()) {
+                        success = true;
+                    } else {
+                        success = mSession.openVault(folder, &error);
+                        if (success) finishVaultOpen(folder, false);
+                        if (!success)
+                            error = "Could not reopen last vault (" + folder + "): " + error;
+                    }
+                } else if (
+                    operation == "pickVault" && hasFields(request, {"operation"}) && mServices)
+                {
+                    const std::string folder =
+                        mSession.isDirty() ? std::string{} : mServices->pickVault();
+                    if (mSession.isDirty()) {
+                        error = "Save the current note before opening another vault.";
+                    } else if (folder.empty()) {
+                        error = "Folder selection cancelled.";
+                    } else {
+                        success = mSession.openVault(folder, &error);
+                        if (success) finishVaultOpen(folder, true);
+                    }
+                } else if (
+                    operation == "open" && hasFields(request, {"operation", "folder"}) &&
                     stringField(request, "folder", 4096))
                 {
                     success = mSession.openVault(request.at("folder").get<std::string>(), &error);
+                    if (success) finishVaultOpen(request.at("folder").get<std::string>(), true);
+                } else if (
+                    operation == "follow" && hasFields(request, {"operation", "link"}) &&
+                    stringField(request, "link", 4096))
+                {
+                    const auto link = request.at("link").get<std::string>();
+                    success = mSession.followWikilink(link, &error);
+                    if (!success && error == "Link does not point to a supported Markdown note." &&
+                        mServices)
+                    {
+                        const auto path = mSession.followAttachment(link, &error);
+                        if (path) {
+                            success = mServices->openAttachment(*path);
+                            if (!success)
+                                error = "Could not open attachment in the default application.";
+                        }
+                    }
                     if (success) {
                         mChange = portable::DiskChange::None;
-                        mDismissedMissing = false;
+                        if (mServices) mServices->watchNote(mSession.getPath());
                     }
                 } else if (operation == "list" && hasFields(request, {"operation"})) {
                     success = true;
@@ -139,6 +199,7 @@ std::string Bridge::handle(const std::string& arguments)
                     if (success) {
                         mChange = portable::DiskChange::None;
                         mDismissedMissing = false;
+                        if (mServices) mServices->watchNote(mSession.getPath());
                     }
                 } else if (
                     operation == "edit" && hasFields(request, {"operation", "content"}) &&
@@ -172,13 +233,6 @@ std::string Bridge::handle(const std::string& arguments)
                         mTrash ? mSession.trashNote(mTrash, &error) : mSession.trashNote(&error);
                     if (success) mChange = portable::DiskChange::None;
                 } else if (
-                    operation == "follow" && hasFields(request, {"operation", "link"}) &&
-                    stringField(request, "link", 4096))
-                {
-                    success =
-                        mSession.followWikilink(request.at("link").get<std::string>(), &error);
-                    if (success) mChange = portable::DiskChange::None;
-                } else if (
                     operation == "link" && hasFields(request, {"operation", "link"}) &&
                     stringField(request, "link", 4096))
                 {
@@ -205,6 +259,8 @@ std::string Bridge::handle(const std::string& arguments)
                     if (path) {
                         if (mOpenAttachment)
                             success = mOpenAttachment(*path, &error);
+                        else if (mServices)
+                            success = mServices->openAttachment(*path);
                         else
                             error = "Attachment shell service is unavailable.";
                     }
@@ -223,8 +279,10 @@ std::string Bridge::handle(const std::string& arguments)
                         error = "External URL shell service is unavailable.";
                     }
                 } else if (operation == "refresh" && hasFields(request, {"operation"})) {
-                    syncWithDisk(&error);
-                    success = true;
+                    // A folder event or focus refresh updates discovery as well as the selected
+                    // note.
+                    success = !mSession.hasVault() ? true : mSession.refreshNotes(&error);
+                    if (success) syncWithDisk(&error);
                 } else if (operation == "save" && hasFields(request, {"operation"})) {
                     success = mSession.save(&error);
                     if (success) {

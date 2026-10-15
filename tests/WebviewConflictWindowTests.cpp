@@ -1,4 +1,5 @@
 #include "Bridge.h"
+#include "DesktopWindow.h"
 #include "LocalHtml.h"
 #include "NavigationPolicy.h"
 #include "WebviewHeader.h"
@@ -7,21 +8,30 @@
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
+void activateMacMenu(webview::webview& window, const char* action);
+void activateMacClose(webview::webview& window);
+void activateMacApplicationQuit();
 #elif defined(_WIN32)
 #include <windows.h>
 #else
+#include <glib.h>
+#include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 #endif
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 
 namespace
@@ -112,14 +122,47 @@ void clickDecision(webview::webview& window, const char* selector)
         "click(){if(button.disabled){setTimeout(click,25);return;}button.click();}click();}");
 }
 
+void activateMenu(webview::webview& window, const char* action)
+{
+    constexpr std::array<std::string_view, 3> kActions = {"open", "save", "quit"};
+    const auto index = std::find(kActions.begin(), kActions.end(), action) - kActions.begin();
+    check(index < static_cast<std::ptrdiff_t>(kActions.size()), "Unknown native menu action");
+#if defined(__APPLE__)
+    activateMacMenu(window, action);
+#elif defined(_WIN32)
+    SendMessageW(
+        static_cast<HWND>(window.window().value()),
+        WM_COMMAND,
+        static_cast<WPARAM>(1001 + index),
+        0);
+#else
+    auto* native = GTK_WIDGET(window.window().value());
+    auto* layout = gtk_bin_get_child(GTK_BIN(native));
+    GList* children = gtk_container_get_children(GTK_CONTAINER(layout));
+    auto* bar = GTK_WIDGET(children->data);
+    g_list_free(children);
+    children = gtk_container_get_children(GTK_CONTAINER(bar));
+    auto* file = GTK_WIDGET(children->data);
+    g_list_free(children);
+    auto* menu = gtk_menu_item_get_submenu(GTK_MENU_ITEM(file));
+    children = gtk_container_get_children(GTK_CONTAINER(menu));
+    auto* item = GTK_WIDGET(g_list_nth_data(children, static_cast<guint>(index)));
+    g_list_free(children);
+    check(item != nullptr, "Native file menu action missing");
+    gtk_menu_item_activate(GTK_MENU_ITEM(item));
+#endif
+}
+
 void replaceEditor(webview::webview& window, const std::string& text)
 {
-    // Browser editing commands follow CodeMirror's real input path (selection, beforeinput, input).
+    // Update the editable line and dispatch input through CodeMirror's real DOM observer.
     window.eval(
-        "{const editor=document.querySelector('#editor [contenteditable=true]');"
-        "editor.focus();document.execCommand('selectAll');"
-        "document.execCommand('insertText',false," +
-        nlohmann::json(text).dump() + ");}");
+        "{const line=document.querySelector('#editor .cm-line');"
+        "line.textContent=" +
+        nlohmann::json(text).dump() +
+        ";"
+        "document.querySelector('#editor .cm-content').dispatchEvent("
+        "new Event('input',{bubbles:true}));}");
     pumpFor(std::chrono::milliseconds(350));
 }
 } // namespace
@@ -131,9 +174,32 @@ int run()
     const auto& root = temp.mPath;
     const auto note = root / "Note.md";
     put(note, "Base");
+    struct Shell final : inkstow::webview_shell::ShellServices
+    {
+        std::string mFolder;
+        std::string mLast;
+        std::string mAttachment;
+        int mPickerCalls = 0;
+        std::string lastVault() override { return mLast; }
+        void setLastVault(const std::string& folder) override { mLast = folder; }
+        std::string pickVault() override
+        {
+            ++mPickerCalls;
+            return mFolder;
+        }
+        bool openAttachment(const fs::path& path) override
+        {
+            mAttachment = pathBytes(path);
+            return true;
+        }
+        void watchVault(const std::string& folder) override { (void)folder; }
+        void watchNote(const std::string& note) override { (void)note; }
+    } shell;
+    shell.mFolder = pathBytes(root);
     fs::path openedAttachment;
     bool trashAvailable = false;
     inkstow::webview_shell::Bridge bridge(
+        &shell,
         [&](const fs::path& path, std::string*) {
             openedAttachment = path;
             return true;
@@ -148,6 +214,12 @@ int run()
     webview::webview window(false, nullptr);
     window.set_size(960, 720, WEBVIEW_HINT_NONE);
     inkstow::webview_shell::NavigationPolicy navigation(window.browser_controller().value());
+    inkstow::webview_shell::DesktopWindow desktop(window);
+    bool exited = false;
+    window.bind("inkstowExit", [&exited](const std::string&) {
+        exited = true;
+        return std::string("null");
+    });
     window.bind("inkstowRequest", [&bridge](const std::string& args) {
         return bridge.handle(args);
     });
@@ -368,7 +440,19 @@ int run()
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Source.md').click()");
-    pumpFor(std::chrono::milliseconds(350));
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "ready:!document.querySelector('#follow').disabled}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Source.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        observed.find("Source.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos,
+        "Source note was not ready for Follow");
     window.eval(
         "probe(JSON.stringify({link:document.querySelector('.cm-preview-link')?.textContent,"
         "heading:document.querySelector('.cm-line')?.textContent,"
@@ -427,7 +511,14 @@ int run()
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Renamed.md") != std::string::npos) break;
     }
-    check(observed.find("Renamed.md") != std::string::npos, "Follow did not navigate");
+    if (observed.find("Renamed.md") == std::string::npos) {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "error:document.querySelector('#error').textContent,"
+            "disabled:document.querySelector('#follow').disabled}))");
+        pumpFor(std::chrono::milliseconds(150));
+        throw std::runtime_error("Follow did not navigate: " + observed);
+    }
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Source.md').click()");
@@ -439,16 +530,41 @@ int run()
     check(
         !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
         "Attachment did not use shell service");
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "ready:!document.querySelector('#trash').disabled}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Source.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        observed.find("Source.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos,
+        "Source note was not ready for Trash");
     window.eval(
         "document.querySelector('#trash').click();"
         "document.querySelector('#trash-cancel').click()");
     pumpFor(std::chrono::milliseconds(150));
     check(fs::exists(root / "Source.md"), "Cancelled trash removed note");
-    window.eval(
-        "document.querySelector('#trash').click();"
-        "document.querySelector('#trash-confirm').click()");
-    pumpFor(std::chrono::milliseconds(350));
-    check(fs::exists(root / "Source.md"), "Unavailable trash removed note");
+    clickDecision(window, "#trash");
+    pumpFor(std::chrono::milliseconds(150));
+    clickDecision(window, "#trash-confirm");
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({error:document.querySelector('#error').textContent,"
+            "ready:!document.querySelector('#trash').disabled}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("System trash unavailable") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        fs::exists(root / "Source.md") &&
+            observed.find("System trash unavailable") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos,
+        "Unavailable trash did not refuse removal");
     trashAvailable = true;
     clickDecision(window, "#trash");
     pumpFor(std::chrono::milliseconds(150));
@@ -456,6 +572,128 @@ int run()
     for (int attempt = 0; attempt < 30 && fs::exists(root / "Source.md"); ++attempt)
         pumpFor(std::chrono::milliseconds(100));
     check(!fs::exists(root / "Source.md"), "Confirmed trash was not invoked");
+
+    // Exercise native menus with a disposable vault after conflict/recovery scenarios.
+    put(note, "[[image.png]]");
+    put(root / "image.png", "image");
+    activateMenu(window, "open");
+    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == 0; ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(
+        shell.mPickerCalls == 1 && shell.mLast == shell.mFolder,
+        "Native Open menu did not invoke the folder picker");
+    window.eval("document.querySelector('#pick-vault').click()");
+    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == 1; ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(shell.mPickerCalls == 2, "Picker control did not use the menu's native service");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Note.md').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("inkstowFollow()");
+    for (int attempt = 0; attempt < 50 && openedAttachment.empty(); ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(
+        !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
+        "Validated attachment did not reach native opener");
+    replaceEditor(window, "Menu saved");
+    activateMenu(window, "save");
+    for (int attempt = 0; attempt < 50 && bytes(note) != "Menu saved"; ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    if (bytes(note) != "Menu saved") {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "text:document.querySelector('.cm-content').textContent,"
+            "error:document.querySelector('#error').textContent,"
+            "disabled:document.querySelector('#save').disabled}))");
+        pumpFor(std::chrono::milliseconds(150));
+        throw std::runtime_error(
+            "Native Save menu did not invoke editor save: " + observed + ", disk=" + bytes(note));
+    }
+    replaceEditor(window, "Quit draft");
+#if defined(_WIN32)
+    SendMessageW(static_cast<HWND>(window.window().value()), WM_CLOSE, 0, 0);
+#elif defined(__APPLE__)
+    activateMacClose(window);
+#else
+    gtk_window_close(GTK_WINDOW(window.window().value()));
+#endif
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "probe(JSON.stringify({prompt:!document.querySelector('#quit-prompt').hidden,"
+        "focused:document.activeElement.id,text:document.querySelector('.cm-content').textContent})"
+        ")");
+    pumpFor(std::chrono::milliseconds(150));
+    if (observed.find("\\\"prompt\\\":true") == std::string::npos ||
+        observed.find("quit-cancel") == std::string::npos ||
+        observed.find("Quit draft") == std::string::npos || exited)
+    {
+        throw std::runtime_error(
+            "Native close did not protect unsaved edits with Cancel as default: " + observed +
+            ", exited=" + std::to_string(exited));
+    }
+    window.eval("document.querySelector('#quit-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    check(!exited, "Cancel terminated the window");
+#if defined(_WIN32)
+    // The webview owns GetMessage; use the real queue so the thread's native accelerator hook runs.
+    BYTE originalKeys[256]{};
+    check(GetKeyboardState(originalKeys) != 0, "Could not read keyboard state");
+    BYTE shortcutKeys[256]{};
+    std::copy(std::begin(originalKeys), std::end(originalKeys), std::begin(shortcutKeys));
+    shortcutKeys[VK_CONTROL] |= 0x80;
+    check(SetKeyboardState(shortcutKeys) != 0, "Could not set keyboard state");
+    check(
+        PostMessageW(static_cast<HWND>(window.window().value()), WM_KEYDOWN, 'Q', 0) != 0,
+        "Could not queue Ctrl+Q");
+    pumpFor(std::chrono::milliseconds(350));
+    SetKeyboardState(originalKeys);
+    window.eval(
+        "probe(JSON.stringify({prompt:!document.querySelector('#quit-prompt').hidden,"
+        "text:document.querySelector('.cm-content').textContent}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("\\\"prompt\\\":true") != std::string::npos &&
+            observed.find("Quit draft") != std::string::npos && !exited,
+        "Native Ctrl+Q did not offer safe quit");
+#elif defined(__APPLE__)
+    auto promptVisible = [&] {
+        window.eval(
+            "probe(JSON.stringify({prompt:!document.querySelector('#quit-prompt').hidden,"
+            "text:document.querySelector('.cm-content').textContent}))");
+        pumpFor(std::chrono::milliseconds(150));
+        return observed.find("\\\"prompt\\\":true") != std::string::npos &&
+               observed.find("Quit draft") != std::string::npos;
+    };
+    activateMenu(window, "quit"); // Cmd+Q through the native App menu.
+    pumpFor(std::chrono::milliseconds(350));
+    check(promptVisible() && !exited, "Cmd+Q did not protect unsaved text");
+    window.eval("document.querySelector('#quit-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    activateMacApplicationQuit(); // Also guard Dock / OS application termination.
+    pumpFor(std::chrono::milliseconds(350));
+    check(promptVisible() && !exited, "OS application quit bypassed safe close");
+    window.eval("document.querySelector('#quit-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    put(note, "Outside quit");
+    activateMenu(window, "quit");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("document.querySelector('#quit-save').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(
+        promptVisible() && !exited && bytes(note) == "Outside quit",
+        "Conflicted Cmd+Q save lost edits or closed the window");
+    window.eval("document.querySelector('#quit-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    clickDecision(window, "#reload");
+    pumpFor(std::chrono::milliseconds(350));
+    replaceEditor(window, "Saved on quit");
+    activateMenu(window, "quit");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("document.querySelector('#quit-save').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(exited && bytes(note) == "Saved on quit", "Cmd+Q Save and quit failed");
+#endif
     return 0;
 }
 

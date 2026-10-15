@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -38,8 +39,7 @@ std::string pathBytes(const std::filesystem::path& path)
 
 } // namespace
 
-// Test failures are allowed to propagate as a nonzero process exit.
-int main() // NOLINT(bugprone-exception-escape)
+int run()
 {
     namespace fs = std::filesystem;
     const fs::path root = fs::temp_directory_path() / "inkstow-webview-bridge-tests";
@@ -55,17 +55,28 @@ int main() // NOLINT(bugprone-exception-escape)
         std::ofstream output(root / "Second.md", std::ios::binary);
         output << "Second";
     }
+    struct Shell : inkstow::webview_shell::ShellServices
+    {
+        std::string mLast;
+        std::string mPicked;
+        std::string mOpenedAttachment;
+        std::string mWatchingVault;
+        std::string mWatchingNote;
+        void watchVault(const std::string& folder) override { mWatchingVault = folder; }
+        void watchNote(const std::string& note) override { mWatchingNote = note; }
+        bool openAttachment(const std::filesystem::path& path) override
+        {
+            mOpenedAttachment = pathBytes(path);
+            return true;
+        }
+        std::string lastVault() override { return mLast; }
+        void setLastVault(const std::string& path) override { mLast = path; }
+        std::string pickVault() override { return mPicked; }
+    } shell;
     std::string openedUrl;
-    {
-        std::ofstream output(root / "Foo.bar.md", std::ios::binary);
-        output << "Dot note";
-    }
-    {
-        std::ofstream output(root / "image.png", std::ios::binary);
-        output << "image";
-    }
     std::filesystem::path openedLink;
     inkstow::webview_shell::Bridge bridge(
+        &shell,
         [&](const std::filesystem::path& path, std::string*) {
             openedLink = path;
             return true;
@@ -75,6 +86,74 @@ int main() // NOLINT(bugprone-exception-escape)
             openedUrl = url;
             return true;
         });
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "startup"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == false);
+    shell.mPicked = pathBytes(root);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == true);
+    CHECK(shell.mLast == pathBytes(root));
+    CHECK(shell.mWatchingVault == pathBytes(root));
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "startup"}
+    })["notes"] == Json::array({"BOM.md", "Second.md"}));
+    {
+        std::ofstream added(root / "Added.md");
+        added << "Added";
+    }
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
+    })["notes"] ==
+        Json::array({"Added.md", "BOM.md", "Second.md"}));
+    fs::remove(root / "Added.md");
+    shell.mLast = pathBytes(root / "missing");
+    inkstow::webview_shell::Bridge reopened(&shell);
+    const Json missingVault = request(
+        reopened,
+        {
+            {"operation", "startup"}
+    });
+    CHECK(missingVault["ok"] == false && missingVault["notes"].empty());
+    CHECK(missingVault["error"].get<std::string>().find("missing") != std::string::npos);
+    CHECK(shell.mLast == pathBytes(root / "missing"));
+    shell.mPicked.clear();
+    CHECK(
+        request(
+            reopened,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == false);
+    CHECK(shell.mLast == pathBytes(root / "missing"));
+    {
+        std::ofstream(root / "Foo.bar.md") << "Dot note";
+        std::ofstream(root / "image.png") << "image";
+    }
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
+    })["notes"] ==
+        Json::array({"BOM.md", "Foo.bar.md", "Second.md"}));
     CHECK(
         request(
             bridge,
@@ -110,6 +189,27 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation", "select"},
                 {     "path", "BOM.md"}
     })["content"] == "Original");
+    CHECK(shell.mWatchingNote == "BOM.md");
+    {
+        std::ofstream attachment(root / "image.png");
+        attachment << "image";
+    }
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",    "follow"},
+                {     "link", "image.png"}
+    })["ok"] == true);
+    const auto expectedAttachment = pathBytes(fs::canonical(root / "image.png"));
+    CHECK(shell.mOpenedAttachment == expectedAttachment);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",         "follow"},
+                {     "link", "../outside.png"}
+    })["ok"] == false);
     CHECK(
         request(
             bridge,
@@ -194,6 +294,14 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation",    "edit"},
                 {  "content", "Changed"}
     })["dirty"] == true);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",    "follow"},
+                {     "link", "image.png"}
+    })["ok"] == false);
+    CHECK(shell.mOpenedAttachment == expectedAttachment);
     CHECK(
         request(
             bridge,
@@ -454,6 +562,136 @@ int main() // NOLINT(bugprone-exception-escape)
             Json{
                 {"operation", "list"}
     })["content"] == "Recover again");
+    const fs::path alternative = root / "Alternative";
+    fs::create_directories(alternative);
+    {
+        std::ofstream output(alternative / "New.md");
+        output << "New";
+    }
+    {
+        std::ofstream output(root / "Safe.md");
+        output << "Safe";
+    }
+    inkstow::webview_shell::Bridge picker(&shell);
+    shell.mPicked = pathBytes(root);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation",  "select"},
+                {     "path", "Safe.md"}
+    })["ok"] == true);
+    fs::remove(root / "Safe.md");
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "refresh"}
+    })["change"] == "missing");
+    shell.mPicked = pathBytes(alternative);
+    const Json switchedMissing = request(
+        picker,
+        {
+            {"operation", "pickVault"}
+    });
+    CHECK(
+        switchedMissing["ok"] == true && switchedMissing["change"] == "none" &&
+        switchedMissing["path"].get<std::string>().empty() &&
+        switchedMissing["notes"] == Json::array({"New.md"}));
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "reload"}
+    })["ok"] == false);
+
+    shell.mPicked = pathBytes(root);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "select"},
+                {     "path", "BOM.md"}
+    })["ok"] == true);
+    {
+        std::ofstream output(root / "BOM.md", std::ios::binary);
+        output << "\xFF";
+    }
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "refresh"}
+    })["change"] == "conflict");
+    shell.mPicked = pathBytes(alternative);
+    const Json switchedConflict = request(
+        picker,
+        {
+            {"operation", "pickVault"}
+    });
+    CHECK(
+        switchedConflict["ok"] == true && switchedConflict["change"] == "none" &&
+        switchedConflict["path"].get<std::string>().empty() &&
+        switchedConflict["notes"] == Json::array({"New.md"}));
+
+    // A dismissed missing note must not suppress a new missing-note decision after switching.
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "select"},
+                {     "path", "New.md"}
+    })["ok"] == true);
+    fs::remove(alternative / "New.md");
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "refresh"}
+    })["change"] == "missing");
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "discard"}
+    })["ok"] == true);
+    {
+        std::ofstream output(root / "Fresh.md");
+        output << "Fresh";
+    }
+    shell.mPicked = pathBytes(root);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "pickVault"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation",   "select"},
+                {     "path", "Fresh.md"}
+    })["ok"] == true);
+    fs::remove(root / "Fresh.md");
+    CHECK(
+        request(
+            picker,
+            {
+                {"operation", "refresh"}
+    })["change"] == "missing");
     fs::remove_all(root);
     fs::create_directories(root / "Folder");
     {
@@ -636,4 +874,15 @@ int main() // NOLINT(bugprone-exception-escape)
               .get<std::string>()
               .empty());
     fs::remove_all(root);
+    return 0;
+}
+
+int main()
+{
+    try {
+        return run();
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        return 1;
+    }
 }

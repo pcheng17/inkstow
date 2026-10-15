@@ -17,6 +17,7 @@ let snapshot = { notes: [], path: '', content: '', dirty: false };
 let locked = false;
 let mixedLineEndings = false;
 let syncFailed = false;
+let missingVaultError = '';
 let composing = false;
 
 const mixedEndingsError = 'This note has mixed CRLF, LF, or CR line endings. Editing and saving are disabled to preserve its bytes (see #63).';
@@ -28,8 +29,10 @@ function lineEndings(content) {
 let queue = Promise.resolve();
 
 function showError(message) {
-  error.textContent = message;
-  error.hidden = !message;
+  const text = missingVaultError && message !== missingVaultError
+    ? [missingVaultError, message].filter(Boolean).join('\n') : message;
+  error.textContent = text;
+  error.hidden = !text;
 }
 
 function showReplyError(reply, fallback) {
@@ -56,6 +59,7 @@ function render() {
   undoButton.disabled = locked || mixedLineEndings || !snapshot.path;
   folder.disabled = locked;
   form.querySelector('button').disabled = locked;
+  document.querySelector('#pick-vault').disabled = locked;
   document.querySelector('#create-form button').disabled = locked;
   for (const id of ['move', 'trash', 'follow', 'open-attachment']) {
     document.querySelector(`#${id}`).disabled = locked || !snapshot.path;
@@ -153,11 +157,14 @@ async function navigate(operation) {
   }
   const reply = await request(operation);
   if (!reply.ok) {
+    if (operation.operation === 'startup') missingVaultError = reply.error || 'Could not reopen last vault.';
     showError(reply.error || 'Could not open note.');
   } else {
+    if (['startup', 'open', 'pickVault'].includes(operation.operation)) missingVaultError = '';
+    const previousPath = snapshot.path;
     snapshot = reply;
     syncFailed = false;
-    newDocument(reply.content);
+    if (reply.path !== previousPath || reply.content !== view.state.sliceDoc()) newDocument(reply.content);
     showError(mixedLineEndings ? mixedEndingsError : '');
   }
   setLocked(false);
@@ -166,6 +173,9 @@ async function navigate(operation) {
 function changeNote(path) {
   if (path !== snapshot.path) navigate({ operation: 'select', path });
 }
+
+window.inkstowOpenPicker = () => navigate({ operation: 'pickVault' });
+document.querySelector('#pick-vault').addEventListener('click', window.inkstowOpenPicker);
 
 function followLink(kind, target) {
   if (!snapshot.path || locked) return;
@@ -186,6 +196,11 @@ async function noteAction(operation, fallback) {
     return;
   }
   const reply = await request(operation);
+  if (!reply || typeof reply.path !== 'string' || typeof reply.content !== 'string' || !Array.isArray(reply.notes)) {
+    showReplyError(reply || { ok: false }, fallback);
+    setLocked(false);
+    return;
+  }
   if (reply.path !== snapshot.path || (reply.ok && reply.content !== snapshot.content)) {
     snapshot = reply;
     syncFailed = false;
@@ -265,6 +280,7 @@ async function save() {
   }
   showReplyError(reply, 'Could not save note.');
   setLocked(false);
+  return reply.ok;
 }
 
 async function resolve(operation) {
@@ -286,7 +302,7 @@ async function resolve(operation) {
 }
 
 async function refresh() {
-  if (locked || !snapshot.path) return;
+  if (locked) return;
   setLocked(true);
   await queue;
   if (!syncFailed) {
@@ -300,17 +316,72 @@ async function refresh() {
   setLocked(false);
 }
 
+const quitPrompt = document.querySelector('#quit-prompt');
+let quitAttempt = 0;
+window.inkstowAskQuit = async () => {
+  const attempt = quitAttempt;
+  await queue;
+  if (attempt !== quitAttempt) return;
+  if (!syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) {
+    window.inkstowExit();
+    return;
+  }
+  quitPrompt.hidden = false;
+  setLocked(true);
+  document.querySelector('#quit-cancel').focus();
+};
+document.querySelector('#quit-cancel').addEventListener('click', () => {
+  quitAttempt++;
+  quitPrompt.hidden = true;
+  setLocked(false);
+});
+document.querySelector('#quit-discard').addEventListener('click', () => window.inkstowExit());
+document.querySelector('#quit-save').addEventListener('click', async () => {
+  if (quitPrompt.hidden) return;
+  const attempt = quitAttempt;
+  setLocked(false);
+  const saved = await save();
+  if (attempt !== quitAttempt) return;
+  if (saved && !syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) {
+    window.inkstowExit();
+  } else {
+    setLocked(true);
+    document.querySelector('#quit-cancel').focus();
+  }
+});
+
+window.inkstowRefresh = refresh;
 window.addEventListener('focus', refresh);
 window.setInterval(() => { if (!document.hidden) refresh(); }, 3000);
 for (const [id, operation] of [['reload', 'reload'], ['keep-mine', 'keepMine'], ['merge', 'merge'],
   ['save-as-new', 'saveAsNew'], ['discard', 'discard']]) {
   document.querySelector(`#${id}`).addEventListener('click', () => resolve(operation));
 }
-saveButton.addEventListener('click', save);
-undoButton.addEventListener('click', () => { if (!locked) undo(view); });
+window.inkstowFollow = () => {
+  if (locked || !snapshot.path || composing || view.composing) return;
+  const link = sourceLinkAt(view.state, view.state.selection.main.head);
+  if (link) followLink(link.kind, link.target);
+  else showError('Place the cursor inside a supported link to follow it.');
+};
+window.inkstowSave = save;
+window.inkstowUndo = () => { if (!locked) undo(view); };
+saveButton.addEventListener('click', window.inkstowSave);
+undoButton.addEventListener('click', window.inkstowUndo);
+navigate({ operation: 'startup' });
+
 document.addEventListener('keydown', (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+  if (!quitPrompt.hidden && event.key === 'Escape') {
     event.preventDefault();
-    save();
+    document.querySelector('#quit-cancel').click();
+    return;
+  }
+  if (event.ctrlKey || event.metaKey) {
+    const key = event.key.toLowerCase();
+    if (key === 's' || key === 'o' || key === 'q') {
+      event.preventDefault();
+      if (key === 's') save();
+      if (key === 'o') window.inkstowOpenPicker();
+      if (key === 'q') window.inkstowAskQuit();
+    }
   }
 });

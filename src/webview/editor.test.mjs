@@ -10,7 +10,7 @@ const folder = '/tmp/inkstow-throwaway';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello')]), 'Other.md': Buffer.from('Second') }) {
+async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello')]), 'Other.md': Buffer.from('Second') }, startupError = '') {
   const disk = new Map(Object.entries(initial));
   const calls = [];
   let notes = [];
@@ -19,6 +19,8 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let saved = '';
   let bom = false;
   let injectedError = '';
+  let pendingSave;
+  let exits = 0;
   let change = 'none';
   let dismissedMissing = false;
   let expectedBytes;
@@ -37,15 +39,31 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
       window.Range.prototype.getBoundingClientRect = () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 });
       window.HTMLElement.prototype.getClientRects = () => [];
       window.HTMLElement.prototype.getBoundingClientRect = () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 });
+      window.inkstowExit = () => { exits++; };
       window.inkstowRequest = async (request) => {
         calls.push(request);
-        if (injectedError) { const message = injectedError; injectedError = ''; return snapshot(false, message); }
+        if (request.operation === 'save' && pendingSave) await pendingSave;
+        if (injectedError) {
+          const message = injectedError; injectedError = '';
+          if (message === 'Clean reload failed save') { content = saved = 'Outside'; change = 'reloaded'; }
+          if (message === 'Could not serialize vault state.') return { ok: false, error: message };
+          return snapshot(false, message);
+        }
         switch (request.operation) {
+          case 'startup': return snapshot(!startupError, startupError);
+          case 'pickVault':
+            if (content !== saved) return snapshot(false, 'Unsaved changes.');
+            notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
           case 'open':
             if (request.folder !== folder) return snapshot(false, 'Vault folder not found.');
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
           case 'list': return snapshot(true);
+          case 'follow':
+            if (content !== saved) return snapshot(false, 'Save or discard your edits first.');
+            if (request.link === 'image.png') return snapshot(true);
+            if (!disk.has(`${request.link}.md`)) return snapshot(false, 'Link not found.');
+            return window.inkstowRequest({ operation: 'select', path: `${request.link}.md` });
           case 'select': {
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             if (!disk.has(request.path)) return snapshot(false, 'Note not found.');
@@ -102,6 +120,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             if (content !== saved) dismissedMissing = false;
             return snapshot(true);
           case 'refresh': {
+            notes = [...disk.keys()].sort();
             if (!path) return snapshot(true);
             const current = disk.get(path);
             if (!current) { change = dismissedMissing && content === saved ? 'none' : 'missing'; return snapshot(true, 'Note no longer exists.'); }
@@ -175,8 +194,14 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
     document.querySelector('.cm-content').dispatchEvent(new Event('input', { bubbles: true }));
     await pause();
   }
-  return { dom, document, disk, opened, external, calls, open, select, type, pause,
-    enableTrash: () => { trashAvailable = true; }, injectError: (message) => { injectedError = message; } };
+  await pause(); // Let the initial last-vault lookup finish before driving controls.
+  return { dom, document, disk, opened, external, calls, open, select, type, pause, exits: () => exits,
+    enableTrash: () => { trashAvailable = true; }, injectError: (message) => { injectedError = message; },
+    delaySave: () => {
+      let release;
+      pendingSave = new Promise((resolve) => { release = resolve; });
+      return release;
+    } };
 }
 
 test('inactive Markdown renders but selection across lines exposes source without changing saved bytes', async () => {
@@ -457,6 +482,113 @@ test('bundled editor has no remote runtime assets or links', () => {
   assert.doesNotMatch(html, /script-src 'unsafe-inline'/);
 });
 
+test('native picker opens vault and startup failure remains visible', async () => {
+  const ui = await setup();
+  try {
+    await ui.pause();
+    ui.document.querySelector('#pick-vault').click();
+    await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'pickVault');
+    assert.equal(ui.document.querySelectorAll('#notes button').length, 2);
+    // Startup is requested when the editor first loads, not on a button click.
+    assert.ok(ui.calls.some((call) => call.operation === 'startup'));
+  } finally { ui.dom.window.close(); }
+});
+
+test('missing last vault stays explained across refresh until a vault opens', async () => {
+  const ui = await setup(undefined, 'Could not reopen last vault: folder missing.');
+  try {
+    const message = ui.document.querySelector('#error');
+    assert.match(message.textContent, /folder missing/);
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus'));
+    await ui.pause();
+    assert.equal(message.hidden, false);
+    assert.match(message.textContent, /folder missing/);
+    await ui.open();
+    assert.equal(message.hidden, true);
+  } finally { ui.dom.window.close(); }
+});
+
+test('follow shortcut requests the cursor link and refuses dirty attachment navigation', async () => {
+  const ui = await setup({ 'Note.md': Buffer.from('[[image.png]]') });
+  try {
+    await ui.open(); await ui.select('Note.md');
+    ui.dom.window.inkstowFollow(); await ui.pause();
+    assert.equal(ui.calls.at(-1).link, 'image.png');
+    await ui.type('[[image.png]] more');
+    ui.dom.window.inkstowFollow(); await ui.pause();
+    assert.equal(ui.document.querySelector('#dirty').hidden, false);
+    assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/);
+  } finally { ui.dom.window.close(); }
+});
+
+test('failed save on quit never exits even when outside clean reload clears dirty', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md'); await ui.type('Mine');
+    ui.disk.set('BOM.md', Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Outside')]));
+    ui.dom.window.inkstowAskQuit(); await ui.pause();
+    // The bridge can reject a save and report a clean reload after a concurrent edit reversal.
+    ui.injectError('Clean reload failed save');
+    ui.document.querySelector('#quit-save').click(); await ui.pause();
+    assert.equal(ui.exits(), 0);
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, false);
+  } finally { ui.dom.window.close(); }
+});
+
+test('Cancel during a pending Save and quit ignores queued quit requests after saving', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md'); await ui.type('Mine');
+    const releaseSave = ui.delaySave();
+    ui.dom.window.inkstowAskQuit(); await ui.pause();
+    ui.document.querySelector('#quit-save').click(); await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'save');
+    ui.dom.window.inkstowAskQuit(); // A second Quit waits behind the pending save.
+    ui.document.querySelector('#quit-cancel').click();
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, true);
+    releaseSave(); await ui.pause();
+    assert.equal(ui.exits(), 0);
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, true);
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+    assert.equal(ui.disk.get('BOM.md').subarray(3).toString(), 'Mine');
+  } finally { ui.dom.window.close(); }
+});
+
+test('quit offers cancel, save and discard; conflict and failed save keep edits', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md'); await ui.type('Mine');
+    ui.dom.window.inkstowAskQuit(); await ui.pause();
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, false);
+    assert.equal(ui.document.activeElement.id, 'quit-cancel');
+    ui.document.querySelector('#quit-cancel').click(); await ui.pause();
+    assert.equal(ui.exits(), 0);
+    ui.disk.set('BOM.md', Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Outside')]));
+    ui.dom.window.inkstowAskQuit(); await ui.pause();
+    ui.document.querySelector('#quit-save').click(); await ui.pause();
+    assert.equal(ui.exits(), 0);
+    assert.equal(ui.document.querySelector('#dirty').hidden, false);
+    assert.match(ui.document.querySelector('#error').textContent, /changed on disk/);
+    assert.equal(ui.document.querySelector('#quit-prompt').hidden, false);
+    ui.document.querySelector('#quit-discard').click(); await ui.pause();
+    assert.equal(ui.exits(), 1);
+    assert.equal(ui.disk.get('BOM.md').subarray(3).toString(), 'Outside');
+  } finally { ui.dom.window.close(); }
+});
+
+test('focus refresh discovers outside folder changes without a selected note', async () => {
+  const ui = await setup();
+  try {
+    await ui.open();
+    ui.disk.set('Outside.md', Buffer.from('Outside'));
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus'));
+    await ui.pause();
+    assert.deepEqual([...ui.document.querySelectorAll('#notes button')].map((b) => b.textContent),
+      ['BOM.md', 'Other.md', 'Outside.md']);
+  } finally { ui.dom.window.close(); }
+});
+
 test('open, edit, selection, undo and BOM-preserving save', async () => {
   const ui = await setup();
   try {
@@ -717,6 +849,22 @@ test('note actions require explicit move and trash choices and preserve errors a
     ui.document.querySelector('#trash-confirm').click(); await ui.pause();
     assert.equal(ui.disk.has('Moved.md'), false);
     assert.equal(ui.document.querySelector('#title').textContent, 'No note selected');
+  } finally { ui.dom.window.close(); }
+});
+
+test('note action errors without a snapshot leave the editor unlocked', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md');
+    ui.injectError('Could not serialize vault state.');
+    ui.document.querySelector('#move').click();
+    ui.document.querySelector('#move-path').value = 'Moved';
+    ui.document.querySelector('#move-without-links').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /serialize vault state/);
+    assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
+    assert.equal(ui.document.querySelector('#save').disabled, false);
+    await ui.type('Still editable');
+    assert.equal(ui.document.querySelector('#dirty').hidden, false);
   } finally { ui.dom.window.close(); }
 });
 

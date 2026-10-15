@@ -26,6 +26,12 @@ add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-
 if(INKSTOW_BUILD_WEBVIEW)
   # CTest runs the JS test too; the CI test-build path must generate its assets.
   add_dependencies(unit-tests webview-assets)
+  add_executable(webview-watch-tests EXCLUDE_FROM_ALL WebviewWatchTests.cpp)
+  target_include_directories(webview-watch-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/webview)
+  target_link_libraries(webview-watch-tests PRIVATE webview-watch inkstow-warnings)
+  add_test(NAME webview-watch-tests COMMAND webview-watch-tests)
+  add_dependencies(unit-tests webview-watch-tests)
+
   add_executable(webview-bridge-tests EXCLUDE_FROM_ALL WebviewBridgeTests.cpp)
   target_link_libraries(webview-bridge-tests PRIVATE webview-bridge inkstow-warnings)
   add_test(NAME webview-bridge-tests COMMAND webview-bridge-tests)
@@ -54,14 +60,17 @@ if(INKSTOW_BUILD_WEBVIEW)
   if(APPLE OR WIN32 OR XVFB_RUN_EXECUTABLE)
     add_executable(webview-conflict-window-tests EXCLUDE_FROM_ALL
                    WebviewConflictWindowTests.cpp
-                   ${PROJECT_SOURCE_DIR}/${NAVIGATION_POLICY_SOURCE})
+                   ${PROJECT_SOURCE_DIR}/${NAVIGATION_POLICY_SOURCE}
+                   ${PROJECT_SOURCE_DIR}/${DESKTOP_WINDOW_SOURCE})
     add_dependencies(webview-conflict-window-tests webview-assets)
     target_include_directories(webview-conflict-window-tests PRIVATE
                                ${PROJECT_SOURCE_DIR}/src/webview
                                "${PROJECT_BINARY_DIR}/generated")
     target_link_libraries(webview-conflict-window-tests PRIVATE webview-bridge
-                          webview::core_static inkstow-warnings)
+                          webview::core_static inkstow-warnings ${DESKTOP_WINDOW_LIBRARIES})
     if(APPLE)
+      target_sources(webview-conflict-window-tests PRIVATE WebviewDesktopMac.mm)
+      target_link_libraries(webview-conflict-window-tests PRIVATE "-framework AppKit")
       set_target_properties(webview-conflict-window-tests PROPERTIES OBJCXX_STANDARD 17
                                                                 OBJCXX_STANDARD_REQUIRED ON)
     endif()
