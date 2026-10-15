@@ -9,7 +9,7 @@ const folder = '/tmp/inkstow-throwaway';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello')]), 'Other.md': Buffer.from('Second') }) {
+async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello')]), 'Other.md': Buffer.from('Second') }, startupError = '') {
   const disk = new Map(Object.entries(initial));
   const calls = [];
   let notes = [];
@@ -43,7 +43,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
           return snapshot(false, message);
         }
         switch (request.operation) {
-          case 'startup': return snapshot(true);
+          case 'startup': return snapshot(!startupError, startupError);
           case 'pickVault':
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
@@ -171,6 +171,20 @@ test('native picker opens vault and startup failure remains visible', async () =
     assert.equal(ui.document.querySelectorAll('#notes button').length, 2);
     // Startup is requested when the editor first loads, not on a button click.
     assert.ok(ui.calls.some((call) => call.operation === 'startup'));
+  } finally { ui.dom.window.close(); }
+});
+
+test('missing last vault stays explained across refresh until a vault opens', async () => {
+  const ui = await setup(undefined, 'Could not reopen last vault: folder missing.');
+  try {
+    const message = ui.document.querySelector('#error');
+    assert.match(message.textContent, /folder missing/);
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus'));
+    await ui.pause();
+    assert.equal(message.hidden, false);
+    assert.match(message.textContent, /folder missing/);
+    await ui.open();
+    assert.equal(message.hidden, true);
   } finally { ui.dom.window.close(); }
 });
 

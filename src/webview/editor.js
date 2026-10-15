@@ -16,6 +16,7 @@ let snapshot = { notes: [], path: '', content: '', dirty: false };
 let locked = false;
 let mixedLineEndings = false;
 let syncFailed = false;
+let missingVaultError = '';
 
 const mixedEndingsError = 'This note has mixed CRLF, LF, or CR line endings. Editing and saving are disabled to preserve its bytes (see #63).';
 
@@ -26,8 +27,10 @@ function lineEndings(content) {
 let queue = Promise.resolve();
 
 function showError(message) {
-  error.textContent = message;
-  error.hidden = !message;
+  const text = missingVaultError && message !== missingVaultError
+    ? [missingVaultError, message].filter(Boolean).join('\n') : message;
+  error.textContent = text;
+  error.hidden = !text;
 }
 
 function showReplyError(reply, fallback) {
@@ -118,8 +121,10 @@ async function navigate(operation) {
   }
   const reply = await request(operation);
   if (!reply.ok) {
+    if (operation.operation === 'startup') missingVaultError = reply.error || 'Could not reopen last vault.';
     showError(reply.error || 'Could not open note.');
   } else {
+    if (['startup', 'open', 'pickVault'].includes(operation.operation)) missingVaultError = '';
     const previousPath = snapshot.path;
     snapshot = reply;
     syncFailed = false;
