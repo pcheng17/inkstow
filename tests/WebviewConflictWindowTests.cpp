@@ -396,10 +396,11 @@ int run()
     pumpFor(std::chrono::milliseconds(350));
     check(fs::exists(root / "Source.md"), "Unavailable trash removed note");
     trashAvailable = true;
-    window.eval(
-        "document.querySelector('#trash').click();"
-        "document.querySelector('#trash-confirm').click()");
-    pumpFor(std::chrono::milliseconds(350));
+    clickDecision(window, "#trash");
+    pumpFor(std::chrono::milliseconds(150));
+    clickDecision(window, "#trash-confirm");
+    for (int attempt = 0; attempt < 30 && fs::exists(root / "Source.md"); ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
     check(!fs::exists(root / "Source.md"), "Confirmed trash was not invoked");
     return 0;
 }
