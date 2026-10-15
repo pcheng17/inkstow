@@ -24,6 +24,7 @@ public:
     bool selectNote(const std::string& relative, std::string* error);
     bool save(std::string* error);
     DiskChange syncWithDisk(std::string* error);
+    bool refreshNotes(std::string* error);
     bool overwriteDisk(std::string* error);
     bool reloadFromDisk(std::string* error);
     bool mergeOutsideChanges(std::string* error);
@@ -40,6 +41,7 @@ public:
     void discardEdits() { mContent = mSavedContent; }
     void setContent(std::string content) { mContent = std::move(content); }
     bool isDirty() const { return mContent != mSavedContent; }
+    bool hasVault() const { return mVault.has_value(); }
     const std::string& getContent() const { return mContent; }
     const std::string& getPath() const { return mPath; }
     // Borrowed view; valid until the session opens another vault or is destroyed.
@@ -49,7 +51,6 @@ private:
     bool load(const std::string& path, std::string bytes, std::string* error);
     bool write(const std::string& expected, std::string* error);
     bool requireClean(std::string* error) const;
-    bool refreshNotes(std::string* error);
     void finishTrash();
     std::optional<Vault> mVault;
     std::vector<std::string> mNotes;

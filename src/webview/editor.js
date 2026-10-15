@@ -176,7 +176,7 @@ async function resolve(operation) {
 }
 
 async function refresh() {
-  if (locked || !snapshot.path) return;
+  if (locked) return;
   setLocked(true);
   await queue;
   if (!syncFailed) {

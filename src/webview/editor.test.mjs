@@ -63,6 +63,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             if (content !== saved) dismissedMissing = false;
             return snapshot(true);
           case 'refresh': {
+            notes = [...disk.keys()].sort();
             if (!path) return snapshot(true);
             const current = disk.get(path);
             if (!current) { change = dismissedMissing && content === saved ? 'none' : 'missing'; return snapshot(true, 'Note no longer exists.'); }
@@ -159,6 +160,18 @@ test('native picker opens vault and startup failure remains visible', async () =
     assert.equal(ui.document.querySelectorAll('#notes button').length, 2);
     // Startup is requested when the editor first loads, not on a button click.
     assert.ok(ui.calls.some((call) => call.operation === 'startup'));
+  } finally { ui.dom.window.close(); }
+});
+
+test('focus refresh discovers outside folder changes without a selected note', async () => {
+  const ui = await setup();
+  try {
+    await ui.open();
+    ui.disk.set('Outside.md', Buffer.from('Outside'));
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus'));
+    await ui.pause();
+    assert.deepEqual([...ui.document.querySelectorAll('#notes button')].map((b) => b.textContent),
+      ['BOM.md', 'Other.md', 'Outside.md']);
   } finally { ui.dom.window.close(); }
 });
 

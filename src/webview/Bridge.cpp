@@ -124,8 +124,10 @@ std::string Bridge::handle(const std::string& arguments)
                         success = true;
                     }
                 } else if (operation == "refresh" && hasFields(request, {"operation"})) {
-                    syncWithDisk(&error);
-                    success = true;
+                    // A folder event or focus refresh updates discovery as well as the selected
+                    // note.
+                    success = !mSession.hasVault() ? true : mSession.refreshNotes(&error);
+                    if (success) syncWithDisk(&error);
                 } else if (operation == "save" && hasFields(request, {"operation"})) {
                     success = mSession.save(&error);
                     if (success) {

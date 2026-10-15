@@ -90,6 +90,18 @@ int main() // NOLINT(bugprone-exception-escape)
             {
                 {"operation", "startup"}
     })["notes"] == Json::array({"BOM.md", "Second.md"}));
+    {
+        std::ofstream added(root / "Added.md");
+        added << "Added";
+    }
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
+    })["notes"] ==
+        Json::array({"Added.md", "BOM.md", "Second.md"}));
+    fs::remove(root / "Added.md");
     shell.mLast = pathBytes(root / "missing");
     inkstow::webview_shell::Bridge reopened(&shell);
     const Json missingVault = request(
