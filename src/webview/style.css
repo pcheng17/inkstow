@@ -23,6 +23,7 @@ ul { list-style: none; padding: 0; margin: 0; }
 #error { margin: 8px 16px; padding: 8px; color: #8b1b1b; background: #ffebeb; border: 1px solid #e2aaaa; white-space: pre-wrap; }
 .decision { margin: 8px 16px; padding: 8px; background: #fff3d8; border: 1px solid #c58d34; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .decision[hidden] { display: none; }
+#busy:not(:empty) { position: fixed; right: 16px; bottom: 16px; z-index: 5; padding: 6px 12px; background: #e8edf5; border: 1px solid #c8d0de; border-radius: 4px; }
 #quit-prompt:not([hidden]) { position: fixed; z-index: 10; top: 35%; left: 50%; transform: translateX(-50%); padding: 24px; background: white; border: 2px solid #32476a; box-shadow: 0 0 0 100vmax #0008; }
 #quit-prompt button { margin-right: 8px; }
 #editor { flex: 1; min-height: 0; overflow: auto; background: white; }

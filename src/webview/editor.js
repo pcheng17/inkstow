@@ -10,15 +10,19 @@ const notes = document.querySelector('#notes');
 const title = document.querySelector('#title');
 const dirty = document.querySelector('#dirty');
 const error = document.querySelector('#error');
+const busy = document.querySelector('#busy');
+const quitPrompt = document.querySelector('#quit-prompt');
 const saveButton = document.querySelector('#save');
 const undoButton = document.querySelector('#undo');
 const editable = new Compartment();
 let snapshot = { notes: [], path: '', content: '', dirty: false };
 let locked = false;
+let controlsLocked = false;
 let mixedLineEndings = false;
 let syncFailed = false;
 let missingVaultError = '';
 let composing = false;
+let busyTimer;
 
 const mixedEndingsError = 'This note has mixed CRLF, LF, or CR line endings. Editing and saving are disabled to preserve its bytes (see #63).';
 
@@ -60,15 +64,15 @@ function render() {
     (snapshot.path && view.state.sliceDoc() !== snapshot.content)));
   setBoolean(document.querySelector('#conflict'), 'hidden', snapshot.change !== 'conflict');
   setBoolean(document.querySelector('#missing'), 'hidden', snapshot.change !== 'missing');
-  for (const button of document.querySelectorAll('.decision button')) setBoolean(button, 'disabled', locked);
-  setBoolean(saveButton, 'disabled', locked || mixedLineEndings || !snapshot.path);
-  setBoolean(undoButton, 'disabled', locked || mixedLineEndings || !snapshot.path);
-  setBoolean(folder, 'disabled', locked);
-  setBoolean(form.querySelector('button'), 'disabled', locked);
-  setBoolean(document.querySelector('#pick-vault'), 'disabled', locked);
-  setBoolean(document.querySelector('#create-form button'), 'disabled', locked);
+  for (const button of document.querySelectorAll('.decision button')) setBoolean(button, 'disabled', controlsLocked);
+  setBoolean(saveButton, 'disabled', controlsLocked || mixedLineEndings || !snapshot.path);
+  setBoolean(undoButton, 'disabled', controlsLocked || mixedLineEndings || !snapshot.path);
+  setBoolean(folder, 'disabled', controlsLocked);
+  setBoolean(form.querySelector('button'), 'disabled', controlsLocked);
+  setBoolean(document.querySelector('#pick-vault'), 'disabled', controlsLocked);
+  setBoolean(document.querySelector('#create-form button'), 'disabled', controlsLocked);
   for (const id of ['move', 'trash', 'follow', 'open-attachment']) {
-    setBoolean(document.querySelector(`#${id}`), 'disabled', locked || !snapshot.path);
+    setBoolean(document.querySelector(`#${id}`), 'disabled', controlsLocked || !snapshot.path);
   }
   const existing = new Map([...notes.children].map((item) => [item.firstElementChild.textContent, item]));
   const paths = new Set(snapshot.notes);
@@ -86,7 +90,7 @@ function render() {
     const button = item.firstElementChild;
     const selected = String(path === snapshot.path);
     if (button.getAttribute('aria-current') !== selected) button.setAttribute('aria-current', selected);
-    setBoolean(button, 'disabled', locked);
+    setBoolean(button, 'disabled', controlsLocked);
     if (notes.children[index] !== item) notes.insertBefore(item, notes.children[index] || null);
   });
 }
@@ -156,13 +160,29 @@ render();
 
 function setLocked(value, updateUi = true) {
   locked = value;
+  // Only modal locks visually disable controls. Bridge work blocks competing actions
+  // and editing without making every button flash gray on an unrelated render().
+  controlsLocked = value && updateUi;
+  if (!value) {
+    window.clearTimeout(busyTimer);
+    if (busy.textContent) busy.textContent = '';
+  }
   view.dispatch({ effects: editable.reconfigure(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(snapshot.path))) });
   if (updateUi) render();
 }
 
+function lockForAction() {
+  setLocked(true, false);
+  // Fast bridge replies need no indicator; slow ones should explain why clicks wait.
+  busyTimer = window.setTimeout(() => { if (locked) busy.textContent = 'Working…'; }, 150);
+}
+
 async function navigate(operation) {
   if (locked) return;
-  setLocked(true);
+  // Ignore competing actions and pause editor input without dimming every control.
+  // The new note replaces the visible one only after the bridge replies.
+  if (operation.operation === 'startup') setLocked(true, false);
+  else lockForAction();
   await queue;
   if (syncFailed) {
     showError('Unsaved text was not accepted by the bridge; edit it again before switching notes.');
@@ -202,7 +222,7 @@ function followLink(kind, target) {
 
 async function noteAction(operation, fallback) {
   if (locked) return;
-  setLocked(true);
+  lockForAction();
   await queue;
   if (syncFailed) {
     showError('Unsaved text was not accepted by the bridge; edit it again before continuing.');
@@ -284,7 +304,8 @@ form.addEventListener('submit', (event) => {
 async function save() {
   if (mixedLineEndings) { showError(mixedEndingsError); return; }
   if (locked || !snapshot.path) return;
-  setLocked(true);
+  if (quitPrompt.hidden) lockForAction();
+  else setLocked(true); // Keep the modal lock while Save and quit is in flight.
   await queue;
   if (syncFailed) {
     showError('Unsaved text was not accepted by the bridge; edit it again before saving.');
@@ -303,7 +324,7 @@ async function save() {
 
 async function resolve(operation) {
   if (locked || !snapshot.path) return;
-  setLocked(true);
+  lockForAction();
   await queue;
   if (syncFailed) {
     showError('Unsaved text was not accepted by the bridge; edit it again before resolving.');
@@ -337,7 +358,6 @@ async function refresh() {
   render();
 }
 
-const quitPrompt = document.querySelector('#quit-prompt');
 let quitAttempt = 0;
 window.inkstowAskQuit = async () => {
   const attempt = quitAttempt;
@@ -360,7 +380,7 @@ document.querySelector('#quit-discard').addEventListener('click', () => window.i
 document.querySelector('#quit-save').addEventListener('click', async () => {
   if (quitPrompt.hidden) return;
   const attempt = quitAttempt;
-  setLocked(false);
+  setLocked(false, false); // Let save run without briefly re-enabling controls behind the prompt.
   const saved = await save();
   if (attempt !== quitAttempt) return;
   if (saved && !syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) {
