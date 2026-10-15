@@ -14,14 +14,14 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets)
 include(cmake/CompilerOptions.cmake)
 
 # Standalone Qt-free note path; the Qt core remains available during migration.
-add_library(portable-core src/core/portable/Vault.cpp src/core/portable/VaultActions.cpp
-                          src/core/portable/Trash.cpp src/core/portable/NoteInput.cpp
-                          src/core/portable/UnicodeCase.cpp src/core/portable/Session.cpp)
-target_include_directories(portable-core PUBLIC src/core/portable)
+add_library(portable-core src/core/vault/Vault.cpp src/core/vault/VaultActions.cpp
+                          src/core/vault/Trash.cpp src/core/vault/NoteInput.cpp
+                          src/core/vault/UnicodeCase.cpp src/core/vault/Session.cpp)
+target_include_directories(portable-core PUBLIC src/core/vault)
 target_link_libraries(portable-core PRIVATE inkstow-warnings)
 if(APPLE)
   enable_language(OBJCXX)
-  target_sources(portable-core PRIVATE src/core/portable/TrashMac.mm)
+  target_sources(portable-core PRIVATE src/core/vault/TrashMac.mm)
   target_link_libraries(portable-core PRIVATE "-framework Foundation" "-framework CoreFoundation")
 elseif(WIN32)
   target_link_libraries(portable-core PRIVATE shell32 ole32 normaliz)
