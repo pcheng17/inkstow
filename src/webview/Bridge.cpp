@@ -3,9 +3,12 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <charconv>
+#include <cctype>
 #include <exception>
 #include <initializer_list>
 #include <string>
+#include <string_view>
 
 namespace inkstow::webview_shell
 {
@@ -36,6 +39,45 @@ const char* changeName(portable::DiskChange change)
     return "none";
 }
 
+bool validExternalUrl(std::string_view url)
+{
+    const auto schemeEnd = url.find("://");
+    if (schemeEnd == std::string_view::npos ||
+        (url.substr(0, schemeEnd) != "http" && url.substr(0, schemeEnd) != "https"))
+        return false;
+    const auto hostStart = schemeEnd + 3;
+    const auto hostEnd = url.find_first_of("/?#", hostStart);
+    const auto authority = url.substr(hostStart, hostEnd - hostStart);
+    const auto portStart = authority.find(':');
+    const auto host = authority.substr(0, portStart);
+    if (host.empty() || host.size() > 253 || authority.find('@') != std::string_view::npos)
+        return false;
+    if (portStart != std::string_view::npos) {
+        const auto port = authority.substr(portStart + 1);
+        unsigned number = 0;
+        const auto [end, error] = std::from_chars(port.data(), port.data() + port.size(), number);
+        if (port.empty() || error != std::errc{} || end != port.data() + port.size() ||
+            number == 0 || number > 65535)
+            return false;
+    }
+    for (std::size_t start = 0; start < host.size();) {
+        const auto end = host.find('.', start);
+        const auto label = host.substr(start, end == std::string_view::npos ? end : end - start);
+        if (label.empty() || label.size() > 63 ||
+            !std::isalnum(static_cast<unsigned char>(label.front())) ||
+            !std::isalnum(static_cast<unsigned char>(label.back())) ||
+            !std::all_of(label.begin(), label.end(), [](unsigned char ch) {
+                return std::isalnum(ch) || ch == '-';
+            }))
+            return false;
+        if (end == std::string_view::npos) break;
+        start = end + 1;
+    }
+    return std::none_of(url.begin(), url.end(), [](unsigned char ch) {
+        return ch <= 0x20 || ch == 0x7f || ch == '\\';
+    });
+}
+
 bool stringField(const Json& request, const char* field, std::size_t maxBytes)
 {
     return request.at(field).is_string() &&
@@ -44,8 +86,11 @@ bool stringField(const Json& request, const char* field, std::size_t maxBytes)
 
 } // namespace
 
-Bridge::Bridge(OpenAttachment openAttachment, portable::Vault::TrashFunction trash)
-    : mOpenAttachment(std::move(openAttachment)), mTrash(std::move(trash))
+Bridge::Bridge(
+    OpenAttachment openAttachment, portable::Vault::TrashFunction trash, OpenExternal openExternal)
+    : mOpenAttachment(std::move(openAttachment))
+    , mOpenExternal(std::move(openExternal))
+    , mTrash(std::move(trash))
 {
 }
 
@@ -134,6 +179,24 @@ std::string Bridge::handle(const std::string& arguments)
                         mSession.followWikilink(request.at("link").get<std::string>(), &error);
                     if (success) mChange = portable::DiskChange::None;
                 } else if (
+                    operation == "link" && hasFields(request, {"operation", "link"}) &&
+                    stringField(request, "link", 4096))
+                {
+                    std::optional<std::filesystem::path> attachment;
+                    success = mSession.followLink(
+                        request.at("link").get<std::string>(),
+                        &attachment,
+                        &error);
+                    if (success && attachment) {
+                        if (mOpenAttachment)
+                            success = mOpenAttachment(*attachment, &error);
+                        else {
+                            success = false;
+                            error = "Attachment shell service is unavailable.";
+                        }
+                    }
+                    if (success && !attachment) mChange = portable::DiskChange::None;
+                } else if (
                     operation == "attachment" && hasFields(request, {"operation", "link"}) &&
                     stringField(request, "link", 4096))
                 {
@@ -144,6 +207,20 @@ std::string Bridge::handle(const std::string& arguments)
                             success = mOpenAttachment(*path, &error);
                         else
                             error = "Attachment shell service is unavailable.";
+                    }
+                } else if (
+                    operation == "external" && hasFields(request, {"operation", "url"}) &&
+                    stringField(request, "url", 4096))
+                {
+                    const auto& url = request.at("url").get_ref<const std::string&>();
+                    if (mSession.getPath().empty() || mSession.isDirty()) {
+                        error = "Select and save a note before following a link.";
+                    } else if (!validExternalUrl(url)) {
+                        error = "Invalid external URL.";
+                    } else if (mOpenExternal) {
+                        success = mOpenExternal(url, &error);
+                    } else {
+                        error = "External URL shell service is unavailable.";
                     }
                 } else if (operation == "refresh" && hasFields(request, {"operation"})) {
                     syncWithDisk(&error);

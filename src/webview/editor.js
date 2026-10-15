@@ -2,6 +2,7 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, undo } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
+import { livePreview, sourceLinkAt } from './preview.js';
 
 const folder = document.querySelector('#folder');
 const form = document.querySelector('#vault-form');
@@ -16,6 +17,7 @@ let snapshot = { notes: [], path: '', content: '', dirty: false };
 let locked = false;
 let mixedLineEndings = false;
 let syncFailed = false;
+let composing = false;
 
 const mixedEndingsError = 'This note has mixed CRLF, LF, or CR line endings. Editing and saving are disabled to preserve its bytes (see #63).';
 
@@ -79,7 +81,38 @@ function newDocument(content) {
     extensions: [EditorState.lineSeparator.of(endings.separator), EditorState.readOnly.of(mixedLineEndings),
       history(), keymap.of([...historyKeymap, ...defaultKeymap]),
       keymap.of([{ key: 'Mod-s', run: () => { save(); return true; } }]),
-      markdown(), editable.of(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(snapshot.path))),
+      markdown(), livePreview, EditorView.domEventHandlers({
+        compositionstart() { composing = true; },
+        compositionend() { composing = false; },
+        mousedown(event) {
+          if (event.button === 0 && event.target.closest?.('.cm-preview-link')) event.preventDefault();
+        },
+        click(event, editor) {
+          if (event.button !== 0 || locked) return false;
+          const rendered = event.target.closest?.('.cm-preview-link');
+          if (rendered) {
+            event.preventDefault();
+            followLink(rendered.dataset.kind, rendered.dataset.target);
+            return true;
+          }
+          if (event.ctrlKey || event.metaKey) {
+            const pos = editor.posAtCoords({ x: event.clientX, y: event.clientY });
+            const link = pos == null ? null : sourceLinkAt(editor.state, pos);
+            if (link) {
+              event.preventDefault();
+              followLink(link.kind, link.target);
+              return true;
+            }
+          }
+          return false;
+        }
+      }), keymap.of([{ key: 'Alt-Enter', run: (editor) => {
+        if (composing || editor.composing) return true;
+        const link = sourceLinkAt(editor.state, editor.state.selection.main.head);
+        if (!link) return false;
+        followLink(link.kind, link.target);
+        return true;
+      } }]), editable.of(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(snapshot.path))),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
         const text = update.state.sliceDoc();
@@ -132,6 +165,15 @@ async function navigate(operation) {
 
 function changeNote(path) {
   if (path !== snapshot.path) navigate({ operation: 'select', path });
+}
+
+function followLink(kind, target) {
+  if (!snapshot.path || locked) return;
+  if (kind === 'external') {
+    noteAction({ operation: 'external', url: target }, 'Could not follow link.');
+    return;
+  }
+  noteAction({ operation: 'link', link: target }, 'Could not follow link.');
 }
 
 async function noteAction(operation, fallback) {

@@ -14,4 +14,15 @@ bool openAttachment(const std::filesystem::path& path, std::string* error)
         return false;
     }
 }
+
+bool openExternal(const std::string& url, std::string* error)
+{
+    @autoreleasepool {
+        NSString* address = [NSString stringWithUTF8String:url.c_str()];
+        if (address && [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:address]])
+            return true;
+        *error = "Could not open URL in the default browser.";
+        return false;
+    }
+}
 } // namespace inkstow::webview_shell

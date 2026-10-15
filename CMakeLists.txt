@@ -94,7 +94,7 @@ if(INKSTOW_BUILD_WEBVIEW)
     COMMAND "${NODE_EXECUTABLE}" "${WEBVIEW_ASSET_DIR}/build.mjs"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/webview" "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
     DEPENDS "${WEBVIEW_ASSET_DIR}/installed.stamp" src/webview/build.mjs
-            src/webview/index.html src/webview/editor.js src/webview/style.css
+            src/webview/index.html src/webview/editor.js src/webview/preview.js src/webview/style.css
     VERBATIM)
   add_custom_target(webview-assets DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h")
   add_library(webview-bridge src/webview/Bridge.cpp)
