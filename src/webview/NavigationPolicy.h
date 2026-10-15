@@ -19,9 +19,9 @@ public:
 
     bool allowInitialWebView2Document(std::wstring_view uri)
     {
-        constexpr std::wstring_view prefix = L"data:text/html;charset=utf-8;base64,";
-        if (mInitialDocumentAllowed || uri.substr(0, prefix.size()) != prefix ||
-            uri.size() == prefix.size())
+        constexpr std::wstring_view kPrefix = L"data:text/html;charset=utf-8;base64,";
+        if (mInitialDocumentAllowed || uri.substr(0, kPrefix.size()) != kPrefix ||
+            uri.size() == kPrefix.size())
         {
             return false;
         }
