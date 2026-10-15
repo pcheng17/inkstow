@@ -39,6 +39,7 @@ public:
 
 private:
     void syncWithDisk(std::string* error);
+    void rememberVault(const std::string& folder);
     ShellServices* mServices;
     portable::Session mSession;
     portable::DiskChange mChange = portable::DiskChange::None;

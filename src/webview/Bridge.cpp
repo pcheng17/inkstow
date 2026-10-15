@@ -54,6 +54,13 @@ void Bridge::syncWithDisk(std::string* error)
     }
 }
 
+void Bridge::rememberVault(const std::string& folder)
+{
+    if (!mServices) return;
+    mServices->setLastVault(folder);
+    mServices->watchVault(folder);
+}
+
 std::string Bridge::handle(const std::string& arguments)
 {
     Json reply;
@@ -92,10 +99,7 @@ std::string Bridge::handle(const std::string& arguments)
                         error = "Folder selection cancelled.";
                     } else {
                         success = mSession.openVault(folder, &error);
-                        if (success) {
-                            mServices->setLastVault(folder);
-                            mServices->watchVault(folder);
-                        }
+                        if (success) rememberVault(folder);
                     }
                 } else if (
                     operation == "open" && hasFields(request, {"operation", "folder"}) &&
@@ -103,11 +107,7 @@ std::string Bridge::handle(const std::string& arguments)
                 {
                     success = mSession.openVault(request.at("folder").get<std::string>(), &error);
                     if (success) {
-                        if (mServices) {
-                            const auto folder = request.at("folder").get<std::string>();
-                            mServices->setLastVault(folder);
-                            mServices->watchVault(folder);
-                        }
+                        rememberVault(request.at("folder").get<std::string>());
                         mChange = portable::DiskChange::None;
                         mDismissedMissing = false;
                     }
