@@ -243,6 +243,16 @@ int run()
     for (int attempt = 0; attempt < 50 && bytes(note) != "Local for keep"; ++attempt) {
         pumpFor(std::chrono::milliseconds(100));
     }
+    if (bytes(note) != "Local for keep") {
+        window.eval(
+            "probe(JSON.stringify({error:document.querySelector('#error').textContent,"
+            "text:document.querySelector('.cm-content').textContent,"
+            "conflict:!document.querySelector('#conflict').hidden,"
+            "dirty:!document.querySelector('#dirty').hidden}))");
+        pumpFor(std::chrono::milliseconds(300));
+        std::cerr << "[DEBUG-WV92] Keep mine disk=" << nlohmann::json(bytes(note)).dump()
+                  << " browser=" << observed << '\n';
+    }
     check(bytes(note) == "Local for keep", "Keep mine did not save the reported version");
     window.eval(
         "probe(JSON.stringify({dirty:!document.querySelector('#dirty').hidden,"
