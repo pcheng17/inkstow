@@ -240,9 +240,17 @@ test('rendered links follow through the bridge while active source edits and sho
     assert.deepEqual(ui.external, ['https://example.org/a']);
     view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 4 } });
     assert.match(ui.document.querySelectorAll('.cm-line')[1].textContent, /\[\[Target\|Alias\]\]/);
-    ui.document.querySelectorAll('.cm-line')[1].dispatchEvent(new ui.dom.window.MouseEvent('click', { bubbles: true }));
+    const sourceLine = ui.document.querySelectorAll('.cm-line')[1];
+    sourceLine.dispatchEvent(new ui.dom.window.MouseEvent('click', { bubbles: true }));
     await ui.pause();
+    assert.equal(view.state.selection.main.head, view.state.doc.line(2).from + 4);
     assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+    sourceLine.textContent = '[[Target|Edited]] [Site](https://example.org/a)';
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.Event('input', { bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'edit');
+    assert.match(ui.calls.at(-1).content, /\[\[Target\|Edited\]\]/);
+    ui.document.querySelector('#undo').click(); await ui.pause();
     ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
       { key: 'Enter', altKey: true, bubbles: true }));
     await ui.pause();
@@ -313,7 +321,7 @@ test('empty wikilink labels stay visible and editable on inactive lines', async 
   } finally { ui.dom.window.close(); }
 });
 
-test('malformed links and code literals remain source, including after composition-style input', async () => {
+test('malformed links and code literals remain source', async () => {
   const ui = await setup({ 'Source.md': Buffer.from('Start\n`[[Hidden]]` [[broken] [x](bad url)\nEnd') });
   try {
     await ui.open(); await ui.select('Source.md');
@@ -324,12 +332,32 @@ test('malformed links and code literals remain source, including after compositi
       { key: 'Enter', altKey: true, bubbles: true }));
     await ui.pause();
     assert.equal(ui.calls.filter((call) => ['follow', 'link'].includes(call.operation)).length, 0);
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+  } finally { ui.dom.window.close(); }
+});
+
+test('composition input edits active link source without following its shortcut', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Intro\n[[Target]]\nEnd'), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 4 } });
     const editor = ui.document.querySelector('.cm-content');
+    editor.focus();
     editor.dispatchEvent(new ui.dom.window.CompositionEvent('compositionstart', { bubbles: true, data: '語' }));
-    view.dispatch({ changes: { from: view.state.doc.length, insert: '語' } });
+    editor.dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'Enter', altKey: true, bubbles: true }));
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+    editor.dispatchEvent(new ui.dom.window.InputEvent('beforeinput',
+      { bubbles: true, inputType: 'insertCompositionText', data: '語', isComposing: true }));
+    ui.document.querySelectorAll('.cm-line')[1].textContent = '[[Target語]]';
+    editor.dispatchEvent(new ui.dom.window.InputEvent('input',
+      { bubbles: true, inputType: 'insertCompositionText', data: '語', isComposing: true }));
     editor.dispatchEvent(new ui.dom.window.CompositionEvent('compositionend', { bubbles: true, data: '語' }));
     await ui.pause();
-    assert.equal(ui.calls.at(-1).content, 'Start\n`[[Hidden]]` [[broken] [x](bad url)\nEnd語');
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+    assert.equal(ui.calls.filter((call) => call.operation === 'link').length, 0);
+    assert.equal(ui.calls.at(-1).content, 'Intro\n[[Target語]]\nEnd');
   } finally { ui.dom.window.close(); }
 });
 

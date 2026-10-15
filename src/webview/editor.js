@@ -17,6 +17,7 @@ let snapshot = { notes: [], path: '', content: '', dirty: false };
 let locked = false;
 let mixedLineEndings = false;
 let syncFailed = false;
+let composing = false;
 
 const mixedEndingsError = 'This note has mixed CRLF, LF, or CR line endings. Editing and saving are disabled to preserve its bytes (see #63).';
 
@@ -81,6 +82,8 @@ function newDocument(content) {
       history(), keymap.of([...historyKeymap, ...defaultKeymap]),
       keymap.of([{ key: 'Mod-s', run: () => { save(); return true; } }]),
       markdown(), livePreview, EditorView.domEventHandlers({
+        compositionstart() { composing = true; },
+        compositionend() { composing = false; },
         mousedown(event) {
           if (event.button === 0 && event.target.closest?.('.cm-preview-link')) event.preventDefault();
         },
@@ -104,6 +107,7 @@ function newDocument(content) {
           return false;
         }
       }), keymap.of([{ key: 'Alt-Enter', run: (editor) => {
+        if (composing || editor.composing) return true;
         const link = sourceLinkAt(editor.state, editor.state.selection.main.head);
         if (!link) return false;
         followLink(link.kind, link.target);
