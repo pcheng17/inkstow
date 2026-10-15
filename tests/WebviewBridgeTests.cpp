@@ -186,6 +186,24 @@ int main() // NOLINT(bugprone-exception-escape)
                 {      "url", "https://example.org/"}
     })["ok"] == false);
     CHECK(openedUrl == "https://example.org/a");
+    const Json refusedLink = request(
+        bridge,
+        {
+            {"operation",    "link"},
+            {     "link", "Foo.bar"}
+    });
+    CHECK(
+        refusedLink["ok"] == false && refusedLink["path"] == "BOM.md" &&
+        refusedLink["content"] == "Changed" &&
+        refusedLink["error"].get<std::string>().find("Save or discard") != std::string::npos);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",      "link"},
+                {     "link", "image.png"}
+    })["ok"] == false);
+    CHECK(openedLink == root / "image.png");
     const Json refused = request(
         bridge,
         {
