@@ -2,6 +2,7 @@
 
 #include "Session.h"
 
+#include <filesystem>
 #include <string>
 
 namespace inkstow::webview_shell
@@ -21,6 +22,7 @@ public:
     virtual void setLastVault(const std::string& path) = 0;
     // Empty means the picker was cancelled.
     virtual std::string pickVault() = 0;
+    virtual bool openAttachment(const std::filesystem::path& path) = 0;
 };
 
 // Accepts the JSON argument array supplied by webview_bind, returns a JSON object.

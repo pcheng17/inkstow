@@ -52,6 +52,7 @@ function render() {
   for (const button of document.querySelectorAll('.decision button')) button.disabled = locked;
   saveButton.disabled = locked || mixedLineEndings || !snapshot.path;
   undoButton.disabled = locked || mixedLineEndings || !snapshot.path;
+  document.querySelector('#follow').disabled = locked || !snapshot.path;
   folder.disabled = locked;
   form.querySelector('button').disabled = locked;
   document.querySelector('#pick-vault').disabled = locked;
@@ -119,9 +120,10 @@ async function navigate(operation) {
   if (!reply.ok) {
     showError(reply.error || 'Could not open note.');
   } else {
+    const previousPath = snapshot.path;
     snapshot = reply;
     syncFailed = false;
-    newDocument(reply.content);
+    if (reply.path !== previousPath || reply.content !== view.state.sliceDoc()) newDocument(reply.content);
     showError(mixedLineEndings ? mixedEndingsError : '');
   }
   setLocked(false);
@@ -214,6 +216,20 @@ for (const [id, operation] of [['reload', 'reload'], ['keep-mine', 'keepMine'], 
   ['save-as-new', 'saveAsNew'], ['discard', 'discard']]) {
   document.querySelector(`#${id}`).addEventListener('click', () => resolve(operation));
 }
+window.inkstowFollow = () => {
+  if (locked || !snapshot.path) return;
+  const text = view.state.sliceDoc();
+  const position = view.state.selection.main.head;
+  const links = /\[\[([^\]\r\n]+)\]\]/g;
+  for (const match of text.matchAll(links)) {
+    if (match.index <= position && position <= match.index + match[0].length) {
+      navigate({ operation: 'follow', link: match[1] });
+      return;
+    }
+  }
+  showError('Place the cursor inside a [[wikilink]] to follow it.');
+};
+document.querySelector('#follow').addEventListener('click', window.inkstowFollow);
 window.inkstowSave = save;
 window.inkstowUndo = () => { if (!locked) undo(view); };
 saveButton.addEventListener('click', window.inkstowSave);
@@ -225,6 +241,10 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     quitPrompt.hidden = true;
     return;
+  }
+  if (event.altKey && event.key === 'Enter') {
+    event.preventDefault();
+    window.inkstowFollow();
   }
   if (event.ctrlKey || event.metaKey) {
     const key = event.key.toLowerCase();

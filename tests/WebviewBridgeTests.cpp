@@ -59,6 +59,12 @@ int main() // NOLINT(bugprone-exception-escape)
     {
         std::string mLast;
         std::string mPicked;
+        std::string mOpenedAttachment;
+        bool openAttachment(const std::filesystem::path& path) override
+        {
+            mOpenedAttachment = pathBytes(path);
+            return true;
+        }
         std::string lastVault() override { return mLast; }
         void setLastVault(const std::string& path) override { mLast = path; }
         std::string pickVault() override { return mPicked; }
@@ -146,6 +152,26 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation", "select"},
                 {     "path", "BOM.md"}
     })["content"] == "Original");
+    {
+        std::ofstream attachment(root / "image.png");
+        attachment << "image";
+    }
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",    "follow"},
+                {     "link", "image.png"}
+    })["ok"] == true);
+    CHECK(shell.mOpenedAttachment == pathBytes(root / "image.png"));
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",         "follow"},
+                {     "link", "../outside.png"}
+    })["ok"] == false);
+    fs::remove(root / "image.png");
     CHECK(
         request(
             bridge,
@@ -153,6 +179,14 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation",    "edit"},
                 {  "content", "Changed"}
     })["dirty"] == true);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",    "follow"},
+                {     "link", "image.png"}
+    })["ok"] == false);
+    CHECK(shell.mOpenedAttachment == pathBytes(root / "image.png"));
     const Json refused = request(
         bridge,
         {

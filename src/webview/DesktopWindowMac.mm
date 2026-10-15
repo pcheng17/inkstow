@@ -15,6 +15,7 @@ using inkstow::webview_shell::DesktopWindow;
 - (void)save:(id)sender;
 - (void)quit:(id)sender;
 - (void)undo:(id)sender;
+- (void)follow:(id)sender;
 @end
 
 @implementation InkstowWindowDelegate
@@ -28,6 +29,7 @@ using inkstow::webview_shell::DesktopWindow;
 - (void)save:(id)sender { shell->invoke("inkstowSave()"); }
 - (void)quit:(id)sender { shell->invoke("inkstowAskQuit()"); }
 - (void)undo:(id)sender { shell->invoke("inkstowUndo()"); }
+- (void)follow:(id)sender { shell->invoke("inkstowFollow()"); }
 - (BOOL)respondsToSelector:(SEL)selector
 {
     return [super respondsToSelector:selector] || [previousWindow respondsToSelector:selector] ||
@@ -81,6 +83,8 @@ DesktopWindow::DesktopWindow(webview::webview& window) : mWindow(window)
         NSMenuItem* noteItem = [[NSMenuItem alloc] init];
         NSMenu* noteMenu = [[NSMenu alloc] initWithTitle:@"Note"];
         addItem(noteMenu, @"Undo", @selector(undo:), @"z", delegate);
+        addItem(noteMenu, @"Follow link", @selector(follow:), @"\r", delegate);
+        [[noteMenu itemAtIndex:1] setKeyEquivalentModifierMask:NSEventModifierFlagOption];
         [noteItem setSubmenu:noteMenu];
         [bar addItem:noteItem];
         [NSApp setMainMenu:bar];

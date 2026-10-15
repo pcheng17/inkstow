@@ -104,6 +104,23 @@ std::string Bridge::handle(const std::string& arguments)
                         mChange = portable::DiskChange::None;
                         mDismissedMissing = false;
                     }
+                } else if (
+                    operation == "follow" && hasFields(request, {"operation", "link"}) &&
+                    stringField(request, "link", 4096))
+                {
+                    const auto link = request.at("link").get<std::string>();
+                    success = mSession.followWikilink(link, &error);
+                    if (!success && error == "Link does not point to a supported Markdown note." &&
+                        mServices)
+                    {
+                        const auto path = mSession.followAttachment(link, &error);
+                        if (path) {
+                            success = mServices->openAttachment(*path);
+                            if (!success)
+                                error = "Could not open attachment in the default application.";
+                        }
+                    }
+                    if (success) mChange = portable::DiskChange::None;
                 } else if (operation == "list" && hasFields(request, {"operation"})) {
                     success = true;
                 } else if (

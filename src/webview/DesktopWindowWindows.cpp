@@ -10,6 +10,7 @@ constexpr UINT_PTR kOpen = 1001;
 constexpr UINT_PTR kSave = 1002;
 constexpr UINT_PTR kQuit = 1003;
 constexpr UINT_PTR kUndo = 1004;
+constexpr UINT_PTR kFollow = 1005;
 
 LRESULT CALLBACK windowProc(HWND handle, UINT message, WPARAM wparam, LPARAM lparam)
 {
@@ -32,6 +33,9 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message, WPARAM wparam, LPARAM lpa
                 return 0;
             case kUndo:
                 shell->invoke("inkstowUndo()");
+                return 0;
+            case kFollow:
+                shell->invoke("inkstowFollow()");
                 return 0;
             default:
                 break;
@@ -64,6 +68,7 @@ DesktopWindow::DesktopWindow(webview::webview& window)
     AppendMenuW(file, MF_STRING, kSave, L"Save\tCtrl+S");
     AppendMenuW(file, MF_STRING, kQuit, L"Quit\tCtrl+Q");
     AppendMenuW(note, MF_STRING, kUndo, L"Undo\tCtrl+Z");
+    AppendMenuW(note, MF_STRING, kFollow, L"Follow link\tAlt+Enter");
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"File");
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(note), L"Note");
     SetMenu(native, bar);

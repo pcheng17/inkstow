@@ -67,6 +67,14 @@ DesktopWindow::DesktopWindow(webview::webview& window)
     menuItem(fileMenu, "Save", "inkstowSave()", this, accelerators, GDK_KEY_s);
     menuItem(fileMenu, "Quit", "inkstowAskQuit()", this, accelerators, GDK_KEY_q);
     menuItem(noteMenu, "Undo", "inkstowUndo()", this, accelerators, GDK_KEY_z);
+    auto* follow = menuItem(noteMenu, "Follow link", "inkstowFollow()", this, accelerators, 0);
+    gtk_widget_add_accelerator(
+        follow,
+        "activate",
+        accelerators,
+        GDK_KEY_Return,
+        GDK_MOD1_MASK,
+        GTK_ACCEL_VISIBLE);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(file), fileMenu);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(note), noteMenu);
     gtk_menu_shell_append(GTK_MENU_SHELL(bar), file);

@@ -48,6 +48,10 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
           case 'list': return snapshot(true);
+          case 'follow':
+            if (content !== saved) return snapshot(false, 'Save or discard your edits first.');
+            if (request.link === 'image.png') return snapshot(true);
+            return snapshot(false, 'Link could not be resolved.');
           case 'select': {
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             if (!disk.has(request.path)) return snapshot(false, 'Note not found.');
@@ -163,6 +167,19 @@ test('native picker opens vault and startup failure remains visible', async () =
     assert.equal(ui.document.querySelectorAll('#notes button').length, 2);
     // Startup is requested when the editor first loads, not on a button click.
     assert.ok(ui.calls.some((call) => call.operation === 'startup'));
+  } finally { ui.dom.window.close(); }
+});
+
+test('follow shortcut requests the cursor link and refuses dirty attachment navigation', async () => {
+  const ui = await setup({ 'Note.md': Buffer.from('[[image.png]]') });
+  try {
+    await ui.open(); await ui.select('Note.md');
+    ui.document.querySelector('#follow').click(); await ui.pause();
+    assert.equal(ui.calls.at(-1).link, 'image.png');
+    await ui.type('[[image.png]] more');
+    ui.document.querySelector('#follow').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#dirty').hidden, false);
+    assert.match(ui.document.querySelector('#error').textContent, /Save or discard/);
   } finally { ui.dom.window.close(); }
 });
 

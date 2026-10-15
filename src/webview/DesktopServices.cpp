@@ -7,11 +7,13 @@
 
 #if defined(_WIN32)
 #include <shlobj.h>
+#include <shellapi.h>
 #include <windows.h>
 #elif defined(__APPLE__)
 // The picker is implemented in DesktopServicesMac.mm.
 #else
 #include <gtk/gtk.h>
+#include <gio/gio.h>
 #endif
 
 namespace inkstow::webview_shell
@@ -101,6 +103,12 @@ std::string DesktopServices::pickVault()
     dialog->Release();
     return result;
 }
+bool DesktopServices::openAttachment(const std::filesystem::path& path)
+{
+    const auto result = reinterpret_cast<INT_PTR>(
+        ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+    return result > 32;
+}
 #elif !defined(__APPLE__)
 std::string DesktopServices::pickVault()
 {
@@ -120,6 +128,20 @@ std::string DesktopServices::pickVault()
     }
     g_object_unref(dialog);
     return result;
+}
+
+bool DesktopServices::openAttachment(const std::filesystem::path& path)
+{
+    const auto bytes = path.u8string();
+    const std::string text(bytes.begin(), bytes.end());
+    GFile* file = g_file_new_for_path(text.c_str());
+    char* uri = g_file_get_uri(file);
+    GError* error = nullptr;
+    const bool opened = g_app_info_launch_default_for_uri(uri, nullptr, &error);
+    if (error) g_error_free(error);
+    g_free(uri);
+    g_object_unref(file);
+    return opened;
 }
 #endif
 } // namespace inkstow::webview_shell
