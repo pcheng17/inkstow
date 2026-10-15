@@ -165,9 +165,12 @@ function changeNote(path) {
 
 function followLink(kind, target) {
   if (!snapshot.path || locked) return;
-  const operation = kind === 'external' ? { operation: 'external', url: target } :
-    { operation: /\.[^./]+$/.test(target) && !/\.md$/i.test(target) ? 'attachment' : 'follow', link: target };
-  noteAction(operation, 'Could not follow link.');
+  if (kind === 'external') {
+    noteAction({ operation: 'external', url: target }, 'Could not follow link.');
+    return;
+  }
+  const attachment = /\.[^./]+$/.test(target) && !/\.md$/i.test(target);
+  noteAction({ operation: attachment ? 'attachment' : 'follow', link: target }, 'Could not follow link.');
 }
 
 async function noteAction(operation, fallback) {
