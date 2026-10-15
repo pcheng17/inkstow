@@ -131,7 +131,7 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation",      "link"},
                 {     "link", "image.png"}
     })["ok"] == true);
-    CHECK(openedLink == root / "image.png");
+    CHECK(fs::equivalent(openedLink, root / "image.png"));
     CHECK(
         request(
             bridge,
@@ -139,7 +139,7 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation",         "link"},
                 {     "link", "../image.png"}
     })["ok"] == false);
-    CHECK(openedLink == root / "image.png");
+    CHECK(fs::equivalent(openedLink, root / "image.png"));
     CHECK(
         request(
             bridge,
@@ -219,7 +219,7 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation",      "link"},
                 {     "link", "image.png"}
     })["ok"] == false);
-    CHECK(openedLink == root / "image.png");
+    CHECK(fs::equivalent(openedLink, root / "image.png"));
     const Json refused = request(
         bridge,
         {
