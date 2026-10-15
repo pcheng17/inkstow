@@ -74,8 +74,8 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
           }
           case 'follow':
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
-            if (!disk.has(`${request.link}.md`)) return snapshot(false, 'Link not found.');
-            return window.inkstowRequest({ operation: 'select', path: `${request.link}.md` });
+            if (!disk.has(request.link.endsWith('.md') ? request.link : `${request.link}.md`)) return snapshot(false, 'Link not found.');
+            return window.inkstowRequest({ operation: 'select', path: request.link.endsWith('.md') ? request.link : `${request.link}.md` });
           case 'external':
             if (!/^https?:\/\/[^\s]+$/.test(request.url)) return snapshot(false, 'Invalid external URL.');
             external.push(request.url); return snapshot(true);
@@ -217,6 +217,21 @@ test('rendered links follow through the bridge while active source edits and sho
       { key: 'Enter', altKey: true, bubbles: true }));
     await ui.pause();
     assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+  } finally { ui.dom.window.close(); }
+});
+
+test('relative Markdown note links render and use core link resolution, not webview navigation', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Intro\n[Target](Target.md) [Picture](image.png)'),
+    'Target.md': Buffer.from('Target'), 'image.png': Buffer.from('image') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    assert.deepEqual([...ui.document.querySelectorAll('.cm-preview-link')].map((node) => node.textContent),
+      ['Target', 'Picture']);
+    ui.document.querySelectorAll('.cm-preview-link')[1].click(); await ui.pause();
+    assert.deepEqual(ui.opened, ['image.png']);
+    ui.document.querySelector('.cm-preview-link').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+    assert.equal(ui.calls.some((call) => call.operation === 'external'), false);
   } finally { ui.dom.window.close(); }
 });
 

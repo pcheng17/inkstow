@@ -26,13 +26,15 @@ export function sourceLinkAt(state, pos) {
     if (['InlineCode', 'FencedCode', 'CodeBlock'].includes(node.name)) return null;
   }
   const line = state.doc.lineAt(pos);
-  for (const match of line.text.matchAll(/\[\[([^\[\]\r\n]+)\]\]|\[([^\]\r\n]+)\]\((https?:\/\/[^\s()]+)\)/g)) {
+  for (const match of line.text.matchAll(/\[\[([^\[\]\r\n]+)\]\]|\[([^\]\r\n]+)\]\(([^\s()]+)\)/g)) {
     const from = line.from + match.index;
     if (pos < from || pos > from + match[0].length) continue;
     if (match[1]) {
       const target = match[1].split('|', 1)[0];
       if (target) return { kind: 'wiki', target };
-    } else return { kind: 'external', target: match[3] };
+    } else if (!match[3].includes(':') || /^https?:\/\//.test(match[3])) {
+      return { kind: /^https?:\/\//.test(match[3]) ? 'external' : 'wiki', target: match[3] };
+    }
   }
   return null;
 }
@@ -41,8 +43,9 @@ function active(view, from, to) {
   return view.state.selection.ranges.some((range) => {
     const first = view.state.doc.lineAt(range.from).number;
     const last = view.state.doc.lineAt(range.to).number;
-    const line = view.state.doc.lineAt(from).number;
-    return first <= line && line <= last;
+    const start = view.state.doc.lineAt(from).number;
+    const end = view.state.doc.lineAt(to).number;
+    return first <= end && start <= last;
   });
 }
 
@@ -94,11 +97,13 @@ export function preview(view) {
     }
     if (node.name === 'Link') {
       const text = source.slice(node.from, node.to);
-      const match = /^\[([^\]\r\n]+)\]\((https?:\/\/[^\s()]+)\)$/.exec(text);
-      if (match) {
+      const match = /^\[([^\]\r\n]+)\]\(([^\s()]+)\)$/.exec(text);
+      if (match && (!match[2].includes(':') || /^https?:\/\//.test(match[2]))) {
         const labelEnd = node.from + 1 + match[1].length;
         add(node.from, node.from + 1, hidden);
-        add(node.from + 1, labelEnd, Decoration.mark({ class: 'cm-preview-link', attributes: { 'data-kind': 'external', 'data-target': match[2] } }));
+        add(node.from + 1, labelEnd, Decoration.mark({ class: 'cm-preview-link', attributes: {
+          'data-kind': /^https?:\/\//.test(match[2]) ? 'external' : 'wiki', 'data-target': match[2]
+        } }));
         add(labelEnd, node.to, hidden);
         return false;
       }
