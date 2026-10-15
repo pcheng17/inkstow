@@ -50,6 +50,29 @@ if(INKSTOW_BUILD_WEBVIEW)
       add_dependencies(unit-tests webview-native-navigation-tests)
     endif()
   endif()
+
+  if(APPLE OR WIN32 OR XVFB_RUN_EXECUTABLE)
+    add_executable(webview-conflict-window-tests EXCLUDE_FROM_ALL
+                   WebviewConflictWindowTests.cpp
+                   ${PROJECT_SOURCE_DIR}/${NAVIGATION_POLICY_SOURCE})
+    add_dependencies(webview-conflict-window-tests webview-assets)
+    target_include_directories(webview-conflict-window-tests PRIVATE
+                               ${PROJECT_SOURCE_DIR}/src/webview
+                               "${PROJECT_BINARY_DIR}/generated")
+    target_link_libraries(webview-conflict-window-tests PRIVATE webview-bridge
+                          webview::core_static inkstow-warnings)
+    if(APPLE)
+      set_target_properties(webview-conflict-window-tests PROPERTIES OBJCXX_STANDARD 17
+                                                                OBJCXX_STANDARD_REQUIRED ON)
+    endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_test(NAME webview-conflict-window-tests
+               COMMAND "${XVFB_RUN_EXECUTABLE}" -a $<TARGET_FILE:webview-conflict-window-tests>)
+    else()
+      add_test(NAME webview-conflict-window-tests COMMAND webview-conflict-window-tests)
+    endif()
+    add_dependencies(unit-tests webview-conflict-window-tests)
+  endif()
 endif()
 
 # QTest delivers key presses through the shortcut map, as real typing does.

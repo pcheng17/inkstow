@@ -18,8 +18,12 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let saved = '';
   let bom = false;
   let injectedError = '';
+  let change = 'none';
+  let dismissedMissing = false;
+  let expectedBytes;
+  let reportedBytes;
   function snapshot(ok, error) {
-    return { ok, notes: [...notes], path, content, dirty: content !== saved, ...(error ? { error } : {}) };
+    return { ok, notes: [...notes], path, content, dirty: content !== saved, change, ...(error ? { error } : {}) };
   }
   const dom = new JSDOM(html, {
     url: 'https://inkstow.invalid/', runScripts: 'dangerously', pretendToBeVisual: true,
@@ -44,17 +48,68 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             const bytes = disk.get(request.path);
             bom = bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]));
             path = request.path;
+            expectedBytes = Buffer.from(bytes);
+            change = 'none'; dismissedMissing = false;
             content = saved = decoder.decode(bom ? bytes.subarray(3) : bytes);
             return snapshot(true);
           }
           case 'edit':
             if (!path) return snapshot(false, 'No note selected.');
             content = request.content;
+            if (content !== saved) dismissedMissing = false;
             return snapshot(true);
+          case 'refresh': {
+            if (!path) return snapshot(true);
+            const current = disk.get(path);
+            if (!current) { change = dismissedMissing && content === saved ? 'none' : 'missing'; return snapshot(true, 'Note no longer exists.'); }
+            dismissedMissing = false;
+            if (!current.equals(expectedBytes)) {
+              if (content !== saved) { change = 'conflict'; reportedBytes = Buffer.from(current); return snapshot(true, 'Note changed on disk.'); }
+              expectedBytes = Buffer.from(current);
+              content = saved = decoder.decode(current.subarray(bom ? 3 : 0));
+              change = 'reloaded';
+            } else change = 'none';
+            return snapshot(true);
+          }
+          case 'reload': {
+            if (!disk.has(path)) return snapshot(false, 'Note no longer exists.');
+            const current = disk.get(path);
+            expectedBytes = Buffer.from(current);
+            content = saved = decoder.decode(current.subarray(bom ? 3 : 0));
+            change = 'none'; return snapshot(true);
+          }
+          case 'merge':
+            if (change !== 'conflict' || !disk.get(path)?.equals(reportedBytes)) return snapshot(false, 'Outside note changed again.');
+            saved = decoder.decode(reportedBytes.subarray(bom ? 3 : 0));
+            const separator = saved.match(/\r\n|\r|\n/)?.[0] || content.match(/\r\n|\r|\n/)?.[0] || '\n';
+            content = `<<<<<<< mine\n${content}\n=======\n${saved}\n>>>>>>> outside`
+              .replace(/\r\n|\r|\n/g, separator);
+            expectedBytes = Buffer.from(reportedBytes); change = 'none'; return snapshot(true);
+          case 'keepMine':
+            if (change !== 'conflict' || !disk.get(path)?.equals(reportedBytes)) return snapshot(false, 'Outside note changed again.');
+            expectedBytes = Buffer.from(reportedBytes);
+            // fall through to save with the reported outside bytes.
           case 'save':
             if (!path) return snapshot(false, 'No note selected.');
-            disk.set(path, Buffer.concat([bom ? Buffer.from([0xef, 0xbb, 0xbf]) : Buffer.alloc(0), Buffer.from(content)]));
-            saved = content; return snapshot(true);
+            if (!disk.has(path)) { change = 'missing'; return snapshot(false, 'Note no longer exists.'); }
+            if (!disk.get(path).equals(expectedBytes)) {
+              if (content === saved) {
+                expectedBytes = Buffer.from(disk.get(path));
+                content = saved = decoder.decode(expectedBytes.subarray(bom ? 3 : 0));
+                change = 'reloaded';
+              } else { change = 'conflict'; reportedBytes = Buffer.from(disk.get(path)); }
+              return snapshot(false, 'Note changed on disk.');
+            }
+            expectedBytes = Buffer.concat([bom ? Buffer.from([0xef, 0xbb, 0xbf]) : Buffer.alloc(0), Buffer.from(content)]);
+            disk.set(path, Buffer.from(expectedBytes));
+            saved = content; change = 'none'; return snapshot(true);
+          case 'saveAsNew':
+            if (change !== 'missing' || disk.has(path)) return snapshot(false, 'Note already exists.');
+            expectedBytes = Buffer.concat([bom ? Buffer.from([0xef, 0xbb, 0xbf]) : Buffer.alloc(0), Buffer.from(content)]);
+            disk.set(path, Buffer.from(expectedBytes)); saved = content; change = 'none'; return snapshot(true);
+          case 'discard':
+            if (change !== 'missing') return snapshot(false, 'No missing note.');
+            content = saved; change = 'none'; dismissedMissing = true; return snapshot(true);
           default: return snapshot(false, 'Unknown operation.');
         }
       };
@@ -188,6 +243,120 @@ test('dirty note refuses navigation, save failures and bridge errors keep text v
     await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /Vault folder not found/);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'unsaved');
+  } finally { ui.dom.window.close(); }
+});
+
+test('stale clean save reloads the visible editor before later edits can be saved', async () => {
+  const ui = await setup({ 'Note.md': Buffer.from('Original') });
+  try {
+    await ui.open(); await ui.select('Note.md');
+    ui.disk.set('Note.md', Buffer.from('Outside'));
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /changed on disk/i);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Outside');
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+    await ui.type('Edited outside');
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.equal(ui.disk.get('Note.md').toString(), 'Edited outside');
+  } finally { ui.dom.window.close(); }
+});
+
+test('outside change offers reload, keep mine, and unsaved editable merge markers', async () => {
+  const ui = await setup({ 'Note.md': Buffer.from('Base') });
+  try {
+    await ui.open(); await ui.select('Note.md'); await ui.type('Mine');
+    ui.disk.set('Note.md', Buffer.from('Outside'));
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus'));
+    await ui.pause();
+    assert.equal(ui.document.querySelector('#conflict').hidden, false);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Mine');
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /changed on disk/i);
+    assert.equal(ui.disk.get('Note.md').toString(), 'Outside');
+    ui.document.querySelector('#merge').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#conflict').hidden, true);
+    assert.match(ui.document.querySelector('.cm-content').textContent, /<<<<<<< mine.*Mine.*=======.*Outside.*>>>>>>> outside/s);
+    assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'true');
+    assert.equal(ui.document.querySelector('#dirty').hidden, false);
+    assert.equal(ui.disk.get('Note.md').toString(), 'Outside');
+    await ui.type('Reviewed');
+    assert.equal(ui.document.querySelector('#dirty').hidden, false);
+    assert.equal(ui.disk.get('Note.md').toString(), 'Outside');
+  } finally { ui.dom.window.close(); }
+});
+
+test('CRLF and CR merged markers stay editable without changing untouched line endings on save', async () => {
+  for (const separator of ['\r\n', '\r']) {
+    const ui = await setup({ 'Note.md': Buffer.from(`Base${separator}Line`) });
+    try {
+      await ui.open(); await ui.select('Note.md'); await ui.type('Mine');
+      ui.disk.set('Note.md', Buffer.from(`Outside${separator}Line`));
+      ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+      ui.document.querySelector('#merge').click(); await ui.pause();
+      assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'true');
+      assert.equal(ui.document.querySelector('#save').disabled, false);
+      const line = ui.document.querySelectorAll('.cm-line')[1];
+      line.textContent = 'Reviewed';
+      ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.Event('input', { bubbles: true }));
+      await ui.pause();
+      ui.document.querySelector('#save').click(); await ui.pause();
+      assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(
+        `<<<<<<< mine${separator}Reviewed${separator}Line${separator}=======${separator}Outside${separator}Line${separator}>>>>>>> outside`));
+    } finally { ui.dom.window.close(); }
+  }
+});
+
+test('keep mine writes only reported outside version, and reload discards edits explicitly', async () => {
+  const ui = await setup({ 'Note.md': Buffer.from('Base') });
+  try {
+    await ui.open(); await ui.select('Note.md'); await ui.type('Mine');
+    ui.disk.set('Note.md', Buffer.from('Outside'));
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    ui.disk.set('Note.md', Buffer.from('Newer outside'));
+    ui.document.querySelector('#keep-mine').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /changed again/i);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Mine');
+    assert.equal(ui.disk.get('Note.md').toString(), 'Newer outside');
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    ui.document.querySelector('#keep-mine').click(); await ui.pause();
+    assert.equal(ui.disk.get('Note.md').toString(), 'Mine');
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+    await ui.type('Draft'); ui.disk.set('Note.md', Buffer.from('Reloaded'));
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    ui.document.querySelector('#reload').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Reloaded');
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+  } finally { ui.dom.window.close(); }
+});
+
+test('missing note retains edits and refuses to overwrite a reappeared file', async () => {
+  const ui = await setup({ 'Note.md': Buffer.from('Base') });
+  try {
+    await ui.open(); await ui.select('Note.md'); await ui.type('Recover');
+    ui.disk.delete('Note.md');
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    assert.equal(ui.document.querySelector('#missing').hidden, false);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Recover');
+    ui.disk.set('Note.md', Buffer.from('Reappeared'));
+    ui.document.querySelector('#save-as-new').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /already exists/i);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Recover');
+    assert.equal(ui.disk.get('Note.md').toString(), 'Reappeared');
+    ui.disk.delete('Note.md');
+    ui.document.querySelector('#save-as-new').click(); await ui.pause();
+    assert.equal(ui.disk.get('Note.md').toString(), 'Recover');
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+    await ui.type('Throw away'); ui.disk.delete('Note.md');
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    ui.document.querySelector('#discard').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#missing').hidden, true);
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    assert.equal(ui.document.querySelector('#missing').hidden, true);
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Recover');
+    await ui.type('Recovery again');
+    ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
+    assert.equal(ui.document.querySelector('#missing').hidden, false);
   } finally { ui.dom.window.close(); }
 });
 

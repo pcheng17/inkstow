@@ -1,10 +1,5 @@
 #include "NavigationPolicy.h"
-
-// Upstream 0.12.0 shadows parameters in its implementation header.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow"
-#include <webview/webview.h>
-#pragma GCC diagnostic pop
+#include "WebviewHeader.h"
 
 #include <webkit2/webkit2.h>
 

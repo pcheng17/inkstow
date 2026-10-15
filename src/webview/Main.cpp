@@ -1,16 +1,7 @@
 #include "Bridge.h"
 #include "LocalHtml.h"
 #include "NavigationPolicy.h"
-
-// Upstream 0.12.0's header contains parameter shadowing; keep project warnings clean.
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow"
-#endif
-#include <webview/webview.h>
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
+#include "WebviewHeader.h"
 
 #include <exception>
 #include <iostream>

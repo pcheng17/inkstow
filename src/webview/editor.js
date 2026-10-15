@@ -30,6 +30,10 @@ function showError(message) {
   error.hidden = !message;
 }
 
+function showReplyError(reply, fallback) {
+  showError(reply.error || (reply.ok ? '' : fallback));
+}
+
 // Serialize full-document edits before save/open/select, even when the native binding is slow.
 function request(operation) {
   const result = queue.then(async () => {
@@ -43,6 +47,9 @@ function request(operation) {
 function render() {
   title.textContent = snapshot.path || 'No note selected';
   dirty.hidden = !(snapshot.dirty || syncFailed || (snapshot.path && view.state.sliceDoc() !== snapshot.content));
+  document.querySelector('#conflict').hidden = snapshot.change !== 'conflict';
+  document.querySelector('#missing').hidden = snapshot.change !== 'missing';
+  for (const button of document.querySelectorAll('.decision button')) button.disabled = locked;
   saveButton.disabled = locked || mixedLineEndings || !snapshot.path;
   undoButton.disabled = locked || mixedLineEndings || !snapshot.path;
   folder.disabled = locked;
@@ -139,14 +146,53 @@ async function save() {
     return;
   }
   const reply = await request({ operation: 'save' });
-  if (!reply.ok) showError(reply.error || 'Could not save note.');
-  else {
+  if (reply.path === snapshot.path) {
     snapshot = reply;
-    showError('');
+    if (reply.change === 'reloaded') newDocument(reply.content);
+  }
+  showReplyError(reply, 'Could not save note.');
+  setLocked(false);
+}
+
+async function resolve(operation) {
+  if (locked || !snapshot.path) return;
+  setLocked(true);
+  await queue;
+  if (syncFailed) {
+    showError('Unsaved text was not accepted by the bridge; edit it again before resolving.');
+    setLocked(false);
+    return;
+  }
+  const reply = await request({ operation });
+  if (reply.path === snapshot.path) {
+    snapshot = reply;
+    if (reply.ok && view.state.sliceDoc() !== reply.content) newDocument(reply.content);
+  }
+  showReplyError(reply, 'Could not resolve outside change.');
+  setLocked(false);
+}
+
+async function refresh() {
+  if (locked || !snapshot.path) return;
+  setLocked(true);
+  await queue;
+  if (!syncFailed) {
+    const reply = await request({ operation: 'refresh' });
+    if (reply.path === snapshot.path) {
+      snapshot = reply;
+      if (reply.ok && reply.change === 'reloaded') newDocument(reply.content);
+    }
+    showReplyError(reply, 'Could not check for outside changes.');
   }
   setLocked(false);
 }
 
+window.addEventListener('focus', refresh);
+window.setInterval(() => { if (!document.hidden) refresh(); }, 3000);
+for (const [id, operation] of [['reload', 'reload'], ['keep-mine', 'keepMine'], ['merge', 'merge'],
+  ['save-as-new', 'saveAsNew'], ['discard', 'discard']]) {
+  document.querySelector(`#${id}`).addEventListener('click', () => resolve(operation));
+}
 saveButton.addEventListener('click', save);
 undoButton.addEventListener('click', () => { if (!locked) undo(view); });
 document.addEventListener('keydown', (event) => {

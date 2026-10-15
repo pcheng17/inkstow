@@ -282,6 +282,42 @@ void mergeReportedOutsideChanges()
     CHECK(read(note) == "a\nb\nc\nY\nd\ne");
 }
 
+void mergedEditorPreservesUntouchedLineEndings()
+{
+    TempVault temp;
+    const fs::path note = temp.mPath / "Note.md";
+    Session session;
+    std::string error;
+    for (const std::string& separator : {std::string("\r\n"), std::string("\r")}) {
+        const auto text = [&separator](std::string start) {
+            start += separator;
+            start += "End";
+            start += separator;
+            return start;
+        };
+        write(note, text("Base"));
+        CHECK(session.openVault(utf8Path(temp.mPath), &error));
+        CHECK(session.selectNote("Note.md", &error));
+        session.setContent(text("Mine"));
+        write(note, text("Outside"));
+        CHECK(session.syncWithDisk(&error) == DiskChange::Conflict);
+        CHECK(session.mergeOutsideChanges(&error));
+        const std::string merged = session.getContent();
+        if (separator == "\r\n") {
+            CHECK(
+                merged ==
+                "<<<<<<< mine\r\nMine\r\n=======\r\nOutside\r\n>>>>>>> outside\r\nEnd\r\n");
+        } else {
+            CHECK(merged == "<<<<<<< mine\rMine\rEnd\r=======\rOutside\rEnd\r>>>>>>> outside");
+        }
+        std::string reviewed = merged;
+        reviewed.replace(reviewed.find("Mine"), 4, "Reviewed");
+        session.setContent(reviewed);
+        CHECK(session.save(&error));
+        CHECK(read(note) == reviewed);
+    }
+}
+
 void mergedEditorUsesReportedOutsideBom()
 {
     TempVault temp;
@@ -962,6 +998,7 @@ int main(int argc, char** argv)
         dirtyOutsideChangeRetainsEditsAndReportsSnapshot();
         resolutionRequiresReportedOutsideVersion();
         mergeReportedOutsideChanges();
+        mergedEditorPreservesUntouchedLineEndings();
         mergedEditorUsesReportedOutsideBom();
         missingNoteRecoveryRefusesReappearingPath();
         discardEditsDoesNotRecreateDeletedNote();

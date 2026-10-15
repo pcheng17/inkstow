@@ -14,7 +14,12 @@ public:
     std::string handle(const std::string& arguments);
 
 private:
+    void syncWithDisk(std::string* error);
     portable::Session mSession;
+    portable::DiskChange mChange = portable::DiskChange::None;
+    // A dismissed missing-note decision stays hidden on focus refresh until new edits or disk
+    // change.
+    bool mDismissedMissing = false;
 };
 
 } // namespace inkstow::webview_shell

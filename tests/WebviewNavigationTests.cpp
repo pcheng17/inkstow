@@ -23,4 +23,21 @@ int main() // NOLINT(bugprone-exception-escape)
     check(gate.allowInitialDocument("about:blank"), "Embedded initial page blocked");
     check(!gate.allowInitialDocument("about:blank"), "Second blank navigation allowed");
     check(!gate.allowInitialDocument("https://example.org/"), "Remote navigation allowed");
+
+    NavigationGate webView2Gate;
+    check(
+        !webView2Gate.allowInitialWebView2Document(L"data:text/html,evil"),
+        "Unencoded WebView2 document allowed");
+    check(
+        !webView2Gate.allowInitialWebView2Document(L"data:text/html;charset=utf-8;base64,"),
+        "Empty WebView2 document allowed");
+    check(
+        webView2Gate.allowInitialWebView2Document(
+            L"data:text/html;charset=utf-8;base64,PGgxPk9LPC9oMT4="),
+        "Embedded WebView2 document blocked");
+    check(!webView2Gate.allowInitialDocument("about:blank"), "Second WebView2 navigation allowed");
+    check(
+        !webView2Gate.allowInitialWebView2Document(
+            L"data:text/html;charset=utf-8;base64,PGgxPk5ldzwvaDE+"),
+        "Second WebView2 document allowed");
 }

@@ -37,8 +37,8 @@ NavigationPolicy::NavigationPolicy(void* browser)
             if (FAILED(args->get_Uri(&uri))) {
                 return args->put_Cancel(TRUE);
             }
-            const bool allow = uri && std::wstring_view(uri) == L"about:blank" &&
-                               mGate.allowInitialDocument("about:blank");
+            // WebView2 reports NavigateToString as a base64 data URL.
+            const bool allow = uri && mGate.allowInitialWebView2Document(uri);
             CoTaskMemFree(uri);
             return args->put_Cancel(allow ? FALSE : TRUE);
         });

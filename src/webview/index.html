@@ -21,6 +21,17 @@
     <section id="workspace" aria-label="Editor">
       <div class="toolbar"><span id="title">No note selected</span><span id="dirty" aria-label="Unsaved changes" hidden>● Unsaved</span><button id="undo" type="button" disabled>Undo</button><button id="save" type="button" disabled>Save</button></div>
       <p id="error" role="alert" hidden></p>
+      <div id="conflict" class="decision" role="group" aria-label="Outside change" hidden>
+        <span>This note changed outside Inkstow. Choose how to resolve your unsaved edits.</span>
+        <button id="reload" type="button">Reload from disk</button>
+        <button id="keep-mine" type="button">Keep mine</button>
+        <button id="merge" type="button">Merge outside changes</button>
+      </div>
+      <div id="missing" class="decision" role="group" aria-label="Missing note" hidden>
+        <span>This note was deleted outside Inkstow. Your edits are still here.</span>
+        <button id="save-as-new" type="button">Save as new note</button>
+        <button id="discard" type="button">Discard edits</button>
+      </div>
       <div id="editor" aria-label="Note content"></div>
     </section>
   </main>
