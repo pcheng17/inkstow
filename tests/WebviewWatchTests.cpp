@@ -4,15 +4,53 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <thread>
 
+namespace
+{
+struct TempVault
+{
+    std::filesystem::path mRoot;
+    TempVault()
+    {
+        std::mt19937_64 generator(std::random_device{}());
+        for (int attempt = 0; attempt < 32; ++attempt) {
+            const auto candidate = std::filesystem::temp_directory_path() /
+                                   ("inkstow-webview-watch-" + std::to_string(generator()));
+            std::error_code error;
+            if (std::filesystem::create_directory(candidate, error)) {
+                mRoot = candidate;
+                return;
+            }
+            if (error && error != std::errc::file_exists)
+                throw std::filesystem::filesystem_error(
+                    "Could not create test vault",
+                    candidate,
+                    error);
+        }
+        throw std::runtime_error("Could not reserve unique test vault");
+    }
+    ~TempVault()
+    {
+        if (mRoot.empty()) return;
+        std::error_code ignored;
+        std::filesystem::remove_all(mRoot, ignored);
+    }
+    TempVault(const TempVault&) = delete;
+    TempVault& operator=(const TempVault&) = delete;
+    TempVault(TempVault&&) = delete;
+    TempVault& operator=(TempVault&&) = delete;
+};
+} // namespace
+
 int run()
 {
     namespace fs = std::filesystem;
-    const auto root = fs::temp_directory_path() / "inkstow-webview-watch-test";
-    fs::remove_all(root);
+    TempVault vault;
+    const auto& root = vault.mRoot;
     fs::create_directories(root / "Folder");
     const auto note = root / "Folder" / "Note.md";
     {
@@ -41,7 +79,6 @@ int run()
             std::this_thread::sleep_for(std::chrono::milliseconds(30));
         if (events.load() == previous) throw std::runtime_error("Folder change was not reported");
     }
-    fs::remove_all(root);
     return 0;
 }
 
