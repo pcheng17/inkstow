@@ -202,7 +202,9 @@ async function refresh() {
 const quitPrompt = document.querySelector('#quit-prompt');
 let quitAttempt = 0;
 window.inkstowAskQuit = async () => {
+  const attempt = quitAttempt;
   await queue;
+  if (attempt !== quitAttempt) return;
   if (!syncFailed && !snapshot.dirty && view.state.sliceDoc() === snapshot.content) {
     window.inkstowExit();
     return;

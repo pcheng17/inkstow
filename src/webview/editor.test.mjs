@@ -222,7 +222,7 @@ test('failed save on quit never exits even when outside clean reload clears dirt
   } finally { ui.dom.window.close(); }
 });
 
-test('Cancel during a pending Save and quit saves without exiting or reopening the prompt', async () => {
+test('Cancel during a pending Save and quit ignores queued quit requests after saving', async () => {
   const ui = await setup();
   try {
     await ui.open(); await ui.select('BOM.md'); await ui.type('Mine');
@@ -230,6 +230,7 @@ test('Cancel during a pending Save and quit saves without exiting or reopening t
     ui.dom.window.inkstowAskQuit(); await ui.pause();
     ui.document.querySelector('#quit-save').click(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'save');
+    ui.dom.window.inkstowAskQuit(); // A second Quit waits behind the pending save.
     ui.document.querySelector('#quit-cancel').click();
     assert.equal(ui.document.querySelector('#quit-prompt').hidden, true);
     releaseSave(); await ui.pause();
