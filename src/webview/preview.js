@@ -8,6 +8,7 @@ const list = Decoration.line({ class: 'cm-preview-list' });
 const strong = Decoration.mark({ class: 'cm-strong' });
 const emphasis = Decoration.mark({ class: 'cm-emphasis' });
 const code = Decoration.mark({ class: 'cm-inline-code' });
+const blockCode = Decoration.line({ class: 'cm-block-code' });
 
 class ListBullet extends WidgetType {
   constructor(label) { super(); this.label = label; }
@@ -86,6 +87,18 @@ export function preview(view) {
   }
   syntaxTree(view.state).iterate({ enter(node) {
     if (wikiRanges.some((range) => node.from >= range.from && node.to <= range.to)) return false;
+    if (node.name === 'FencedCode' || node.name === 'CodeBlock') {
+      const first = view.state.doc.lineAt(node.from).number;
+      const last = view.state.doc.lineAt(node.to).number;
+      for (let number = first; number <= last; number++) {
+        const line = view.state.doc.line(number);
+        if (!active(view, line.from, line.to)) addLine(line.from, blockCode);
+      }
+    }
+    if (node.name === 'CodeText' && node.node.parent?.name === 'CodeBlock' &&
+        !active(view, node.from, node.to)) {
+      add(view.state.doc.lineAt(node.from).from, node.from, hidden);
+    }
     if (active(view, node.from, node.to) ||
         /^(<<<<<<< |=======|>>>>>>> )/.test(view.state.doc.lineAt(node.from).text)) return;
     if (/^ATXHeading[1-6]$/.test(node.name)) addLine(node.from, heading);
@@ -99,7 +112,7 @@ export function preview(view) {
       add(node.from, node.to, Decoration.replace({ widget: new ListBullet(/^\d/.test(marker) ? marker : '•') }));
       return;
     }
-    if (['HeaderMark', 'EmphasisMark', 'CodeMark', 'QuoteMark'].includes(node.name)) {
+    if (['HeaderMark', 'EmphasisMark', 'CodeMark', 'CodeInfo', 'QuoteMark'].includes(node.name)) {
       add(node.from, node.to, hidden);
       return;
     }

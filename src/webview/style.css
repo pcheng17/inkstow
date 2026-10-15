@@ -34,4 +34,5 @@ ul { list-style: none; padding: 0; margin: 0; }
 .cm-strong { font-weight: 700; }
 .cm-emphasis { font-style: italic; }
 .cm-inline-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; background: #edf1f6; }
+.cm-block-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; background: #edf1f6; padding-left: 12px; border-left: 2px solid #a9b9cc; }
 .cm-preview-link { color: #235a9d; text-decoration: underline; cursor: pointer; }

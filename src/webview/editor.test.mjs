@@ -205,6 +205,27 @@ test('inactive Markdown renders but selection across lines exposes source withou
   } finally { ui.dom.window.close(); }
 });
 
+test('fenced and indented code render inactive lines and restore editable source on the active line', async () => {
+  const source = 'Intro\n```js\nconst x = 1;\n```\n\n    indented\n    next\nDone';
+  const ui = await setup({ 'Note.md': Buffer.from(source) });
+  try {
+    await ui.open(); await ui.select('Note.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent, '');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[3].textContent, '');
+    assert.ok(ui.document.querySelectorAll('.cm-line')[2].classList.contains('cm-block-code'));
+    assert.equal(ui.document.querySelectorAll('.cm-line')[5].textContent, 'indented');
+    assert.ok(ui.document.querySelectorAll('.cm-line')[5].classList.contains('cm-block-code'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 1 } });
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent, '```js');
+    view.dispatch({ selection: { anchor: view.state.doc.line(6).from + 2 } });
+    assert.equal(ui.document.querySelectorAll('.cm-line')[5].textContent, '    indented');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[5].classList.contains('cm-block-code'), false);
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(source));
+  } finally { ui.dom.window.close(); }
+});
+
 test('rendered links follow through the bridge while active source edits and shortcut follows', async () => {
   const ui = await setup({ 'Source.md': Buffer.from('Start\n[[Target|Alias]] [Site](https://example.org/a)\nEnd'),
     'Target.md': Buffer.from('Target') });
