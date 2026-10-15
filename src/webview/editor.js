@@ -251,8 +251,7 @@ navigate({ operation: 'startup' });
 document.addEventListener('keydown', (event) => {
   if (!quitPrompt.hidden && event.key === 'Escape') {
     event.preventDefault();
-    quitPrompt.hidden = true;
-    setLocked(false);
+    document.querySelector('#quit-cancel').click();
     return;
   }
   if (event.altKey && event.key === 'Enter') {
