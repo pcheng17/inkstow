@@ -11,8 +11,7 @@ aside { width: 240px; flex-shrink: 0; overflow: auto; padding: 12px; border-righ
 h2 { margin: 0 0 10px; font-size: 1rem; }
 ul { list-style: none; padding: 0; margin: 0; }
 #create-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-#create-form input, #move-path, #link { min-width: 0; padding: 6px; }
-#link-actions { padding: 8px 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+#create-form input, #move-path { min-width: 0; padding: 6px; }
 #notes button { width: 100%; border: 0; background: transparent; text-align: left; overflow-wrap: anywhere; }
 #notes button:hover, #notes button[aria-current="true"] { background: #dce5f5; }
 #workspace { display: flex; flex-direction: column; min-width: 0; flex: 1; }

@@ -398,7 +398,8 @@ int run()
         "Discard did not resolve the missing note without writing");
 
     put(root / "Source.md",
-        "# Preview\n**bold** and *italic* with `code`\n- item\n> quote\n[[Target]] [[image.png]]");
+        "# Preview\n**bold** and *italic* with `code`\n- item\n> quote\n[[Target]] [[image.png]] "
+        "[[New link]]");
     put(root / "Target.md", "Target");
     put(root / "image.png", "image");
     window.eval("document.querySelector('#vault-form button').click()");
@@ -443,7 +444,7 @@ int run()
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
-            "ready:!document.querySelector('#follow').disabled}))");
+            "ready:!!document.querySelector('.cm-preview-link')}))");
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Source.md") != std::string::npos &&
             observed.find("\\\"ready\\\":true") != std::string::npos)
@@ -502,10 +503,7 @@ int run()
         check(capture->mSaved, "Could not save real webview screenshot");
     }
 #endif
-    window.eval(
-        "{function clickLink(){if(document.querySelector('#follow').disabled){"
-        "setTimeout(clickLink,25);return;}document.querySelector('.cm-preview-link').click();}"
-        "clickLink();}");
+    window.eval("document.querySelector('.cm-preview-link').click()");
     for (int attempt = 0; attempt < 30; ++attempt) {
         window.eval("probe(document.querySelector('#title').textContent)");
         pumpFor(std::chrono::milliseconds(100));
@@ -515,7 +513,7 @@ int run()
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
             "error:document.querySelector('#error').textContent,"
-            "disabled:document.querySelector('#follow').disabled}))");
+            "link:document.querySelector('.cm-preview-link')?.textContent}))");
         pumpFor(std::chrono::milliseconds(150));
         throw std::runtime_error("Follow did not navigate: " + observed);
     }
@@ -524,12 +522,21 @@ int run()
         ".find(b=>b.textContent==='Source.md').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
-        "document.querySelector('#link').value='image.png';"
-        "document.querySelector('#open-attachment').click()");
+        "[...document.querySelectorAll('.cm-preview-link')]"
+        ".find(link=>link.dataset.target==='image.png').click()");
     pumpFor(std::chrono::milliseconds(350));
     check(
         !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
         "Attachment did not use shell service");
+    window.eval(
+        "[...document.querySelectorAll('.cm-preview-link')]"
+        ".find(link=>link.dataset.target==='New link').click()");
+    for (int attempt = 0; attempt < 30 && !fs::exists(root / "New link.md"); ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(fs::exists(root / "New link.md"), "Following missing link did not create note");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Source.md').click()");
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"

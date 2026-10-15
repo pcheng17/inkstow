@@ -61,7 +61,7 @@ function render() {
   form.querySelector('button').disabled = locked;
   document.querySelector('#pick-vault').disabled = locked;
   document.querySelector('#create-form button').disabled = locked;
-  for (const id of ['move', 'trash', 'follow', 'open-attachment']) {
+  for (const id of ['move', 'trash']) {
     document.querySelector(`#${id}`).disabled = locked || !snapshot.path;
   }
   notes.replaceChildren(...snapshot.notes.map((path) => {
@@ -244,11 +244,6 @@ document.querySelector('#trash-confirm').addEventListener('click', () => {
   dismissChoices();
   noteAction({ operation: 'trash' }, 'Could not move note to trash.');
 });
-for (const [id, operation] of [['follow', 'follow'], ['open-attachment', 'attachment']]) {
-  document.querySelector(`#${id}`).addEventListener('click', () => {
-    noteAction({ operation, link: document.querySelector('#link').value }, 'Could not follow link.');
-  });
-}
 for (const panel of [moveChoice, trashChoice]) {
   panel.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') { event.preventDefault(); dismissChoices(); }

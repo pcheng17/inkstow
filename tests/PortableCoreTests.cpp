@@ -744,6 +744,40 @@ void linkActions()
     CHECK(read(temp.mPath / "A" / "Source.md") == "[[Moved|alias]]");
 }
 
+void followingMissingLinksCreatesSafeNotes()
+{
+    TempVault temp;
+    CHECK(fs::create_directory(temp.mPath / "Folder"));
+    write(temp.mPath / "Folder" / "Source.md", "[[New]] [[/Root]] [[image.png]]");
+    write(temp.mPath / "Folder" / "image.png", "image");
+    Session session;
+    std::string error;
+    std::optional<fs::path> attachment;
+    CHECK(session.openVault(utf8Path(temp.mPath), &error));
+    CHECK(session.selectNote("Folder/Source.md", &error));
+    CHECK(session.followLink("New|alias", &attachment, &error));
+    CHECK(session.getPath() == "Folder/New.md" && session.getContent().empty());
+    CHECK(fs::exists(temp.mPath / "Folder" / "New.md"));
+    CHECK(session.selectNote("Folder/Source.md", &error));
+    CHECK(session.followLink("/Root#heading", &attachment, &error));
+    CHECK(session.getPath() == "Root.md");
+    CHECK(session.selectNote("Folder/Source.md", &error));
+    CHECK(session.followLink("Sub/Deep.md", &attachment, &error));
+    CHECK(session.getPath() == "Folder/Sub/Deep.md");
+    CHECK(session.selectNote("Folder/Source.md", &error));
+    CHECK(session.followLink("image.png", &attachment, &error));
+    CHECK(attachment == fs::canonical(temp.mPath / "Folder" / "image.png"));
+    CHECK(session.getPath() == "Folder/Source.md");
+    for (const auto& link : {"missing.png", "../Escape", "/.hidden", "", "https://example.org"}) {
+        CHECK(!session.followLink(link, &attachment, &error));
+        CHECK(session.getPath() == "Folder/Source.md");
+    }
+    CHECK(!fs::exists(temp.mPath / "Escape.md"));
+    session.setContent("unsaved");
+    CHECK(!session.followLink("Another", &attachment, &error));
+    CHECK(!fs::exists(temp.mPath / "Folder" / "Another.md"));
+}
+
 void sessionNoteActions()
 {
     TempVault temp;
@@ -1014,6 +1048,7 @@ int main(int argc, char** argv)
         symlinkRefusal();
         createAction();
         linkActions();
+        followingMissingLinksCreatesSafeNotes();
         traversalFailuresDoNotLookLikeMissingLinks();
         trashRefusesWhenUnavailable();
         sessionNoteActions();

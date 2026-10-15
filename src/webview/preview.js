@@ -49,7 +49,13 @@ function markdownLink(source, node) {
   // Markdown escapes ASCII punctuation in destinations; the vault expects literal paths.
   const target = destination.replace(/\\([!-/:-@\[-`{-~])/g, '$1');
   const kind = target && linkKind(target);
-  return kind ? { kind, target, labelEnd } : null;
+  if (!kind) return null;
+  if (kind === 'external') return { kind, target, labelEnd };
+  try {
+    return { kind, target: decodeURIComponent(target), labelEnd };
+  } catch {
+    return null; // Malformed URL escapes are not navigable paths.
+  }
 }
 
 function inCode(state, pos) {

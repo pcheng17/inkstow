@@ -96,7 +96,12 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             const note = disk.has(target) ? target : `${target}.md`;
             if (disk.has(note) && note.endsWith('.md'))
               return window.inkstowRequest({ operation: 'select', path: note });
-            if (!disk.has(target)) return snapshot(false, 'Link not found.');
+            if (!disk.has(target)) {
+              if (target.includes('..') || target.includes('/') || (!target.endsWith('.md') && target.includes('.')) || !target)
+                return snapshot(false, 'Link not found.');
+              disk.set(note, Buffer.alloc(0)); notes = [...disk.keys()].sort();
+              return window.inkstowRequest({ operation: 'select', path: note });
+            }
             opened.push(target); return snapshot(true);
           }
           case 'follow':
@@ -828,7 +833,7 @@ test('note actions require explicit move and trash choices and preserve errors a
     assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find((call) => call.operation === 'move'))),
       { operation: 'move', path: 'Moved', updateLinks: true });
     assert.equal(ui.document.querySelector('#title').textContent, 'Moved.md');
-    for (const id of ['move', 'trash', 'follow', 'open-attachment']) {
+    for (const id of ['move', 'trash']) {
       assert.ok(ui.document.querySelector(`#${id}`).textContent.trim(), `${id} has an accessible name`);
     }
     ui.document.querySelector('#trash').click();
@@ -868,25 +873,35 @@ test('note action errors without a snapshot leave the editor unlocked', async ()
   } finally { ui.dom.window.close(); }
 });
 
-test('follow note and attachment links only through bridge, with failed links retaining selection', async () => {
-  const ui = await setup({ 'Source.md': Buffer.from('[[Target]] [[image.png]]'),
-    'Target.md': Buffer.from('Target'), 'image.png': Buffer.from('image') });
+test('links open attachments and create missing notes without manual link controls', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Intro\n[[image.png]] [[Missing]]'),
+    'image.png': Buffer.from('image') });
   try {
     await ui.open(); await ui.select('Source.md');
-    ui.document.querySelector('#link').value = 'image.png';
-    ui.document.querySelector('#open-attachment').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#link-actions'), null);
+    ui.document.querySelectorAll('.cm-preview-link')[0].click(); await ui.pause();
     assert.deepEqual(ui.opened, ['image.png']);
-    ui.document.querySelector('#link').value = '../outside';
-    ui.document.querySelector('#open-attachment').click(); await ui.pause();
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 16 } });
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'Enter', altKey: true, bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Missing.md');
+    assert.deepEqual(ui.disk.get('Missing.md'), Buffer.alloc(0));
+  } finally { ui.dom.window.close(); }
+});
+
+test('encoded local Markdown destinations create decoded note names but not missing attachments', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Intro\n[New note](New%20note) [Image](missing%2Epng)') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    ui.document.querySelectorAll('.cm-preview-link')[1].click(); await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /not found/i);
-    ui.document.querySelector('#link').value = 'Target';
-    ui.document.querySelector('#follow').click(); await ui.pause();
-    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
-    await ui.type('Mine');
-    ui.document.querySelector('#link').value = 'image.png';
-    ui.document.querySelector('#open-attachment').click(); await ui.pause();
-    assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/i);
-    assert.deepEqual(ui.opened, ['image.png']);
+    assert.equal(ui.disk.has('missing.png.md'), false);
+    ui.document.querySelector('.cm-preview-link').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'New note.md');
+    assert.deepEqual(ui.disk.get('New note.md'), Buffer.alloc(0));
+    assert.equal(ui.disk.has('New%20note.md'), false);
   } finally { ui.dom.window.close(); }
 });
 
