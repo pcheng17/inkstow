@@ -20,6 +20,11 @@ class ListBullet extends WidgetType {
   }
 }
 
+function linkKind(target) {
+  if (/^https?:\/\//.test(target)) return 'external';
+  return target.includes(':') ? null : 'wiki';
+}
+
 function inCode(state, pos) {
   for (let node = syntaxTree(state).resolveInner(pos); node; node = node.parent) {
     if (['InlineCode', 'FencedCode', 'CodeBlock'].includes(node.name)) return true;
@@ -37,8 +42,9 @@ export function sourceLinkAt(state, pos) {
     if (match[1]) {
       const target = match[1].split('|', 1)[0];
       if (target) return { kind: 'wiki', target };
-    } else if (!match[3].includes(':') || /^https?:\/\//.test(match[3])) {
-      return { kind: /^https?:\/\//.test(match[3]) ? 'external' : 'wiki', target: match[3] };
+    } else {
+      const kind = linkKind(match[3]);
+      if (kind) return { kind, target: match[3] };
     }
   }
   return null;
@@ -99,11 +105,11 @@ export function preview(view) {
     if (node.name === 'Link') {
       const text = source.slice(node.from, node.to);
       const match = /^\[([^\]\r\n]+)\]\(([^\s()]+)\)$/.exec(text);
-      if (match && (!match[2].includes(':') || /^https?:\/\//.test(match[2]))) {
+      if (match && linkKind(match[2])) {
         const labelEnd = node.from + 1 + match[1].length;
         add(node.from, node.from + 1, hidden);
         add(node.from + 1, labelEnd, Decoration.mark({ class: 'cm-preview-link', attributes: {
-          'data-kind': /^https?:\/\//.test(match[2]) ? 'external' : 'wiki', 'data-target': match[2]
+          'data-kind': linkKind(match[2]), 'data-target': match[2]
         } }));
         add(labelEnd, node.to, hidden);
         return false;
