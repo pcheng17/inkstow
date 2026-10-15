@@ -16,7 +16,8 @@ target_link_libraries(highlighter-tests PRIVATE Qt6::Gui Qt6::Widgets inkstow-wa
 add_test(NAME highlighter-tests COMMAND highlighter-tests)
 set_tests_properties(highlighter-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-add_executable(inkstow-tests EXCLUDE_FROM_ALL DoctestMain.cpp PortableDoctest.cpp)
+add_executable(inkstow-tests EXCLUDE_FROM_ALL
+               DoctestMain.cpp VaultTests.cpp SessionTests.cpp GuardedReplaceTests.cpp)
 target_link_libraries(inkstow-tests PRIVATE portable-core doctest::doctest inkstow-warnings)
 target_compile_definitions(inkstow-tests PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
 add_test(NAME inkstow-tests COMMAND inkstow-tests)
