@@ -155,12 +155,28 @@ int main() // NOLINT(bugprone-exception-escape)
                 {      "url", "https://example.org/a"}
     })["ok"] == true);
     CHECK(openedUrl == "https://example.org/a");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",                   "external"},
+                {      "url", "http://localhost:8080/path"}
+    })["ok"] == true);
+    CHECK(openedUrl == "http://localhost:8080/path");
+    openedUrl = "https://example.org/a";
     for (const std::string url :
          {"file:///etc/passwd",
           "javascript:alert(1)",
           "https://example.org/\nInjected",
           "https://",
-          "https://user@example.org"})
+          "https://user@example.org",
+          "https://:80/path",
+          "https://example.org:/path",
+          "https://example.org:abc/path",
+          "https://example.org:65536/path",
+          "https://example..org/path",
+          "https://-bad.example/path",
+          "https://example.org:80:90/path"})
     {
         CHECK(
             request(

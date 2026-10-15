@@ -3,6 +3,8 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <charconv>
+#include <cctype>
 #include <exception>
 #include <initializer_list>
 #include <string>
@@ -46,7 +48,31 @@ bool validExternalUrl(std::string_view url)
     const auto hostStart = schemeEnd + 3;
     const auto hostEnd = url.find_first_of("/?#", hostStart);
     const auto authority = url.substr(hostStart, hostEnd - hostStart);
-    if (authority.empty() || authority.find('@') != std::string_view::npos) return false;
+    const auto portStart = authority.find(':');
+    const auto host = authority.substr(0, portStart);
+    if (host.empty() || host.size() > 253 || authority.find('@') != std::string_view::npos)
+        return false;
+    if (portStart != std::string_view::npos) {
+        const auto port = authority.substr(portStart + 1);
+        unsigned number = 0;
+        const auto [end, error] = std::from_chars(port.data(), port.data() + port.size(), number);
+        if (port.empty() || error != std::errc{} || end != port.data() + port.size() ||
+            number == 0 || number > 65535)
+            return false;
+    }
+    for (std::size_t start = 0; start < host.size();) {
+        const auto end = host.find('.', start);
+        const auto label = host.substr(start, end == std::string_view::npos ? end : end - start);
+        if (label.empty() || label.size() > 63 ||
+            !std::isalnum(static_cast<unsigned char>(label.front())) ||
+            !std::isalnum(static_cast<unsigned char>(label.back())) ||
+            !std::all_of(label.begin(), label.end(), [](unsigned char ch) {
+                return std::isalnum(ch) || ch == '-';
+            }))
+            return false;
+        if (end == std::string_view::npos) break;
+        start = end + 1;
+    }
     return std::none_of(url.begin(), url.end(), [](unsigned char ch) {
         return ch <= 0x20 || ch == 0x7f || ch == '\\';
     });
