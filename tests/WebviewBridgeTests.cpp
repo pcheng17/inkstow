@@ -416,6 +416,30 @@ int main() // NOLINT(bugprone-exception-escape)
                 {     "link",  "image.png"}
     })["ok"] == true);
     CHECK(opened == pathBytes(root / "image.png"));
+    inkstow::webview_shell::Bridge noShell;
+    CHECK(
+        request(
+            noShell,
+            {
+                {"operation",          "open"},
+                {   "folder", pathBytes(root)}
+    })["ok"] == true);
+    CHECK(
+        request(
+            noShell,
+            {
+                {"operation",    "select"},
+                {     "path", "Source.md"}
+    })["ok"] == true);
+    const Json shellFailure = request(
+        noShell,
+        {
+            {"operation", "attachment"},
+            {     "link",  "image.png"}
+    });
+    CHECK(
+        shellFailure["ok"] == false &&
+        shellFailure["error"] == "Attachment shell service is unavailable.");
     CHECK(
         request(
             actions,
