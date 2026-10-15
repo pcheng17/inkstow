@@ -10,10 +10,13 @@ main { display: flex; height: calc(100vh - 70px); min-height: 320px; }
 aside { width: 240px; flex-shrink: 0; overflow: auto; padding: 12px; border-right: 1px solid #c8d0de; }
 h2 { margin: 0 0 10px; font-size: 1rem; }
 ul { list-style: none; padding: 0; margin: 0; }
+#create-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+#create-form input, #move-path, #link { min-width: 0; padding: 6px; }
+#link-actions { padding: 8px 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 #notes button { width: 100%; border: 0; background: transparent; text-align: left; overflow-wrap: anywhere; }
 #notes button:hover, #notes button[aria-current="true"] { background: #dce5f5; }
 #workspace { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.toolbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #c8d0de; }
+.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #c8d0de; }
 #title { font-weight: 600; overflow-wrap: anywhere; }
 #dirty { color: #9d5211; }
 #save { margin-left: auto; }

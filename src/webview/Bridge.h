@@ -3,6 +3,7 @@
 #include "Session.h"
 
 #include <filesystem>
+#include <functional>
 #include <string>
 
 namespace inkstow::webview_shell
@@ -31,10 +32,12 @@ public:
 class Bridge
 {
 public:
-    explicit Bridge(ShellServices* services = nullptr)
-        : mServices(services)
-    {
-    }
+    using OpenAttachment = std::function<bool(const std::filesystem::path&, std::string*)>;
+    explicit Bridge(
+        ShellServices* services = nullptr,
+        OpenAttachment openAttachment = {},
+        portable::Vault::TrashFunction trash = {});
+    explicit Bridge(OpenAttachment openAttachment, portable::Vault::TrashFunction trash = {});
     std::string handle(const std::string& arguments);
 
 private:
@@ -42,6 +45,8 @@ private:
     void finishVaultOpen(const std::string& folder, bool remember);
     ShellServices* mServices;
     portable::Session mSession;
+    OpenAttachment mOpenAttachment;
+    portable::Vault::TrashFunction mTrash;
     portable::DiskChange mChange = portable::DiskChange::None;
     // A dismissed missing-note decision stays hidden on focus refresh until new edits or disk
     // change.

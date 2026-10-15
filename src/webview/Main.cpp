@@ -1,3 +1,4 @@
+#include "AttachmentShell.h"
 #include "Bridge.h"
 #include "DesktopServices.h"
 #include "DesktopWindow.h"
@@ -14,7 +15,7 @@ int main()
 {
     try {
         inkstow::webview_shell::DesktopServices services;
-        inkstow::webview_shell::Bridge bridge(&services);
+        inkstow::webview_shell::Bridge bridge(&services, inkstow::webview_shell::openAttachment);
         webview::webview window(false, nullptr);
         window.set_title("Inkstow");
         window.set_size(960, 720, WEBVIEW_HINT_NONE);

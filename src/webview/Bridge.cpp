@@ -44,6 +44,17 @@ bool stringField(const Json& request, const char* field, std::size_t maxBytes)
 
 } // namespace
 
+Bridge::Bridge(
+    ShellServices* services, OpenAttachment openAttachment, portable::Vault::TrashFunction trash)
+    : mServices(services), mOpenAttachment(std::move(openAttachment)), mTrash(std::move(trash))
+{
+}
+
+Bridge::Bridge(OpenAttachment openAttachment, portable::Vault::TrashFunction trash)
+    : Bridge(nullptr, std::move(openAttachment), std::move(trash))
+{
+}
+
 void Bridge::syncWithDisk(std::string* error)
 {
     mChange = mSession.syncWithDisk(error);
@@ -151,6 +162,40 @@ std::string Bridge::handle(const std::string& arguments)
                         mSession.setContent(request.at("content").get<std::string>());
                         if (mSession.isDirty()) mDismissedMissing = false;
                         success = true;
+                    }
+                } else if (
+                    operation == "create" && hasFields(request, {"operation", "path"}) &&
+                    stringField(request, "path", 4096))
+                {
+                    success = mSession.createNote(request.at("path").get<std::string>(), &error);
+                    if (success) mChange = portable::DiskChange::None;
+                } else if (
+                    operation == "move" &&
+                    hasFields(request, {"operation", "path", "updateLinks"}) &&
+                    stringField(request, "path", 4096) && request.at("updateLinks").is_boolean())
+                {
+                    success = mSession.moveNote(
+                        request.at("path").get<std::string>(),
+                        request.at("updateLinks").get<bool>(),
+                        &error);
+                    if (success) mChange = portable::DiskChange::None;
+                } else if (operation == "trash" && hasFields(request, {"operation"})) {
+                    success =
+                        mTrash ? mSession.trashNote(mTrash, &error) : mSession.trashNote(&error);
+                    if (success) mChange = portable::DiskChange::None;
+                } else if (
+                    operation == "attachment" && hasFields(request, {"operation", "link"}) &&
+                    stringField(request, "link", 4096))
+                {
+                    const auto path =
+                        mSession.followAttachment(request.at("link").get<std::string>(), &error);
+                    if (path) {
+                        if (mOpenAttachment)
+                            success = mOpenAttachment(*path, &error);
+                        else if (mServices)
+                            success = mServices->openAttachment(*path);
+                        else
+                            error = "Attachment shell service is unavailable.";
                     }
                 } else if (operation == "refresh" && hasFields(request, {"operation"})) {
                     // A folder event or focus refresh updates discovery as well as the selected

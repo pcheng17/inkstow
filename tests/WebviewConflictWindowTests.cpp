@@ -191,7 +191,21 @@ int run()
         void watchNote(const std::string& note) override { (void)note; }
     } shell;
     shell.mFolder = pathBytes(root);
-    inkstow::webview_shell::Bridge bridge(&shell);
+    fs::path openedAttachment;
+    bool trashAvailable = false;
+    inkstow::webview_shell::Bridge bridge(
+        &shell,
+        [&](const fs::path& path, std::string*) {
+            openedAttachment = path;
+            return true;
+        },
+        [&](const fs::path& path, std::string* error) {
+            if (!trashAvailable) {
+                *error = "System trash unavailable.";
+                return false;
+            }
+            return fs::remove(path);
+        });
     webview::webview window(false, nullptr);
     inkstow::webview_shell::NavigationPolicy navigation(window.browser_controller().value());
     inkstow::webview_shell::DesktopWindow desktop(window);
@@ -376,6 +390,88 @@ int run()
             observed.find("\\\"missing\\\":false") != std::string::npos &&
             observed.find("\\\"dirty\\\":false") != std::string::npos && !fs::exists(note),
         "Discard did not resolve the missing note without writing");
+
+    put(root / "Source.md", "[[Target]] [[image.png]]");
+    put(root / "Target.md", "Target");
+    put(root / "image.png", "image");
+    window.eval("document.querySelector('#vault-form button').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "document.querySelector('#new-path').value='Target';"
+        "document.querySelector('#create-form button').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(bytes(root / "Target.md") == "Target", "Create overwrote existing note");
+    window.eval(
+        "document.querySelector('#new-path').value='Fresh';"
+        "document.querySelector('#create-form button').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(fs::exists(root / "Fresh.md"), "Create control did not create note");
+    window.eval(
+        "document.querySelector('#move').click();"
+        "document.querySelector('#move-path').value='Cancelled';"
+        "document.querySelector('#move-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    check(!fs::exists(root / "Cancelled.md"), "Cancelled move wrote a note");
+    window.eval(
+        "document.querySelector('#move').click();"
+        "document.querySelector('#move-path').value='Moved';"
+        "document.querySelector('#move-without-links').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(fs::exists(root / "Moved.md") && !fs::exists(root / "Fresh.md"), "Move failed");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Target.md').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "document.querySelector('#move').click();"
+        "document.querySelector('#move-path').value='Renamed';"
+        "document.querySelector('#move-with-links').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(
+        bytes(root / "Source.md").find("[[/Renamed]]") != std::string::npos,
+        "Move with links did not rewrite supported link");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Source.md').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "document.querySelector('#link').value='Renamed';"
+        "document.querySelector('#follow').click()");
+    for (int attempt = 0; attempt < 30; ++attempt) {
+        window.eval("probe(document.querySelector('#title').textContent)");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Renamed.md") != std::string::npos) break;
+    }
+    check(observed.find("Renamed.md") != std::string::npos, "Follow did not navigate");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Source.md').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "document.querySelector('#link').value='image.png';"
+        "document.querySelector('#open-attachment').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(
+        !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
+        "Attachment did not use shell service");
+    window.eval(
+        "document.querySelector('#trash').click();"
+        "document.querySelector('#trash-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    check(fs::exists(root / "Source.md"), "Cancelled trash removed note");
+    window.eval(
+        "document.querySelector('#trash').click();"
+        "document.querySelector('#trash-confirm').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(fs::exists(root / "Source.md"), "Unavailable trash removed note");
+    trashAvailable = true;
+    clickDecision(window, "#trash");
+    pumpFor(std::chrono::milliseconds(150));
+    clickDecision(window, "#trash-confirm");
+    for (int attempt = 0; attempt < 30 && fs::exists(root / "Source.md"); ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(!fs::exists(root / "Source.md"), "Confirmed trash was not invoked");
+
     // Exercise native menus with a disposable vault after conflict/recovery scenarios.
     put(note, "[[image.png]]");
     put(root / "image.png", "image");
@@ -389,9 +485,11 @@ int run()
     for (int attempt = 0; attempt < 50 && shell.mPickerCalls == 1; ++attempt)
         pumpFor(std::chrono::milliseconds(100));
     check(shell.mPickerCalls == 2, "Picker control did not use the menu's native service");
-    window.eval("document.querySelector('#notes button').click()");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Note.md').click()");
     pumpFor(std::chrono::milliseconds(350));
-    window.eval("document.querySelector('#follow').click()");
+    window.eval("inkstowFollow()");
     for (int attempt = 0; attempt < 50 && shell.mAttachment.empty(); ++attempt)
         pumpFor(std::chrono::milliseconds(100));
     check(

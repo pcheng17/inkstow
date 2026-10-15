@@ -24,6 +24,8 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let dismissedMissing = false;
   let expectedBytes;
   let reportedBytes;
+  let trashAvailable = false;
+  const opened = [];
   function snapshot(ok, error) {
     return { ok, notes: [...notes], path, content, dirty: content !== saved, change, ...(error ? { error } : {}) };
   }
@@ -42,6 +44,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
         if (injectedError) {
           const message = injectedError; injectedError = '';
           if (message === 'Clean reload failed save') { content = saved = 'Outside'; change = 'reloaded'; }
+          if (message === 'Could not serialize vault state.') return { ok: false, error: message };
           return snapshot(false, message);
         }
         switch (request.operation) {
@@ -57,7 +60,8 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
           case 'follow':
             if (content !== saved) return snapshot(false, 'Save or discard your edits first.');
             if (request.link === 'image.png') return snapshot(true);
-            return snapshot(false, 'Link could not be resolved.');
+            if (!disk.has(`${request.link}.md`)) return snapshot(false, 'Link not found.');
+            return window.inkstowRequest({ operation: 'select', path: `${request.link}.md` });
           case 'select': {
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             if (!disk.has(request.path)) return snapshot(false, 'Note not found.');
@@ -69,6 +73,29 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             content = saved = decoder.decode(bom ? bytes.subarray(3) : bytes);
             return snapshot(true);
           }
+          case 'create': {
+            if (content !== saved) return snapshot(false, 'Unsaved changes.');
+            const name = request.path.endsWith('.md') ? request.path : `${request.path}.md`;
+            if (disk.has(name)) return snapshot(false, 'Note already exists.');
+            disk.set(name, Buffer.alloc(0)); notes = [...disk.keys()].sort();
+            path = name; content = saved = ''; expectedBytes = Buffer.alloc(0); return snapshot(true);
+          }
+          case 'move': {
+            if (content !== saved) return snapshot(false, 'Unsaved changes.');
+            if (typeof request.updateLinks !== 'boolean') return snapshot(false, 'Invalid link choice.');
+            const name = request.path.endsWith('.md') ? request.path : `${request.path}.md`;
+            if (disk.has(name)) return snapshot(false, 'Note already exists.');
+            disk.set(name, disk.get(path)); disk.delete(path); path = name;
+            notes = [...disk.keys()].sort(); return snapshot(true);
+          }
+          case 'attachment':
+            if (content !== saved) return snapshot(false, 'Unsaved changes.');
+            if (!disk.has(request.link)) return snapshot(false, 'Attachment not found.');
+            opened.push(request.link); return snapshot(true);
+          case 'trash':
+            if (content !== saved) return snapshot(false, 'Unsaved changes.');
+            if (!trashAvailable) return snapshot(false, 'System trash unavailable.');
+            disk.delete(path); notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
           case 'edit':
             if (!path) return snapshot(false, 'No note selected.');
             content = request.content;
@@ -150,8 +177,8 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
     await pause();
   }
   await pause(); // Let the initial last-vault lookup finish before driving controls.
-  return { dom, document, disk, calls, open, select, type, pause, exits: () => exits,
-    injectError: (message) => { injectedError = message; },
+  return { dom, document, disk, opened, calls, open, select, type, pause, exits: () => exits,
+    enableTrash: () => { trashAvailable = true; }, injectError: (message) => { injectedError = message; },
     delaySave: () => {
       let release;
       pendingSave = new Promise((resolve) => { release = resolve; });
@@ -199,10 +226,10 @@ test('follow shortcut requests the cursor link and refuses dirty attachment navi
   const ui = await setup({ 'Note.md': Buffer.from('[[image.png]]') });
   try {
     await ui.open(); await ui.select('Note.md');
-    ui.document.querySelector('#follow').click(); await ui.pause();
+    ui.dom.window.inkstowFollow(); await ui.pause();
     assert.equal(ui.calls.at(-1).link, 'image.png');
     await ui.type('[[image.png]] more');
-    ui.document.querySelector('#follow').click(); await ui.pause();
+    ui.dom.window.inkstowFollow(); await ui.pause();
     assert.equal(ui.document.querySelector('#dirty').hidden, false);
     assert.match(ui.document.querySelector('#error').textContent, /Save or discard/);
   } finally { ui.dom.window.close(); }
@@ -488,6 +515,91 @@ test('missing note retains edits and refuses to overwrite a reappeared file', as
     await ui.type('Recovery again');
     ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
     assert.equal(ui.document.querySelector('#missing').hidden, false);
+  } finally { ui.dom.window.close(); }
+});
+
+test('note actions require explicit move and trash choices and preserve errors and unsaved text', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('[[Target]]'), 'Target.md': Buffer.from('Target'), 'image.png': Buffer.from('image') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    ui.document.querySelector('#new-path').value = 'Target';
+    ui.document.querySelector('#create-form').requestSubmit(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /already exists/i);
+    ui.document.querySelector('#new-path').value = 'New';
+    ui.document.querySelector('#create-form').requestSubmit(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'New.md');
+    assert.equal(ui.disk.get('New.md').toString(), '');
+    ui.document.querySelector('#move').click();
+    ui.document.querySelector('#move-path').value = 'Moved';
+    ui.document.querySelector('#move-path').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(ui.document.querySelector('#move-choice').hidden, true);
+    assert.equal(ui.calls.filter((call) => call.operation === 'move').length, 0);
+    ui.document.querySelector('#move').click();
+    ui.document.querySelector('#move-path').value = 'Moved';
+    ui.document.querySelector('#move-path').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await ui.pause();
+    assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find((call) => call.operation === 'move'))),
+      { operation: 'move', path: 'Moved', updateLinks: true });
+    assert.equal(ui.document.querySelector('#title').textContent, 'Moved.md');
+    for (const id of ['move', 'trash', 'follow', 'open-attachment']) {
+      assert.ok(ui.document.querySelector(`#${id}`).textContent.trim(), `${id} has an accessible name`);
+    }
+    ui.document.querySelector('#trash').click();
+    ui.document.querySelector('#trash-cancel').click();
+    assert.equal(ui.calls.filter((call) => call.operation === 'trash').length, 0);
+    ui.document.querySelector('#trash').click();
+    ui.document.querySelector('#trash-confirm').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /trash unavailable/i);
+    assert.ok(ui.disk.has('Moved.md'));
+    await ui.type('Unsaved');
+    ui.document.querySelector('#trash').click();
+    ui.document.querySelector('#trash-confirm').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/i);
+    assert.equal(ui.document.querySelector('.cm-line').textContent, 'Unsaved');
+    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.enableTrash();
+    ui.document.querySelector('#trash').click();
+    ui.document.querySelector('#trash-confirm').click(); await ui.pause();
+    assert.equal(ui.disk.has('Moved.md'), false);
+    assert.equal(ui.document.querySelector('#title').textContent, 'No note selected');
+  } finally { ui.dom.window.close(); }
+});
+
+test('note action errors without a snapshot leave the editor unlocked', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md');
+    ui.injectError('Could not serialize vault state.');
+    ui.document.querySelector('#move').click();
+    ui.document.querySelector('#move-path').value = 'Moved';
+    ui.document.querySelector('#move-without-links').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /serialize vault state/);
+    assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
+    assert.equal(ui.document.querySelector('#save').disabled, false);
+    await ui.type('Still editable');
+    assert.equal(ui.document.querySelector('#dirty').hidden, false);
+  } finally { ui.dom.window.close(); }
+});
+
+test('follow note and attachment links only through bridge, with failed links retaining selection', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('[[Target]] [[image.png]]'),
+    'Target.md': Buffer.from('Target'), 'image.png': Buffer.from('image') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    ui.document.querySelector('#link').value = 'image.png';
+    ui.document.querySelector('#open-attachment').click(); await ui.pause();
+    assert.deepEqual(ui.opened, ['image.png']);
+    ui.document.querySelector('#link').value = '../outside';
+    ui.document.querySelector('#open-attachment').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /not found/i);
+    ui.document.querySelector('#link').value = 'Target';
+    ui.document.querySelector('#follow').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+    await ui.type('Mine');
+    ui.document.querySelector('#link').value = 'image.png';
+    ui.document.querySelector('#open-attachment').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/i);
+    assert.deepEqual(ui.opened, ['image.png']);
   } finally { ui.dom.window.close(); }
 });
 

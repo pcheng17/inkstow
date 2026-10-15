@@ -558,4 +558,185 @@ int main() // NOLINT(bugprone-exception-escape)
                 {"operation", "refresh"}
     })["change"] == "missing");
     fs::remove_all(root);
+    fs::create_directories(root / "Folder");
+    {
+        std::ofstream(root / "Source.md") << "[[Target]] [[image.png]]";
+        std::ofstream(root / "Target.md") << "Target";
+        std::ofstream(root / "image.png") << "image";
+    }
+    fs::path opened;
+    bool trashAvailable = false;
+    inkstow::webview_shell::Bridge actions(
+        [&](const fs::path& path, std::string*) {
+            opened = path;
+            return true;
+        },
+        [&](const fs::path&, std::string* error) {
+            *error = "System trash unavailable.";
+            return trashAvailable;
+        });
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",          "open"},
+                {   "folder", pathBytes(root)}
+    })["ok"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "create"},
+                {     "path", "Target"}
+    })["ok"] == false);
+    CHECK(!fs::exists(root / "Target"));
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",     "create"},
+                {     "path", "Folder/New"}
+    })["path"] == "Folder/New.md");
+    CHECK(
+        request(
+            actions,
+            {
+                {  "operation",   "move"},
+                {       "path", "Target"},
+                {"updateLinks",     true}
+    })["ok"] == false);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",    "select"},
+                {     "path", "Target.md"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {  "operation",           "move"},
+                {       "path", "Folder/Renamed"},
+                {"updateLinks",             true}
+    })["ok"] == true);
+    CHECK(diskBytes(root / "Source.md") == "[[/Folder/Renamed]] [[image.png]]");
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",    "select"},
+                {     "path", "Source.md"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",          "follow"},
+                {     "link", "/Folder/Renamed"}
+    })["path"] == "Folder/Renamed.md");
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",    "select"},
+                {     "path", "Source.md"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "attachment"},
+                {     "link",  "image.png"}
+    })["ok"] == true);
+    // Vault canonicalizes attachments; temp paths can be aliases on macOS and Windows.
+    CHECK(!opened.empty() && fs::equivalent(opened, root / "image.png"));
+    inkstow::webview_shell::Bridge noShell;
+    CHECK(
+        request(
+            noShell,
+            {
+                {"operation",          "open"},
+                {   "folder", pathBytes(root)}
+    })["ok"] == true);
+    CHECK(
+        request(
+            noShell,
+            {
+                {"operation",    "select"},
+                {     "path", "Source.md"}
+    })["ok"] == true);
+    const Json shellFailure = request(
+        noShell,
+        {
+            {"operation", "attachment"},
+            {     "link",  "image.png"}
+    });
+    CHECK(
+        shellFailure["ok"] == false &&
+        shellFailure["error"] == "Attachment shell service is unavailable.");
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",     "attachment"},
+                {     "link", "../outside.png"}
+    })["ok"] == false);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "trash"}
+    })["ok"] == false);
+    CHECK(fs::exists(root / "Source.md"));
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation",  "edit"},
+                {  "content", "draft"}
+    })["dirty"] == true);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "trash"}
+    })["ok"] == false);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "create"},
+                {     "path",  "Draft"}
+    })["ok"] == false);
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "attachment"},
+                {     "link",  "image.png"}
+    })["ok"] == false);
+    CHECK(!opened.empty() && fs::equivalent(opened, root / "image.png"));
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "save"}
+    })["ok"] == true);
+    trashAvailable = true;
+    // Injected trash service does not remove the file; the bridge must still call it.
+    CHECK(
+        request(
+            actions,
+            {
+                {"operation", "trash"}
+    })["ok"] == true);
+    CHECK(request(
+              actions,
+              {
+                  {"operation", "list"}
+    })["path"]
+              .get<std::string>()
+              .empty());
+    fs::remove_all(root);
 }
