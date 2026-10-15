@@ -127,9 +127,11 @@ std::optional<std::string_view> uniformSeparator(std::string_view text)
     std::string_view found;
     for (std::size_t i = 0; i < text.size(); ++i) {
         if (text[i] != '\r' && text[i] != '\n') continue;
-        const std::string_view current =
-            text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n' ? text.substr(i++, 2)
-                                                                          : text.substr(i, 1);
+        std::string_view current = text.substr(i, 1);
+        if (text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n') {
+            current = text.substr(i, 2);
+            ++i;
+        }
         if (!found.empty() && found != current) return std::nullopt;
         found = current;
     }
