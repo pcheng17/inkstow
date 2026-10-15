@@ -69,6 +69,8 @@ if(INKSTOW_BUILD_WEBVIEW)
     target_link_libraries(webview-conflict-window-tests PRIVATE webview-bridge
                           webview::core_static inkstow-warnings ${DESKTOP_WINDOW_LIBRARIES})
     if(APPLE)
+      target_sources(webview-conflict-window-tests PRIVATE WebviewDesktopMac.mm)
+      target_link_libraries(webview-conflict-window-tests PRIVATE "-framework AppKit")
       set_target_properties(webview-conflict-window-tests PROPERTIES OBJCXX_STANDARD 17
                                                                 OBJCXX_STANDARD_REQUIRED ON)
     endif()

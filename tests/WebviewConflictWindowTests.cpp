@@ -8,6 +8,9 @@
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
+void activateMacMenu(webview::webview& window, const char* action);
+void activateMacClose(webview::webview& window);
+void activateMacApplicationQuit();
 #elif defined(_WIN32)
 #include <windows.h>
 #else
@@ -15,13 +18,17 @@
 #include <gtk/gtk.h>
 #endif
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 
 namespace
@@ -112,6 +119,37 @@ void clickDecision(webview::webview& window, const char* selector)
         "click(){if(button.disabled){setTimeout(click,25);return;}button.click();}click();}");
 }
 
+void activateMenu(webview::webview& window, const char* action)
+{
+    constexpr std::array<std::string_view, 3> kActions = {"open", "save", "quit"};
+    const auto index = std::find(kActions.begin(), kActions.end(), action) - kActions.begin();
+    check(index < static_cast<std::ptrdiff_t>(kActions.size()), "Unknown native menu action");
+#if defined(__APPLE__)
+    activateMacMenu(window, action);
+#elif defined(_WIN32)
+    SendMessageW(
+        static_cast<HWND>(window.window().value()),
+        WM_COMMAND,
+        static_cast<WPARAM>(1001 + index),
+        0);
+#else
+    auto* native = GTK_WIDGET(window.window().value());
+    auto* layout = gtk_bin_get_child(GTK_BIN(native));
+    GList* children = gtk_container_get_children(GTK_CONTAINER(layout));
+    auto* bar = GTK_WIDGET(children->data);
+    g_list_free(children);
+    children = gtk_container_get_children(GTK_CONTAINER(bar));
+    auto* file = GTK_WIDGET(children->data);
+    g_list_free(children);
+    auto* menu = gtk_menu_item_get_submenu(GTK_MENU_ITEM(file));
+    children = gtk_container_get_children(GTK_CONTAINER(menu));
+    auto* item = GTK_WIDGET(g_list_nth_data(children, static_cast<guint>(index)));
+    g_list_free(children);
+    check(item != nullptr, "Native file menu action missing");
+    gtk_menu_item_activate(GTK_MENU_ITEM(item));
+#endif
+}
+
 void replaceEditor(webview::webview& window, const std::string& text)
 {
     // Browser editing commands follow CodeMirror's real input path (selection, beforeinput, input).
@@ -131,7 +169,29 @@ int run()
     const auto& root = temp.mPath;
     const auto note = root / "Note.md";
     put(note, "Base");
-    inkstow::webview_shell::Bridge bridge;
+    struct Shell final : inkstow::webview_shell::ShellServices
+    {
+        std::string mFolder;
+        std::string mLast;
+        std::string mAttachment;
+        int mPickerCalls = 0;
+        std::string lastVault() override { return mLast; }
+        void setLastVault(const std::string& folder) override { mLast = folder; }
+        std::string pickVault() override
+        {
+            ++mPickerCalls;
+            return mFolder;
+        }
+        bool openAttachment(const fs::path& path) override
+        {
+            mAttachment = pathBytes(path);
+            return true;
+        }
+        void watchVault(const std::string& folder) override { (void)folder; }
+        void watchNote(const std::string& note) override { (void)note; }
+    } shell;
+    shell.mFolder = pathBytes(root);
+    inkstow::webview_shell::Bridge bridge(&shell);
     webview::webview window(false, nullptr);
     inkstow::webview_shell::NavigationPolicy navigation(window.browser_controller().value());
     inkstow::webview_shell::DesktopWindow desktop(window);
@@ -316,11 +376,37 @@ int run()
             observed.find("\\\"missing\\\":false") != std::string::npos &&
             observed.find("\\\"dirty\\\":false") != std::string::npos && !fs::exists(note),
         "Discard did not resolve the missing note without writing");
+    // Exercise native menus with a disposable vault after conflict/recovery scenarios.
+    put(note, "[[image.png]]");
+    put(root / "image.png", "image");
+    activateMenu(window, "open");
+    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == 0; ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(
+        shell.mPickerCalls == 1 && shell.mLast == shell.mFolder,
+        "Native Open menu did not invoke the folder picker");
+    window.eval("document.querySelector('#pick-vault').click()");
+    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == 1; ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(shell.mPickerCalls == 2, "Picker control did not use the menu's native service");
+    window.eval("document.querySelector('#notes button').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("document.querySelector('#follow').click()");
+    for (int attempt = 0; attempt < 50 && shell.mAttachment.empty(); ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(
+        shell.mAttachment == pathBytes(fs::canonical(root / "image.png")),
+        "Validated attachment did not reach native opener");
+    replaceEditor(window, "Menu saved");
+    activateMenu(window, "save");
+    for (int attempt = 0; attempt < 50 && bytes(note) != "Menu saved"; ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(bytes(note) == "Menu saved", "Native Save menu did not invoke editor save");
     replaceEditor(window, "Quit draft");
 #if defined(_WIN32)
     SendMessageW(static_cast<HWND>(window.window().value()), WM_CLOSE, 0, 0);
 #elif defined(__APPLE__)
-    desktop.invoke("inkstowAskQuit()");
+    activateMacClose(window);
 #else
     gtk_window_close(GTK_WINDOW(window.window().value()));
 #endif
@@ -359,6 +445,43 @@ int run()
         observed.find("\\\"prompt\\\":true") != std::string::npos &&
             observed.find("Quit draft") != std::string::npos && !exited,
         "Native Ctrl+Q did not offer safe quit");
+#elif defined(__APPLE__)
+    auto promptVisible = [&] {
+        window.eval(
+            "probe(JSON.stringify({prompt:!document.querySelector('#quit-prompt').hidden,"
+            "text:document.querySelector('.cm-content').textContent}))");
+        pumpFor(std::chrono::milliseconds(150));
+        return observed.find("\\\"prompt\\\":true") != std::string::npos &&
+               observed.find("Quit draft") != std::string::npos;
+    };
+    activateMenu(window, "quit"); // Cmd+Q through the native App menu.
+    pumpFor(std::chrono::milliseconds(350));
+    check(promptVisible() && !exited, "Cmd+Q did not protect unsaved text");
+    window.eval("document.querySelector('#quit-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    activateMacApplicationQuit(); // Also guard Dock / OS application termination.
+    pumpFor(std::chrono::milliseconds(350));
+    check(promptVisible() && !exited, "OS application quit bypassed safe close");
+    window.eval("document.querySelector('#quit-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    put(note, "Outside quit");
+    activateMenu(window, "quit");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("document.querySelector('#quit-save').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(
+        promptVisible() && !exited && bytes(note) == "Outside quit",
+        "Conflicted Cmd+Q save lost edits or closed the window");
+    window.eval("document.querySelector('#quit-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    clickDecision(window, "#reload");
+    pumpFor(std::chrono::milliseconds(350));
+    replaceEditor(window, "Saved on quit");
+    activateMenu(window, "quit");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("document.querySelector('#quit-save').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(exited && bytes(note) == "Saved on quit", "Cmd+Q Save and quit failed");
 #endif
     return 0;
 }
