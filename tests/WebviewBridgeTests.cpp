@@ -73,7 +73,19 @@ int run()
         void setLastVault(const std::string& path) override { mLast = path; }
         std::string pickVault() override { return mPicked; }
     } shell;
-    inkstow::webview_shell::Bridge bridge(&shell);
+    std::string openedUrl;
+    std::filesystem::path openedLink;
+    inkstow::webview_shell::Bridge bridge(
+        &shell,
+        [&](const std::filesystem::path& path, std::string*) {
+            openedLink = path;
+            return true;
+        },
+        {},
+        [&](const std::string& url, std::string*) {
+            openedUrl = url;
+            return true;
+        });
     CHECK(
         request(
             bridge,
@@ -131,6 +143,25 @@ int run()
                 {"operation", "pickVault"}
     })["ok"] == false);
     CHECK(shell.mLast == pathBytes(root / "missing"));
+    {
+        std::ofstream(root / "Foo.bar.md") << "Dot note";
+        std::ofstream(root / "image.png") << "image";
+    }
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "refresh"}
+    })["notes"] ==
+        Json::array({"BOM.md", "Foo.bar.md", "Second.md"}));
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",             "external"},
+                {      "url", "https://example.org/"}
+    })["ok"] == false);
+    CHECK(openedUrl.empty());
     CHECK(
         request(
             bridge,
@@ -149,7 +180,8 @@ int run()
             bridge,
             {
                 {"operation", "list"}
-    })["notes"] == Json::array({"BOM.md", "Second.md"}));
+    })["notes"] ==
+        Json::array({"BOM.md", "Foo.bar.md", "Second.md"}));
     CHECK(
         request(
             bridge,
@@ -178,7 +210,83 @@ int run()
                 {"operation",         "follow"},
                 {     "link", "../outside.png"}
     })["ok"] == false);
-    fs::remove(root / "image.png");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",    "link"},
+                {     "link", "Foo.bar"}
+    })["path"] == "Foo.bar.md");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",           "link"},
+                {     "link", "BOM.md#Section"}
+    })["path"] == "BOM.md");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",      "link"},
+                {     "link", "image.png"}
+    })["ok"] == true);
+    CHECK(fs::equivalent(openedLink, root / "image.png"));
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",         "link"},
+                {     "link", "../image.png"}
+    })["ok"] == false);
+    CHECK(fs::equivalent(openedLink, root / "image.png"));
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation", "select"},
+                {     "path", "BOM.md"}
+    })["ok"] == true);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",              "external"},
+                {      "url", "https://example.org/a"}
+    })["ok"] == true);
+    CHECK(openedUrl == "https://example.org/a");
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",                   "external"},
+                {      "url", "http://localhost:8080/path"}
+    })["ok"] == true);
+    CHECK(openedUrl == "http://localhost:8080/path");
+    openedUrl = "https://example.org/a";
+    for (const std::string url :
+         {"file:///etc/passwd",
+          "javascript:alert(1)",
+          "https://example.org/\nInjected",
+          "https://",
+          "https://user@example.org",
+          "https://:80/path",
+          "https://example.org:/path",
+          "https://example.org:abc/path",
+          "https://example.org:65536/path",
+          "https://example..org/path",
+          "https://-bad.example/path",
+          "https://example.org:80:90/path"})
+    {
+        CHECK(
+            request(
+                bridge,
+                {
+                    {"operation", "external"},
+                    {      "url",        url}
+        })["ok"] == false);
+        CHECK(openedUrl == "https://example.org/a");
+    }
     CHECK(
         request(
             bridge,
@@ -194,6 +302,32 @@ int run()
                 {     "link", "image.png"}
     })["ok"] == false);
     CHECK(shell.mOpenedAttachment == expectedAttachment);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",             "external"},
+                {      "url", "https://example.org/"}
+    })["ok"] == false);
+    CHECK(openedUrl == "https://example.org/a");
+    const Json refusedLink = request(
+        bridge,
+        {
+            {"operation",    "link"},
+            {     "link", "Foo.bar"}
+    });
+    CHECK(
+        refusedLink["ok"] == false && refusedLink["path"] == "BOM.md" &&
+        refusedLink["content"] == "Changed" &&
+        refusedLink["error"].get<std::string>().find("Save or discard") != std::string::npos);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",      "link"},
+                {     "link", "image.png"}
+    })["ok"] == false);
+    CHECK(fs::equivalent(openedLink, root / "image.png"));
     const Json refused = request(
         bridge,
         {

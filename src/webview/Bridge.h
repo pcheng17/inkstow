@@ -33,11 +33,16 @@ class Bridge
 {
 public:
     using OpenAttachment = std::function<bool(const std::filesystem::path&, std::string*)>;
+    using OpenExternal = std::function<bool(const std::string&, std::string*)>;
     explicit Bridge(
         ShellServices* services = nullptr,
         OpenAttachment openAttachment = {},
-        portable::Vault::TrashFunction trash = {});
-    explicit Bridge(OpenAttachment openAttachment, portable::Vault::TrashFunction trash = {});
+        portable::Vault::TrashFunction trash = {},
+        OpenExternal openExternal = {});
+    explicit Bridge(
+        OpenAttachment openAttachment,
+        portable::Vault::TrashFunction trash = {},
+        OpenExternal openExternal = {});
     std::string handle(const std::string& arguments);
 
 private:
@@ -46,6 +51,7 @@ private:
     ShellServices* mServices;
     portable::Session mSession;
     OpenAttachment mOpenAttachment;
+    OpenExternal mOpenExternal;
     portable::Vault::TrashFunction mTrash;
     portable::DiskChange mChange = portable::DiskChange::None;
     // A dismissed missing-note decision stays hidden on focus refresh until new edits or disk

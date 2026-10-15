@@ -16,15 +16,18 @@ void activateMacApplicationQuit();
 #else
 #include <glib.h>
 #include <gtk/gtk.h>
+#include <webkit2/webkit2.h>
 #endif
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -152,12 +155,14 @@ void activateMenu(webview::webview& window, const char* action)
 
 void replaceEditor(webview::webview& window, const std::string& text)
 {
-    // Browser editing commands follow CodeMirror's real input path (selection, beforeinput, input).
+    // Update the editable line and dispatch input through CodeMirror's real DOM observer.
     window.eval(
-        "{const editor=document.querySelector('#editor [contenteditable=true]');"
-        "editor.focus();document.execCommand('selectAll');"
-        "document.execCommand('insertText',false," +
-        nlohmann::json(text).dump() + ");}");
+        "{const line=document.querySelector('#editor .cm-line');"
+        "line.textContent=" +
+        nlohmann::json(text).dump() +
+        ";"
+        "document.querySelector('#editor .cm-content').dispatchEvent("
+        "new Event('input',{bubbles:true}));}");
     pumpFor(std::chrono::milliseconds(350));
 }
 } // namespace
@@ -207,6 +212,7 @@ int run()
             return fs::remove(path);
         });
     webview::webview window(false, nullptr);
+    window.set_size(960, 720, WEBVIEW_HINT_NONE);
     inkstow::webview_shell::NavigationPolicy navigation(window.browser_controller().value());
     inkstow::webview_shell::DesktopWindow desktop(window);
     bool exited = false;
@@ -391,7 +397,8 @@ int run()
             observed.find("\\\"dirty\\\":false") != std::string::npos && !fs::exists(note),
         "Discard did not resolve the missing note without writing");
 
-    put(root / "Source.md", "[[Target]] [[image.png]]");
+    put(root / "Source.md",
+        "# Preview\n**bold** and *italic* with `code`\n- item\n> quote\n[[Target]] [[image.png]]");
     put(root / "Target.md", "Target");
     put(root / "image.png", "image");
     window.eval("document.querySelector('#vault-form button').click()");
@@ -447,8 +454,58 @@ int run()
             observed.find("\\\"ready\\\":true") != std::string::npos,
         "Source note was not ready for Follow");
     window.eval(
-        "document.querySelector('#link').value='Renamed';"
-        "document.querySelector('#follow').click()");
+        "probe(JSON.stringify({link:document.querySelector('.cm-preview-link')?.textContent,"
+        "heading:document.querySelector('.cm-line')?.textContent,"
+        "bold:document.querySelector('.cm-strong')?.textContent,"
+        "source:document.querySelectorAll('.cm-line')[4]?.textContent}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("Renamed") != std::string::npos && observed.find("[[") == std::string::npos &&
+            observed.find("Preview") != std::string::npos &&
+            observed.find("bold") != std::string::npos,
+        "Real window did not render an inactive wikilink");
+#if !defined(__APPLE__) && !defined(_WIN32)
+    if (const char* screenshot = std::getenv("INKSTOW_SCREENSHOT")) {
+        struct Capture
+        {
+            std::string mPath;
+            bool mDone = false;
+            bool mSaved = false;
+        };
+        auto capture = std::make_shared<Capture>(screenshot);
+        auto* cancellable = g_cancellable_new();
+        webkit_web_view_get_snapshot(
+            WEBKIT_WEB_VIEW(window.browser_controller().value()),
+            WEBKIT_SNAPSHOT_REGION_VISIBLE,
+            WEBKIT_SNAPSHOT_OPTIONS_NONE,
+            cancellable,
+            +[](GObject* object, GAsyncResult* result, gpointer data) {
+                std::unique_ptr<std::shared_ptr<Capture>> callbackState(
+                    static_cast<std::shared_ptr<Capture>*>(data));
+                const auto& output = *callbackState;
+                GError* failure = nullptr;
+                auto* surface =
+                    webkit_web_view_get_snapshot_finish(WEBKIT_WEB_VIEW(object), result, &failure);
+                if (surface) {
+                    output->mSaved = cairo_surface_write_to_png(surface, output->mPath.c_str()) ==
+                                     CAIRO_STATUS_SUCCESS;
+                    cairo_surface_destroy(surface);
+                }
+                if (failure) g_error_free(failure);
+                output->mDone = true;
+            },
+            new std::shared_ptr<Capture>(capture));
+        for (int attempt = 0; !capture->mDone && attempt < 50; ++attempt)
+            pumpFor(std::chrono::milliseconds(100));
+        if (!capture->mDone) g_cancellable_cancel(cancellable);
+        g_object_unref(cancellable);
+        check(capture->mSaved, "Could not save real webview screenshot");
+    }
+#endif
+    window.eval(
+        "{function clickLink(){if(document.querySelector('#follow').disabled){"
+        "setTimeout(clickLink,25);return;}document.querySelector('.cm-preview-link').click();}"
+        "clickLink();}");
     for (int attempt = 0; attempt < 30; ++attempt) {
         window.eval("probe(document.querySelector('#title').textContent)");
         pumpFor(std::chrono::milliseconds(100));
@@ -509,16 +566,25 @@ int run()
         ".find(b=>b.textContent==='Note.md').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval("inkstowFollow()");
-    for (int attempt = 0; attempt < 50 && shell.mAttachment.empty(); ++attempt)
+    for (int attempt = 0; attempt < 50 && openedAttachment.empty(); ++attempt)
         pumpFor(std::chrono::milliseconds(100));
     check(
-        shell.mAttachment == pathBytes(fs::canonical(root / "image.png")),
+        !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
         "Validated attachment did not reach native opener");
     replaceEditor(window, "Menu saved");
     activateMenu(window, "save");
     for (int attempt = 0; attempt < 50 && bytes(note) != "Menu saved"; ++attempt)
         pumpFor(std::chrono::milliseconds(100));
-    check(bytes(note) == "Menu saved", "Native Save menu did not invoke editor save");
+    if (bytes(note) != "Menu saved") {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "text:document.querySelector('.cm-content').textContent,"
+            "error:document.querySelector('#error').textContent,"
+            "disabled:document.querySelector('#save').disabled}))");
+        pumpFor(std::chrono::milliseconds(150));
+        throw std::runtime_error(
+            "Native Save menu did not invoke editor save: " + observed + ", disk=" + bytes(note));
+    }
     replaceEditor(window, "Quit draft");
 #if defined(_WIN32)
     SendMessageW(static_cast<HWND>(window.window().value()), WM_CLOSE, 0, 0);

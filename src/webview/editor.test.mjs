@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
+import { EditorView } from '@codemirror/view';
 
 const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
 const folder = '/tmp/inkstow-throwaway';
@@ -26,6 +27,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let reportedBytes;
   let trashAvailable = false;
   const opened = [];
+  const external = [];
   function snapshot(ok, error) {
     return { ok, notes: [...notes], path, content, dirty: content !== saved, change, ...(error ? { error } : {}) };
   }
@@ -88,6 +90,22 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             disk.set(name, disk.get(path)); disk.delete(path); path = name;
             notes = [...disk.keys()].sort(); return snapshot(true);
           }
+          case 'link': {
+            if (content !== saved) return snapshot(false, 'Unsaved changes.');
+            const target = request.link.split('#', 1)[0];
+            const note = disk.has(target) ? target : `${target}.md`;
+            if (disk.has(note) && note.endsWith('.md'))
+              return window.inkstowRequest({ operation: 'select', path: note });
+            if (!disk.has(target)) return snapshot(false, 'Link not found.');
+            opened.push(target); return snapshot(true);
+          }
+          case 'follow':
+            if (content !== saved) return snapshot(false, 'Unsaved changes.');
+            if (!disk.has(request.link.endsWith('.md') ? request.link : `${request.link}.md`)) return snapshot(false, 'Link not found.');
+            return window.inkstowRequest({ operation: 'select', path: request.link.endsWith('.md') ? request.link : `${request.link}.md` });
+          case 'external':
+            if (!/^https?:\/\/[^\s]+$/.test(request.url)) return snapshot(false, 'Invalid external URL.');
+            external.push(request.url); return snapshot(true);
           case 'attachment':
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             if (!disk.has(request.link)) return snapshot(false, 'Attachment not found.');
@@ -177,7 +195,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
     await pause();
   }
   await pause(); // Let the initial last-vault lookup finish before driving controls.
-  return { dom, document, disk, opened, calls, open, select, type, pause, exits: () => exits,
+  return { dom, document, disk, opened, external, calls, open, select, type, pause, exits: () => exits,
     enableTrash: () => { trashAvailable = true; }, injectError: (message) => { injectedError = message; },
     delaySave: () => {
       let release;
@@ -185,6 +203,275 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
       return release;
     } };
 }
+
+test('inactive Markdown renders but selection across lines exposes source without changing saved bytes', async () => {
+  const source = '# Heading\n**bold** and *italic* with `code`\n- list\n> quote\n[broken](x';
+  const ui = await setup({ 'Note.md': Buffer.from(source) });
+  try {
+    await ui.open(); await ui.select('Note.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    assert.ok(view);
+    view.dispatch({ selection: { anchor: 0 } });
+    assert.equal(ui.document.querySelectorAll('.cm-line')[0].textContent, '# Heading');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent.includes('**'), false);
+    assert.ok(ui.document.querySelector('.cm-strong'));
+    assert.ok(ui.document.querySelector('.cm-emphasis'));
+    assert.ok(ui.document.querySelector('.cm-inline-code'));
+    assert.equal(ui.document.querySelectorAll('.cm-line')[2].textContent.includes('-'), false);
+    assert.equal(ui.document.querySelectorAll('.cm-line')[2].textContent.includes('•'), true);
+    assert.equal(ui.document.querySelectorAll('.cm-line')[3].textContent.includes('>'), false);
+    assert.equal(ui.document.querySelectorAll('.cm-line')[4].textContent, '[broken](x');
+    view.dispatch({ selection: { anchor: 11, head: view.state.doc.line(3).from + 1 } });
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent, '**bold** and *italic* with `code`');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[2].textContent, '- list');
+    view.dispatch({ selection: { anchor: 0 } });
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(source));
+  } finally { ui.dom.window.close(); }
+});
+
+test('fenced and indented code render inactive lines and restore editable source on the active line', async () => {
+  const source = 'Intro\n```js\nconst x = 1;\n```\n\n    indented\n    next\nDone';
+  const ui = await setup({ 'Note.md': Buffer.from(source) });
+  try {
+    await ui.open(); await ui.select('Note.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent, '');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[3].textContent, '');
+    assert.ok(ui.document.querySelectorAll('.cm-line')[2].classList.contains('cm-block-code'));
+    assert.equal(ui.document.querySelectorAll('.cm-line')[5].textContent, 'indented');
+    assert.ok(ui.document.querySelectorAll('.cm-line')[5].classList.contains('cm-block-code'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 1 } });
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent, '```js');
+    view.dispatch({ selection: { anchor: view.state.doc.line(6).from + 2 } });
+    assert.equal(ui.document.querySelectorAll('.cm-line')[5].textContent, '    indented');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[5].classList.contains('cm-block-code'), false);
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(source));
+  } finally { ui.dom.window.close(); }
+});
+
+test('rendered links follow through the bridge while active source edits and shortcut follows', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Start\n[[Target|Alias]] [Site](https://example.org/a)\nEnd'),
+    'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: 0 } });
+    const links = ui.document.querySelectorAll('.cm-preview-link');
+    assert.deepEqual([...links].map((link) => link.textContent), ['Alias', 'Site']);
+    links[1].dispatchEvent(new ui.dom.window.MouseEvent('click', { bubbles: true }));
+    await ui.pause();
+    assert.deepEqual(ui.external, ['https://example.org/a']);
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 4 } });
+    assert.match(ui.document.querySelectorAll('.cm-line')[1].textContent, /\[\[Target\|Alias\]\]/);
+    const sourceLine = ui.document.querySelectorAll('.cm-line')[1];
+    sourceLine.dispatchEvent(new ui.dom.window.MouseEvent('click', { bubbles: true }));
+    await ui.pause();
+    assert.equal(view.state.selection.main.head, view.state.doc.line(2).from + 4);
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+    sourceLine.textContent = '[[Target|Edited]] [Site](https://example.org/a)';
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.Event('input', { bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.calls.at(-1).operation, 'edit');
+    assert.match(ui.calls.at(-1).content, /\[\[Target\|Edited\]\]/);
+    ui.document.querySelector('#undo').click(); await ui.pause();
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'Enter', altKey: true, bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+  } finally { ui.dom.window.close(); }
+});
+
+test('relative Markdown note links render and use core link resolution, not webview navigation', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Intro\n[Target](Target.md) [Picture](image.png)'),
+    'Target.md': Buffer.from('Target'), 'image.png': Buffer.from('image') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    assert.deepEqual([...ui.document.querySelectorAll('.cm-preview-link')].map((node) => node.textContent),
+      ['Target', 'Picture']);
+    ui.document.querySelectorAll('.cm-preview-link')[1].click(); await ui.pause();
+    assert.deepEqual(ui.opened, ['image.png']);
+    ui.document.querySelector('.cm-preview-link').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+    assert.equal(ui.calls.some((call) => call.operation === 'external'), false);
+  } finally { ui.dom.window.close(); }
+});
+
+test('Markdown angle destinations and titled links render and follow through the bridge', async () => {
+  const source = 'Intro\n[Second](<Second note.md>) [Target](Target.md "title") [Site](https://example.org/a "site")';
+  const ui = await setup({ 'Source.md': Buffer.from(source),
+    'Second note.md': Buffer.from('Second'), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const links = () => [...ui.document.querySelectorAll('.cm-preview-link')];
+    assert.deepEqual(links().map((link) => link.textContent), ['Second', 'Target', 'Site']);
+    assert.deepEqual(links().map((link) => link.dataset.target),
+      ['Second note.md', 'Target.md', 'https://example.org/a']);
+    links()[2].click(); await ui.pause();
+    assert.deepEqual(ui.external, ['https://example.org/a']);
+    links()[0].click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Second note.md');
+    await ui.select('Source.md');
+    links()[1].click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+  } finally { ui.dom.window.close(); }
+});
+
+test('source shortcut follows parsed Markdown destinations with spaces and titles', async () => {
+  const source = 'Intro\n[Second](<Second note.md>) [Target](Target.md "title") [Site](https://example.org/a "site")';
+  const ui = await setup({ 'Source.md': Buffer.from(source),
+    'Second note.md': Buffer.from('Second'), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const shortcut = async (label) => {
+      const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+      const line = view.state.doc.line(2);
+      view.dispatch({ selection: { anchor: line.from + line.text.indexOf(label) + 2 } });
+      assert.match(ui.document.querySelectorAll('.cm-line')[1].textContent, /\[Second\]\(<Second note\.md>\)/);
+      ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+        { key: 'Enter', altKey: true, bubbles: true }));
+      await ui.pause();
+    };
+    await shortcut('[Second]');
+    assert.equal(ui.document.querySelector('#title').textContent, 'Second note.md');
+    await ui.select('Source.md');
+    await shortcut('[Target]');
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+    await ui.select('Source.md');
+    await shortcut('[Site]');
+    assert.deepEqual(ui.external, ['https://example.org/a']);
+    assert.deepEqual(ui.calls.filter((call) => call.operation === 'link').map((call) => call.link),
+      ['Second note.md', 'Target.md']);
+  } finally { ui.dom.window.close(); }
+});
+
+test('escaped Markdown punctuation resolves the same note from preview and source', async () => {
+  const source = 'Intro\n[Target](Target\\(1\\).md)';
+  const ui = await setup({ 'Source.md': Buffer.from(source), 'Target(1).md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const rendered = ui.document.querySelector('.cm-preview-link');
+    assert.equal(rendered?.dataset.target, 'Target(1).md');
+    rendered.click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target(1).md');
+    await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 2 } });
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'Enter', altKey: true, bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target(1).md');
+  } finally { ui.dom.window.close(); }
+});
+
+test('wikilink dots and Markdown fragments use core target type, not an extension guess', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Intro\n[[Foo.bar]] [Target](Target.md#Section)'),
+    'Foo.bar.md': Buffer.from('Note with a dot'), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    ui.document.querySelector('.cm-preview-link').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Foo.bar.md');
+    await ui.select('Source.md');
+    ui.document.querySelectorAll('.cm-preview-link')[1].click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+    assert.deepEqual(ui.opened, []);
+    assert.deepEqual(ui.calls.filter((call) => call.operation === 'link').map((call) => call.link),
+      ['Foo.bar', 'Target.md#Section']);
+  } finally { ui.dom.window.close(); }
+});
+
+test('escaped link delimiters remain literal and cannot follow by shortcut', async () => {
+  const source = 'Intro\n\\[[Target]] \\[Target](Target.md) \\[Site](https://example.org) \\\\[[Target]]\nEnd';
+  const ui = await setup({ 'Source.md': Buffer.from(source), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    assert.deepEqual([...ui.document.querySelectorAll('.cm-preview-link')].map((node) => node.textContent), ['Target']);
+    assert.match(ui.document.querySelectorAll('.cm-line')[1].textContent, /\\\[\[Target\]\] \\\[Target\]\(Target\.md\)/);
+    for (const marker of ['\\[[Target]]', '\\[Target](Target.md)', '\\[Site](https://example.org)']) {
+      const pos = view.state.doc.line(2).from + view.state.doc.line(2).text.indexOf(marker) + marker.length - 2;
+      view.dispatch({ selection: { anchor: pos } });
+      ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+        { key: 'Enter', altKey: true, bubbles: true }));
+      await ui.pause();
+      assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+      assert.equal(ui.calls.filter((call) => ['link', 'external'].includes(call.operation)).length, 0);
+    }
+  } finally { ui.dom.window.close(); }
+});
+
+test('dirty rendered navigation is refused and undo preserves source and CRLF bytes', async () => {
+  const source = '# Title\r\n[[Target]]\r\nNBSP:\u00a0 U+2028:\u2028 U+2029:\u2029';
+  const ui = await setup({ 'Source.md': Buffer.from(source), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: 0 } });
+    assert.equal(ui.document.querySelector('.cm-preview-link').textContent, 'Target');
+    await ui.type('# Draft');
+    ui.document.querySelector('.cm-preview-link').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/i);
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+    ui.document.querySelector('#undo').click(); await ui.pause();
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.deepEqual(ui.disk.get('Source.md'), Buffer.from(source));
+  } finally { ui.dom.window.close(); }
+});
+
+test('empty wikilink labels stay visible and editable on inactive lines', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Start\n[[Target|]] and [[|Alias]]\nEnd') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent, '[[Target|]] and [[|Alias]]');
+    assert.equal(ui.document.querySelector('.cm-preview-link'), null);
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 4 },
+      changes: { from: view.state.doc.line(2).to, insert: ' more' } });
+    await ui.pause();
+    assert.equal(ui.calls.at(-1).content, 'Start\n[[Target|]] and [[|Alias]] more\nEnd');
+  } finally { ui.dom.window.close(); }
+});
+
+test('malformed links and code literals remain source', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Start\n`[[Hidden]]` [[broken] [x](bad url)\nEnd') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    assert.equal(ui.document.querySelector('.cm-preview-link'), null);
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 4 } });
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'Enter', altKey: true, bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.calls.filter((call) => ['follow', 'link'].includes(call.operation)).length, 0);
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+  } finally { ui.dom.window.close(); }
+});
+
+test('composition input edits active link source without following its shortcut', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Intro\n[[Target]]\nEnd'), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 4 } });
+    const editor = ui.document.querySelector('.cm-content');
+    editor.focus();
+    editor.dispatchEvent(new ui.dom.window.CompositionEvent('compositionstart', { bubbles: true, data: '語' }));
+    editor.dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'Enter', altKey: true, bubbles: true }));
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+    editor.dispatchEvent(new ui.dom.window.InputEvent('beforeinput',
+      { bubbles: true, inputType: 'insertCompositionText', data: '語', isComposing: true }));
+    ui.document.querySelectorAll('.cm-line')[1].textContent = '[[Target語]]';
+    editor.dispatchEvent(new ui.dom.window.InputEvent('input',
+      { bubbles: true, inputType: 'insertCompositionText', data: '語', isComposing: true }));
+    editor.dispatchEvent(new ui.dom.window.CompositionEvent('compositionend', { bubbles: true, data: '語' }));
+    await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+    assert.equal(ui.calls.filter((call) => call.operation === 'link').length, 0);
+    assert.equal(ui.calls.at(-1).content, 'Intro\n[[Target語]]\nEnd');
+  } finally { ui.dom.window.close(); }
+});
 
 test('bundled editor has no remote runtime assets or links', () => {
   assert.match(html, /cm-editor/); // CodeMirror is bundled into the script, not imported at runtime.
@@ -231,7 +518,7 @@ test('follow shortcut requests the cursor link and refuses dirty attachment navi
     await ui.type('[[image.png]] more');
     ui.dom.window.inkstowFollow(); await ui.pause();
     assert.equal(ui.document.querySelector('#dirty').hidden, false);
-    assert.match(ui.document.querySelector('#error').textContent, /Save or discard/);
+    assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/);
   } finally { ui.dom.window.close(); }
 });
 
