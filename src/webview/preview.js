@@ -1,5 +1,5 @@
 import { syntaxTree } from '@codemirror/language';
-import { Decoration, ViewPlugin } from '@codemirror/view';
+import { Decoration, ViewPlugin, WidgetType } from '@codemirror/view';
 
 const hidden = Decoration.replace({});
 const heading = Decoration.line({ class: 'cm-preview-heading' });
@@ -8,6 +8,34 @@ const list = Decoration.line({ class: 'cm-preview-list' });
 const strong = Decoration.mark({ class: 'cm-strong' });
 const emphasis = Decoration.mark({ class: 'cm-emphasis' });
 const code = Decoration.mark({ class: 'cm-inline-code' });
+
+class ListBullet extends WidgetType {
+  constructor(label) { super(); this.label = label; }
+  eq(other) { return this.label === other.label; }
+  toDOM(view) {
+    const span = view.dom.ownerDocument.createElement('span');
+    span.className = 'cm-preview-bullet';
+    span.textContent = this.label;
+    return span;
+  }
+}
+
+// Return only links whose complete source includes the cursor. Invalid partial markup stays text.
+export function sourceLinkAt(state, pos) {
+  for (let node = syntaxTree(state).resolveInner(pos); node; node = node.parent) {
+    if (['InlineCode', 'FencedCode', 'CodeBlock'].includes(node.name)) return null;
+  }
+  const line = state.doc.lineAt(pos);
+  for (const match of line.text.matchAll(/\[\[([^\[\]\r\n]+)\]\]|\[([^\]\r\n]+)\]\((https?:\/\/[^\s()]+)\)/g)) {
+    const from = line.from + match.index;
+    if (pos < from || pos > from + match[0].length) continue;
+    if (match[1]) {
+      const target = match[1].split('|', 1)[0];
+      if (target) return { kind: 'wiki', target };
+    } else return { kind: 'external', target: match[3] };
+  }
+  return null;
+}
 
 function active(view, from, to) {
   return view.state.selection.ranges.some((range) => {
@@ -55,7 +83,12 @@ export function preview(view) {
     if (node.name === 'StrongEmphasis') add(node.from, node.to, strong);
     if (node.name === 'Emphasis') add(node.from, node.to, emphasis);
     if (node.name === 'InlineCode') add(node.from, node.to, code);
-    if (['HeaderMark', 'EmphasisMark', 'CodeMark', 'ListMark', 'QuoteMark'].includes(node.name)) {
+    if (node.name === 'ListMark') {
+      const marker = source.slice(node.from, node.to);
+      add(node.from, node.to, Decoration.replace({ widget: new ListBullet(/^\d/.test(marker) ? marker : '•') }));
+      return;
+    }
+    if (['HeaderMark', 'EmphasisMark', 'CodeMark', 'QuoteMark'].includes(node.name)) {
       add(node.from, node.to, hidden);
       return;
     }

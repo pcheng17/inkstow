@@ -6,6 +6,7 @@
 #include <exception>
 #include <initializer_list>
 #include <string>
+#include <string_view>
 
 namespace inkstow::webview_shell
 {
@@ -36,6 +37,21 @@ const char* changeName(portable::DiskChange change)
     return "none";
 }
 
+bool validExternalUrl(std::string_view url)
+{
+    const auto schemeEnd = url.find("://");
+    if (schemeEnd == std::string_view::npos ||
+        (url.substr(0, schemeEnd) != "http" && url.substr(0, schemeEnd) != "https"))
+        return false;
+    const auto hostStart = schemeEnd + 3;
+    const auto hostEnd = url.find_first_of("/?#", hostStart);
+    const auto authority = url.substr(hostStart, hostEnd - hostStart);
+    if (authority.empty() || authority.find('@') != std::string_view::npos) return false;
+    return std::none_of(url.begin(), url.end(), [](unsigned char ch) {
+        return ch <= 0x20 || ch == 0x7f || ch == '\\';
+    });
+}
+
 bool stringField(const Json& request, const char* field, std::size_t maxBytes)
 {
     return request.at(field).is_string() &&
@@ -44,8 +60,11 @@ bool stringField(const Json& request, const char* field, std::size_t maxBytes)
 
 } // namespace
 
-Bridge::Bridge(OpenAttachment openAttachment, portable::Vault::TrashFunction trash)
-    : mOpenAttachment(std::move(openAttachment)), mTrash(std::move(trash))
+Bridge::Bridge(
+    OpenAttachment openAttachment, portable::Vault::TrashFunction trash, OpenExternal openExternal)
+    : mOpenAttachment(std::move(openAttachment))
+    , mOpenExternal(std::move(openExternal))
+    , mTrash(std::move(trash))
 {
 }
 
@@ -144,6 +163,20 @@ std::string Bridge::handle(const std::string& arguments)
                             success = mOpenAttachment(*path, &error);
                         else
                             error = "Attachment shell service is unavailable.";
+                    }
+                } else if (
+                    operation == "external" && hasFields(request, {"operation", "url"}) &&
+                    stringField(request, "url", 4096))
+                {
+                    const auto& url = request.at("url").get_ref<const std::string&>();
+                    if (mSession.getPath().empty() || mSession.isDirty()) {
+                        error = "Select and save a note before following a link.";
+                    } else if (!validExternalUrl(url)) {
+                        error = "Invalid external URL.";
+                    } else if (mOpenExternal) {
+                        success = mOpenExternal(url, &error);
+                    } else {
+                        error = "External URL shell service is unavailable.";
                     }
                 } else if (operation == "refresh" && hasFields(request, {"operation"})) {
                     syncWithDisk(&error);

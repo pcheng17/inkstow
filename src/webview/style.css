@@ -30,6 +30,7 @@ ul { list-style: none; padding: 0; margin: 0; }
 .cm-preview-heading { font-size: 1.35em; font-weight: 700; }
 .cm-preview-quote { color: #526780; border-left: 3px solid #a9b9cc; padding-left: 8px; }
 .cm-preview-list { padding-left: 12px; }
+.cm-preview-bullet { display: inline-block; min-width: 1.2em; color: #526780; }
 .cm-strong { font-weight: 700; }
 .cm-emphasis { font-style: italic; }
 .cm-inline-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; background: #edf1f6; }

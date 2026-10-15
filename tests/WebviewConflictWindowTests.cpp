@@ -10,10 +10,11 @@
 #elif defined(_WIN32)
 #include <windows.h>
 #else
-#include <glib.h>
+#include <webkit2/webkit2.h>
 #endif
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -144,6 +145,7 @@ int run()
             return fs::remove(path);
         });
     webview::webview window(false, nullptr);
+    window.set_size(960, 720, WEBVIEW_HINT_NONE);
     inkstow::webview_shell::NavigationPolicy navigation(window.browser_controller().value());
     window.bind("inkstowRequest", [&bridge](const std::string& args) {
         return bridge.handle(args);
@@ -322,7 +324,8 @@ int run()
             observed.find("\\\"dirty\\\":false") != std::string::npos && !fs::exists(note),
         "Discard did not resolve the missing note without writing");
 
-    put(root / "Source.md", "[[Target]] [[image.png]]");
+    put(root / "Source.md",
+        "# Preview\n**bold** and *italic* with `code`\n- item\n> quote\n[[Target]] [[image.png]]");
     put(root / "Target.md", "Target");
     put(root / "image.png", "image");
     window.eval("document.querySelector('#vault-form button').click()");
@@ -366,8 +369,52 @@ int run()
         ".find(b=>b.textContent==='Source.md').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
-        "document.querySelector('#link').value='Renamed';"
-        "document.querySelector('#follow').click()");
+        "probe(JSON.stringify({link:document.querySelector('.cm-preview-link')?.textContent,"
+        "heading:document.querySelector('.cm-line')?.textContent,"
+        "bold:document.querySelector('.cm-strong')?.textContent,"
+        "source:document.querySelectorAll('.cm-line')[4]?.textContent}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("Renamed") != std::string::npos && observed.find("[[") == std::string::npos &&
+            observed.find("Preview") != std::string::npos &&
+            observed.find("bold") != std::string::npos,
+        "Real window did not render an inactive wikilink");
+#if !defined(__APPLE__) && !defined(_WIN32)
+    if (const char* screenshot = std::getenv("INKSTOW_SCREENSHOT")) {
+        struct Capture
+        {
+            const char* mPath = nullptr;
+            bool mDone = false;
+            bool mSaved = false;
+        } capture{screenshot};
+        webkit_web_view_get_snapshot(
+            WEBKIT_WEB_VIEW(window.browser_controller().value()),
+            WEBKIT_SNAPSHOT_REGION_VISIBLE,
+            WEBKIT_SNAPSHOT_OPTIONS_NONE,
+            nullptr,
+            +[](GObject* object, GAsyncResult* result, gpointer data) {
+                auto* output = static_cast<Capture*>(data);
+                GError* failure = nullptr;
+                auto* surface =
+                    webkit_web_view_get_snapshot_finish(WEBKIT_WEB_VIEW(object), result, &failure);
+                if (surface) {
+                    output->mSaved =
+                        cairo_surface_write_to_png(surface, output->mPath) == CAIRO_STATUS_SUCCESS;
+                    cairo_surface_destroy(surface);
+                }
+                if (failure) g_error_free(failure);
+                output->mDone = true;
+            },
+            &capture);
+        for (int attempt = 0; !capture.mDone && attempt < 50; ++attempt)
+            pumpFor(std::chrono::milliseconds(100));
+        check(capture.mSaved, "Could not save real webview screenshot");
+    }
+#endif
+    window.eval(
+        "{function clickLink(){if(document.querySelector('#follow').disabled){"
+        "setTimeout(clickLink,25);return;}document.querySelector('.cm-preview-link').click();}"
+        "clickLink();}");
     for (int attempt = 0; attempt < 30; ++attempt) {
         window.eval("probe(document.querySelector('#title').textContent)");
         pumpFor(std::chrono::milliseconds(100));

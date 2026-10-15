@@ -55,7 +55,19 @@ int main() // NOLINT(bugprone-exception-escape)
         std::ofstream output(root / "Second.md", std::ios::binary);
         output << "Second";
     }
-    inkstow::webview_shell::Bridge bridge;
+    std::string openedUrl;
+    inkstow::webview_shell::Bridge bridge({}, {}, [&](const std::string& url, std::string*) {
+        openedUrl = url;
+        return true;
+    });
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",             "external"},
+                {      "url", "https://example.org/"}
+    })["ok"] == false);
+    CHECK(openedUrl.empty());
     CHECK(
         request(
             bridge,
@@ -86,9 +98,41 @@ int main() // NOLINT(bugprone-exception-escape)
         request(
             bridge,
             {
+                {"operation",              "external"},
+                {      "url", "https://example.org/a"}
+    })["ok"] == true);
+    CHECK(openedUrl == "https://example.org/a");
+    for (const std::string url :
+         {"file:///etc/passwd",
+          "javascript:alert(1)",
+          "https://example.org/\nInjected",
+          "https://",
+          "https://user@example.org"})
+    {
+        CHECK(
+            request(
+                bridge,
+                {
+                    {"operation", "external"},
+                    {      "url",        url}
+        })["ok"] == false);
+        CHECK(openedUrl == "https://example.org/a");
+    }
+    CHECK(
+        request(
+            bridge,
+            {
                 {"operation",    "edit"},
                 {  "content", "Changed"}
     })["dirty"] == true);
+    CHECK(
+        request(
+            bridge,
+            {
+                {"operation",             "external"},
+                {      "url", "https://example.org/"}
+    })["ok"] == false);
+    CHECK(openedUrl == "https://example.org/a");
     const Json refused = request(
         bridge,
         {

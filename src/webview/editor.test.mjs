@@ -25,6 +25,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   let reportedBytes;
   let trashAvailable = false;
   const opened = [];
+  const external = [];
   function snapshot(ok, error) {
     return { ok, notes: [...notes], path, content, dirty: content !== saved, change, ...(error ? { error } : {}) };
   }
@@ -75,6 +76,9 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             if (!disk.has(`${request.link}.md`)) return snapshot(false, 'Link not found.');
             return window.inkstowRequest({ operation: 'select', path: `${request.link}.md` });
+          case 'external':
+            if (!/^https?:\/\/[^\s]+$/.test(request.url)) return snapshot(false, 'Invalid external URL.');
+            external.push(request.url); return snapshot(true);
           case 'attachment':
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             if (!disk.has(request.link)) return snapshot(false, 'Attachment not found.');
@@ -162,7 +166,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
     document.querySelector('.cm-content').dispatchEvent(new Event('input', { bubbles: true }));
     await pause();
   }
-  return { dom, document, disk, opened, calls, open, select, type, pause,
+  return { dom, document, disk, opened, external, calls, open, select, type, pause,
     enableTrash: () => { trashAvailable = true; }, injectError: (message) => { injectedError = message; } };
 }
 
@@ -180,6 +184,7 @@ test('inactive Markdown renders but selection across lines exposes source withou
     assert.ok(ui.document.querySelector('.cm-emphasis'));
     assert.ok(ui.document.querySelector('.cm-inline-code'));
     assert.equal(ui.document.querySelectorAll('.cm-line')[2].textContent.includes('-'), false);
+    assert.equal(ui.document.querySelectorAll('.cm-line')[2].textContent.includes('•'), true);
     assert.equal(ui.document.querySelectorAll('.cm-line')[3].textContent.includes('>'), false);
     assert.equal(ui.document.querySelectorAll('.cm-line')[4].textContent, '[broken](x');
     view.dispatch({ selection: { anchor: 11, head: view.state.doc.line(3).from + 1 } });
@@ -188,6 +193,68 @@ test('inactive Markdown renders but selection across lines exposes source withou
     view.dispatch({ selection: { anchor: 0 } });
     ui.document.querySelector('#save').click(); await ui.pause();
     assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(source));
+  } finally { ui.dom.window.close(); }
+});
+
+test('rendered links follow through the bridge while active source edits and shortcut follows', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Start\n[[Target|Alias]] [Site](https://example.org/a)\nEnd'),
+    'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: 0 } });
+    const links = ui.document.querySelectorAll('.cm-preview-link');
+    assert.deepEqual([...links].map((link) => link.textContent), ['Alias', 'Site']);
+    links[1].dispatchEvent(new ui.dom.window.MouseEvent('click', { bubbles: true }));
+    await ui.pause();
+    assert.deepEqual(ui.external, ['https://example.org/a']);
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 4 } });
+    assert.match(ui.document.querySelectorAll('.cm-line')[1].textContent, /\[\[Target\|Alias\]\]/);
+    ui.document.querySelectorAll('.cm-line')[1].dispatchEvent(new ui.dom.window.MouseEvent('click', { bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'Enter', altKey: true, bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.document.querySelector('#title').textContent, 'Target.md');
+  } finally { ui.dom.window.close(); }
+});
+
+test('dirty rendered navigation is refused and undo preserves source and CRLF bytes', async () => {
+  const source = '# Title\r\n[[Target]]\r\nNBSP:\u00a0 U+2028:\u2028 U+2029:\u2029';
+  const ui = await setup({ 'Source.md': Buffer.from(source), 'Target.md': Buffer.from('Target') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: 0 } });
+    assert.equal(ui.document.querySelector('.cm-preview-link').textContent, 'Target');
+    await ui.type('# Draft');
+    ui.document.querySelector('.cm-preview-link').click(); await ui.pause();
+    assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/i);
+    assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
+    ui.document.querySelector('#undo').click(); await ui.pause();
+    ui.document.querySelector('#save').click(); await ui.pause();
+    assert.deepEqual(ui.disk.get('Source.md'), Buffer.from(source));
+  } finally { ui.dom.window.close(); }
+});
+
+test('malformed links and code literals remain source, including after composition-style input', async () => {
+  const ui = await setup({ 'Source.md': Buffer.from('Start\n`[[Hidden]]` [[broken] [x](bad url)\nEnd') });
+  try {
+    await ui.open(); await ui.select('Source.md');
+    assert.equal(ui.document.querySelector('.cm-preview-link'), null);
+    const view = EditorView.findFromDOM(ui.document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.line(2).from + 4 } });
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'Enter', altKey: true, bubbles: true }));
+    await ui.pause();
+    assert.equal(ui.calls.filter((call) => call.operation === 'follow').length, 0);
+    const editor = ui.document.querySelector('.cm-content');
+    editor.dispatchEvent(new ui.dom.window.CompositionEvent('compositionstart', { bubbles: true, data: '語' }));
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '語' } });
+    editor.dispatchEvent(new ui.dom.window.CompositionEvent('compositionend', { bubbles: true, data: '語' }));
+    await ui.pause();
+    assert.equal(ui.calls.at(-1).content, 'Start\n`[[Hidden]]` [[broken] [x](bad url)\nEnd語');
   } finally { ui.dom.window.close(); }
 });
 
