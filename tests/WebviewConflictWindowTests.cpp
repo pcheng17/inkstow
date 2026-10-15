@@ -129,7 +129,20 @@ int run()
     const auto& root = temp.mPath;
     const auto note = root / "Note.md";
     put(note, "Base");
-    inkstow::webview_shell::Bridge bridge;
+    std::string openedAttachment;
+    bool trashAvailable = false;
+    inkstow::webview_shell::Bridge bridge(
+        [&](const fs::path& path, std::string*) {
+            openedAttachment = pathBytes(path);
+            return true;
+        },
+        [&](const fs::path& path, std::string* error) {
+            if (!trashAvailable) {
+                *error = "System trash unavailable.";
+                return false;
+            }
+            return fs::remove(path);
+        });
     webview::webview window(false, nullptr);
     inkstow::webview_shell::NavigationPolicy navigation(window.browser_controller().value());
     window.bind("inkstowRequest", [&bridge](const std::string& args) {
@@ -308,6 +321,86 @@ int run()
             observed.find("\\\"missing\\\":false") != std::string::npos &&
             observed.find("\\\"dirty\\\":false") != std::string::npos && !fs::exists(note),
         "Discard did not resolve the missing note without writing");
+
+    put(root / "Source.md", "[[Target]] [[image.png]]");
+    put(root / "Target.md", "Target");
+    put(root / "image.png", "image");
+    window.eval("document.querySelector('#vault-form button').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "document.querySelector('#new-path').value='Target';"
+        "document.querySelector('#create-form button').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(bytes(root / "Target.md") == "Target", "Create overwrote existing note");
+    window.eval(
+        "document.querySelector('#new-path').value='Fresh';"
+        "document.querySelector('#create-form button').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(fs::exists(root / "Fresh.md"), "Create control did not create note");
+    window.eval(
+        "document.querySelector('#move').click();"
+        "document.querySelector('#move-path').value='Cancelled';"
+        "document.querySelector('#move-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    check(!fs::exists(root / "Cancelled.md"), "Cancelled move wrote a note");
+    window.eval(
+        "document.querySelector('#move').click();"
+        "document.querySelector('#move-path').value='Moved';"
+        "document.querySelector('#move-without-links').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(fs::exists(root / "Moved.md") && !fs::exists(root / "Fresh.md"), "Move failed");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Target.md').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "document.querySelector('#move').click();"
+        "document.querySelector('#move-path').value='Renamed';"
+        "document.querySelector('#move-with-links').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(
+        bytes(root / "Source.md").find("[[/Renamed]]") != std::string::npos,
+        "Move with links did not rewrite supported link");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Source.md').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "document.querySelector('#link').value='Renamed';"
+        "document.querySelector('#follow').click()");
+    for (int attempt = 0; attempt < 30; ++attempt) {
+        window.eval("probe(document.querySelector('#title').textContent)");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Renamed.md") != std::string::npos) break;
+    }
+    check(observed.find("Renamed.md") != std::string::npos, "Follow did not navigate");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Source.md').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "document.querySelector('#link').value='image.png';"
+        "document.querySelector('#open-attachment').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(
+        openedAttachment == pathBytes(root / "image.png"),
+        "Attachment did not use shell service");
+    window.eval(
+        "document.querySelector('#trash').click();"
+        "document.querySelector('#trash-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    check(fs::exists(root / "Source.md"), "Cancelled trash removed note");
+    window.eval(
+        "document.querySelector('#trash').click();"
+        "document.querySelector('#trash-confirm').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(fs::exists(root / "Source.md"), "Unavailable trash removed note");
+    trashAvailable = true;
+    window.eval(
+        "document.querySelector('#trash').click();"
+        "document.querySelector('#trash-confirm').click()");
+    pumpFor(std::chrono::milliseconds(350));
+    check(!fs::exists(root / "Source.md"), "Confirmed trash was not invoked");
     return 0;
 }
 
