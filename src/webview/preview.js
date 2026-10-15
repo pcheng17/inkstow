@@ -20,11 +20,16 @@ class ListBullet extends WidgetType {
   }
 }
 
+function inCode(state, pos) {
+  for (let node = syntaxTree(state).resolveInner(pos); node; node = node.parent) {
+    if (['InlineCode', 'FencedCode', 'CodeBlock'].includes(node.name)) return true;
+  }
+  return false;
+}
+
 // Return only links whose complete source includes the cursor. Invalid partial markup stays text.
 export function sourceLinkAt(state, pos) {
-  for (let node = syntaxTree(state).resolveInner(pos); node; node = node.parent) {
-    if (['InlineCode', 'FencedCode', 'CodeBlock'].includes(node.name)) return null;
-  }
+  if (inCode(state, pos)) return null;
   const line = state.doc.lineAt(pos);
   for (const match of line.text.matchAll(/\[\[([^\[\]\r\n]+)\]\]|\[([^\]\r\n]+)\]\(([^\s()]+)\)/g)) {
     const from = line.from + match.index;
@@ -62,11 +67,7 @@ export function preview(view) {
   for (const match of source.matchAll(/\[\[([^\[\]\r\n]+)\]\]/g)) {
     const from = match.index;
     const to = from + match[0].length;
-    const parent = syntaxTree(view.state).resolveInner(from + 2);
-    if (['InlineCode', 'FencedCode', 'CodeBlock'].some((name) => {
-      for (let node = parent; node; node = node.parent) if (node.name === name) return true;
-      return false;
-    })) continue;
+    if (inCode(view.state, from + 2)) continue;
     wikiRanges.push({ from, to });
     if (active(view, from, to)) continue;
     const [target, alias] = match[1].split('|', 2);
