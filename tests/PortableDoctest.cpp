@@ -75,6 +75,8 @@ TEST_CASE("Vault discovers visible fixture notes and refuses unsafe paths")
     std::string error;
     auto vault = Vault::open(SAMPLE_VAULT, &error);
     REQUIRE(vault);
+    // Static analysis cannot infer that doctest REQUIRE aborts on failure.
+    if (!vault) return;
     std::vector<std::string> notes;
     REQUIRE(vault->listNotes(&notes, &error));
     REQUIRE((notes == std::vector<std::string>{"Folder/Second note.md", "Welcome.md"}));
@@ -476,6 +478,7 @@ TEST_CASE("Session recovery creates missing notes only in existing folders")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     const std::string bytes = "\xEF\xBB\xBF"
                               "Recovered\n";
     REQUIRE(vault->createNoteWithContent("Folder/Recovered.md", bytes, &error));
@@ -491,6 +494,7 @@ TEST_CASE("Session recovery never overwrites a reappeared note")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     const fs::path destination = temp.mPath / "Recovered.md";
     write(destination, "outside");
     REQUIRE(!vault->createNoteWithContent("Recovered.md", "mine", &error));
@@ -510,6 +514,7 @@ TEST_CASE("Session recovery rejects invalid paths and missing parents")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     const std::vector<std::string> invalid = {
         "../Outside.md",
         ".hidden.md",
@@ -546,6 +551,7 @@ TEST_CASE("Session recovery rejects symlink targets and parents")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     REQUIRE(!vault->createNoteWithContent("Linked.md", "mine", &error));
     REQUIRE(error.find("already exists") != std::string::npos);
     if (!ec) {
@@ -586,6 +592,7 @@ TEST_CASE("Session recovery rejects Windows junction parents")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     REQUIRE(!vault->createNoteWithContent("Junction/Note.md", "mine", &error));
     REQUIRE(error.find("reparse point") != std::string::npos);
     REQUIRE(!fs::exists(outsideNote));
@@ -605,6 +612,7 @@ TEST_CASE("Vault refuses symlink paths")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     std::vector<std::string> notes;
     REQUIRE(vault->listNotes(&notes, &error));
     REQUIRE((notes == std::vector<std::string>{"Folder/Inside.md", "Good.md"}));
@@ -621,6 +629,7 @@ TEST_CASE("Vault creates notes safely")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     REQUIRE(vault->createNote("Folder/Deep/New.md", &error));
     REQUIRE(read(temp.mPath / "Folder" / "Deep" / "New.md").empty());
     REQUIRE(!vault->createNote("Folder/Deep/New.md", &error));
@@ -720,6 +729,7 @@ TEST_CASE("Vault resolves links safely")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     REQUIRE(vault->resolveWikilink("Target", "A/Source.md", &error) == "B/Target.md");
     REQUIRE(vault->resolveWikilink("image.png", "A/Source.md", &error) == "B/image.png");
     REQUIRE(vault->attachmentPath("B/image.png") == fs::canonical(temp.mPath / "B/image.png"));
@@ -821,6 +831,7 @@ TEST_CASE("Vault move rewrites Unicode casefolded links")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     REQUIRE(vault->resolveWikilink("CAF\xC3\x89", "Source.md", &error) == "Caf\xC3\xA9.md");
     REQUIRE(vault->moveNote("Caf\xC3\xA9.md", "Renamed.md", "target", true, &error));
     REQUIRE(read(temp.mPath / "Source.md") == "[[/Renamed]]");
@@ -836,6 +847,7 @@ TEST_CASE("Vault move preflight refuses unsafe links and paths")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     const auto refused = [&](const std::string& to) {
         REQUIRE(!vault->moveNote("Target.md", to, "target", true, &error));
         REQUIRE(read(temp.mPath / "Target.md") == "target");
@@ -875,6 +887,7 @@ TEST_CASE("Vault traversal errors are not mistaken for missing links")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     Session session;
     REQUIRE(session.openVault(utf8Path(temp.mPath), &error));
     REQUIRE(session.selectNote("Source.md", &error));
@@ -905,6 +918,7 @@ TEST_CASE("Vault refuses trash when unavailable")
     std::string error;
     auto vault = Vault::open(utf8Path(temp.mPath), &error);
     REQUIRE(vault);
+    if (!vault) return;
     REQUIRE(!vault->trashNote(
         "Note.md",
         [](const fs::path&, std::string* reason) {
