@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -383,32 +384,38 @@ int run()
     if (const char* screenshot = std::getenv("INKSTOW_SCREENSHOT")) {
         struct Capture
         {
-            const char* mPath = nullptr;
+            std::string mPath;
             bool mDone = false;
             bool mSaved = false;
-        } capture{screenshot};
+        };
+        auto capture = std::make_shared<Capture>(screenshot);
+        auto* cancellable = g_cancellable_new();
         webkit_web_view_get_snapshot(
             WEBKIT_WEB_VIEW(window.browser_controller().value()),
             WEBKIT_SNAPSHOT_REGION_VISIBLE,
             WEBKIT_SNAPSHOT_OPTIONS_NONE,
-            nullptr,
+            cancellable,
             +[](GObject* object, GAsyncResult* result, gpointer data) {
-                auto* output = static_cast<Capture*>(data);
+                std::unique_ptr<std::shared_ptr<Capture>> callbackState(
+                    static_cast<std::shared_ptr<Capture>*>(data));
+                const auto& output = *callbackState;
                 GError* failure = nullptr;
                 auto* surface =
                     webkit_web_view_get_snapshot_finish(WEBKIT_WEB_VIEW(object), result, &failure);
                 if (surface) {
-                    output->mSaved =
-                        cairo_surface_write_to_png(surface, output->mPath) == CAIRO_STATUS_SUCCESS;
+                    output->mSaved = cairo_surface_write_to_png(surface, output->mPath.c_str()) ==
+                                     CAIRO_STATUS_SUCCESS;
                     cairo_surface_destroy(surface);
                 }
                 if (failure) g_error_free(failure);
                 output->mDone = true;
             },
-            &capture);
-        for (int attempt = 0; !capture.mDone && attempt < 50; ++attempt)
+            new std::shared_ptr<Capture>(capture));
+        for (int attempt = 0; !capture->mDone && attempt < 50; ++attempt)
             pumpFor(std::chrono::milliseconds(100));
-        check(capture.mSaved, "Could not save real webview screenshot");
+        if (!capture->mDone) g_cancellable_cancel(cancellable);
+        g_object_unref(cancellable);
+        check(capture->mSaved, "Could not save real webview screenshot");
     }
 #endif
     window.eval(
