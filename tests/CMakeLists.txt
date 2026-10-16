@@ -26,7 +26,7 @@ if(INKSTOW_BUILD_WEBVIEW)
   target_include_directories(inkstow-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/desktop)
 endif()
 target_compile_definitions(inkstow-tests PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
-add_test(NAME inkstow-tests COMMAND inkstow-tests --test-case-exclude=NavigationPolicy*)
+add_test(NAME inkstow-tests COMMAND inkstow-tests --test-case-exclude=NavigationPolicy*,WebviewWindow*)
 
 add_executable(portable-core-tests EXCLUDE_FROM_ALL PortableCoreTests.cpp)
 target_link_libraries(portable-core-tests PRIVATE portable-core inkstow-warnings)
@@ -51,29 +51,27 @@ if(INKSTOW_BUILD_WEBVIEW)
   endif()
 
   if(APPLE OR WIN32 OR XVFB_RUN_EXECUTABLE)
-    add_executable(webview-conflict-window-tests EXCLUDE_FROM_ALL
-                   WebviewConflictWindowTests.cpp
-                   ${NAVIGATION_POLICY_SOURCE}
-                   ${DESKTOP_WINDOW_SOURCE})
-    add_dependencies(webview-conflict-window-tests webview-assets)
-    target_include_directories(webview-conflict-window-tests PRIVATE
-                               ${PROJECT_SOURCE_DIR}/src/desktop
-                               "${PROJECT_BINARY_DIR}/generated")
-    target_link_libraries(webview-conflict-window-tests PRIVATE webview-bridge
-                          webview::core_static inkstow-warnings ${DESKTOP_WINDOW_LIBRARIES})
+    target_sources(inkstow-tests PRIVATE WebviewConflictWindowTests.cpp ${DESKTOP_WINDOW_SOURCE})
+    add_dependencies(inkstow-tests webview-assets)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      target_sources(inkstow-tests PRIVATE ${NAVIGATION_POLICY_SOURCE})
+    endif()
+    target_include_directories(inkstow-tests PRIVATE "${PROJECT_BINARY_DIR}/generated")
+    target_link_libraries(inkstow-tests PRIVATE webview::core_static ${DESKTOP_WINDOW_LIBRARIES})
     if(APPLE)
-      target_sources(webview-conflict-window-tests PRIVATE WebviewDesktopMac.mm)
-      target_link_libraries(webview-conflict-window-tests PRIVATE "-framework AppKit")
-      set_target_properties(webview-conflict-window-tests PROPERTIES OBJCXX_STANDARD 17
-                                                                OBJCXX_STANDARD_REQUIRED ON)
+      target_sources(inkstow-tests PRIVATE WebviewDesktopMac.mm)
+      target_link_libraries(inkstow-tests PRIVATE "-framework AppKit")
+      set_target_properties(inkstow-tests PROPERTIES OBJCXX_STANDARD 17
+                                                 OBJCXX_STANDARD_REQUIRED ON)
     endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
       add_test(NAME webview-conflict-window-tests
-               COMMAND "${XVFB_RUN_EXECUTABLE}" -a $<TARGET_FILE:webview-conflict-window-tests>)
+               COMMAND "${XVFB_RUN_EXECUTABLE}" -a $<TARGET_FILE:inkstow-tests>
+                       --test-case=WebviewWindow*)
     else()
-      add_test(NAME webview-conflict-window-tests COMMAND webview-conflict-window-tests)
+      add_test(NAME webview-conflict-window-tests
+               COMMAND inkstow-tests --test-case=WebviewWindow*)
     endif()
-    add_dependencies(unit-tests webview-conflict-window-tests)
   endif()
 endif()
 

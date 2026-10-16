@@ -1,3 +1,5 @@
+#include <doctest/doctest.h>
+
 #include "Bridge.h"
 #include "DesktopWindow.h"
 #include "LocalHtml.h"
@@ -25,7 +27,6 @@ void activateMacApplicationQuit();
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <iterator>
 #include <memory>
 #include <random>
@@ -167,7 +168,7 @@ void replaceEditor(webview::webview& window, const std::string& text)
 }
 } // namespace
 
-int run()
+TEST_CASE("WebviewWindow protects edits and exercises native window actions")
 {
     namespace fs = std::filesystem;
     TempVault temp;
@@ -738,15 +739,4 @@ int run()
     pumpFor(std::chrono::milliseconds(350));
     check(exited && bytes(note) == "Saved on quit", "Cmd+Q Save and quit failed");
 #endif
-    return 0;
-}
-
-int main()
-{
-    try {
-        return run();
-    } catch (const std::exception& error) {
-        std::cerr << error.what() << '\n';
-        return 1;
-    }
 }
