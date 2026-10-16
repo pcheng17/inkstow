@@ -154,6 +154,32 @@ void activateMenu(webview::webview& window, const char* action)
 #endif
 }
 
+void clickPreviewWhenReady(webview::webview& window, const char* target)
+{
+    window.eval(
+        "{const target=" + nlohmann::json(target).dump() +
+        ";let attempts=0;function click(){"
+        "if(!document.querySelector('#editor [contenteditable=true]')){"
+        "if(++attempts<200)setTimeout(click,25);return;}"
+        "const link=[...document.querySelectorAll('.cm-preview-link')]"
+        ".find(link=>link.dataset.target===target);"
+        "if(link)link.click();}click();}");
+}
+
+void waitForEditorReady(webview::webview& window, std::string& observed, const char* action)
+{
+    observed.clear();
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "editable:!!document.querySelector('#editor [contenteditable=true]'),"
+            "error:document.querySelector('#error').textContent}));");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("\\\"editable\\\":true") != std::string::npos) return;
+    }
+    throw std::runtime_error(std::string(action) + " did not unlock the editor: " + observed);
+}
+
 void replaceEditor(webview::webview& window, const std::string& text)
 {
     // Update the editable line and dispatch input through CodeMirror's real DOM observer.
@@ -559,7 +585,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
-            "ready:!document.querySelector('#trash').disabled && "
+            "ready:!!document.querySelector('#editor [contenteditable=true]') && "
             "!!document.querySelector('.cm-preview-link')}))");
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Source.md") != std::string::npos &&
@@ -624,7 +650,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
-            "ready:!document.querySelector('#trash').disabled,"
+            "ready:!!document.querySelector('#editor [contenteditable=true]'),"
             "error:document.querySelector('#error').textContent}));");
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Renamed.md") != std::string::npos &&
@@ -641,7 +667,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
-            "ready:!document.querySelector('#trash').disabled,"
+            "ready:!!document.querySelector('#editor [contenteditable=true]'),"
             "attachment:!![...document.querySelectorAll('.cm-preview-link')]"
             ".find(link=>link.dataset.target==='image.png'),"
             "error:document.querySelector('#error').textContent}));");
@@ -655,9 +681,38 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         observed.find("\\\"ready\\\":true") == std::string::npos ||
         observed.find("\\\"attachment\\\":true") == std::string::npos)
         throw std::runtime_error("Source note was not ready for attachment: " + observed);
+    // Keep a background refresh in flight while exercising the attachment click.
+    // The trash button stays enabled during this internal lock, so it is not readiness.
     window.eval(
-        "[...document.querySelectorAll('.cm-preview-link')]"
-        ".find(link=>link.dataset.target==='image.png').click()");
+        "{const request=window.inkstowRequest;"
+        "window.inkstowRequest=async operation=>{"
+        "if(operation.operation==='refresh'){window.inkstowRequest=request;"
+        "await new Promise(resolve=>{window.releaseRefreshForSmoke=resolve;"
+        "probe('refresh pending');});}"
+        "return request(operation);};"
+        "let attempts=0;function start(){"
+        "if(!document.querySelector('#editor [contenteditable=true]')){"
+        "if(++attempts<200)setTimeout(start,25);return;}"
+        "window.inkstowRefresh();}start();}");
+    observed.clear();
+    for (int attempt = 0; attempt < 30 && observed.find("refresh pending") == std::string::npos;
+         ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(observed.find("refresh pending") != std::string::npos, "Refresh did not start");
+    observed.clear();
+    window.eval(
+        "probe(JSON.stringify({button:!document.querySelector('#trash').disabled,"
+        "editable:!!document.querySelector('#editor [contenteditable=true]')}));");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("\\\"button\\\":true") != std::string::npos &&
+            observed.find("\\\"editable\\\":false") != std::string::npos,
+        "Refresh did not expose the stale button-readiness signal");
+    openedAttachment.clear();
+    clickPreviewWhenReady(window, "image.png");
+    pumpFor(std::chrono::milliseconds(150));
+    check(openedAttachment.empty(), "Attachment clicked while the editor was locked");
+    window.eval("window.releaseRefreshForSmoke();delete window.releaseRefreshForSmoke");
     for (int attempt = 0; attempt < 50 && openedAttachment.empty(); ++attempt)
         pumpFor(std::chrono::milliseconds(100));
     if (openedAttachment.empty() || !fs::equivalent(openedAttachment, root / "image.png")) {
@@ -669,37 +724,30 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         pumpFor(std::chrono::milliseconds(150));
         throw std::runtime_error("Attachment did not use shell service: " + observed);
     }
-    observed.clear();
-    for (int attempt = 0; attempt < 50; ++attempt) {
-        window.eval("probe(!document.querySelector('#trash').disabled)");
-        pumpFor(std::chrono::milliseconds(100));
-        if (observed.find("true") != std::string::npos) break;
-    }
-    check(observed.find("true") != std::string::npos, "Attachment follow did not finish");
-    window.eval(
-        "[...document.querySelectorAll('.cm-preview-link')]"
-        ".find(link=>link.dataset.target==='New link').click()");
+    waitForEditorReady(window, observed, "Attachment follow");
+    clickPreviewWhenReady(window, "New link");
     for (int attempt = 0; attempt < 50; ++attempt) {
         observed.clear();
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
-            "ready:!document.querySelector('#trash').disabled}))");
+            "ready:!!document.querySelector('#editor [contenteditable=true]')}))");
         pumpFor(std::chrono::milliseconds(100));
         if (fs::exists(root / "New link.md") && observed.find("New link.md") != std::string::npos &&
             observed.find("\\\"ready\\\":true") != std::string::npos)
             break;
     }
-    check(
-        fs::exists(root / "New link.md") && observed.find("New link.md") != std::string::npos &&
-            observed.find("\\\"ready\\\":true") != std::string::npos,
-        "Following missing link did not open the created note");
+    if (!fs::exists(root / "New link.md") || observed.find("New link.md") == std::string::npos ||
+        observed.find("\\\"ready\\\":true") == std::string::npos)
+        throw std::runtime_error(
+            "Following missing link did not open the created note: " + observed);
+    waitForEditorReady(window, observed, "Missing-link follow");
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Source.md').click()");
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
-            "ready:!document.querySelector('#trash').disabled}))");
+            "ready:!!document.querySelector('#editor [contenteditable=true]')}))");
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Source.md") != std::string::npos &&
             observed.find("\\\"ready\\\":true") != std::string::npos)
@@ -720,7 +768,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({error:document.querySelector('#error').textContent,"
-            "ready:!document.querySelector('#trash').disabled}))");
+            "ready:!!document.querySelector('#editor [contenteditable=true]')}))");
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("System trash unavailable") != std::string::npos &&
             observed.find("\\\"ready\\\":true") != std::string::npos)
