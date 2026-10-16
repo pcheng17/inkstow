@@ -1,13 +1,11 @@
 import { createNoteEditor } from './editor.js';
 import { render as renderUi, showError as showUiError, bindNoteControls } from './ui.js';
 
-const folder = document.querySelector('#folder');
-const form = document.querySelector('#vault-form');
 const busy = document.querySelector('#busy');
 const quitPrompt = document.querySelector('#quit-prompt');
 const saveButton = document.querySelector('#save');
 const undoButton = document.querySelector('#undo');
-let snapshot = { notes: [], path: '', content: '', dirty: false };
+let snapshot = { notes: [], path: '', content: '', dirty: false, vaultOpen: false };
 let locked = false;
 let controlsLocked = false;
 let syncFailed = false;
@@ -100,7 +98,7 @@ async function navigate(operation) {
     if (operation.operation === 'startup') missingVaultError = reply.error || 'Could not reopen last vault.';
     showError(reply.error || 'Could not open note.');
   } else {
-    if (['startup', 'open', 'pickVault'].includes(operation.operation)) missingVaultError = '';
+    if (['startup', 'pickVault'].includes(operation.operation)) missingVaultError = '';
     const previousPath = snapshot.path;
     snapshot = reply;
     syncFailed = false;
@@ -153,11 +151,6 @@ async function noteAction(operation, fallback) {
 }
 
 bindNoteControls({ isLocked: () => locked, selectedPath: () => snapshot.path, noteAction });
-
-form.addEventListener('submit', (event) => {
-  event.preventDefault();
-  navigate({ operation: 'open', folder: folder.value });
-});
 
 async function save() {
   if (editor.mixedLineEndings) { showError(mixedEndingsError); return; }

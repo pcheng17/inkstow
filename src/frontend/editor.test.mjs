@@ -6,11 +6,10 @@ import { JSDOM } from 'jsdom';
 import { EditorView } from '@codemirror/view';
 
 const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
-const folder = '/tmp/inkstow-throwaway';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello')]), 'Other.md': Buffer.from('Second') }, startupError = '', startupDelay = 0) {
+async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello')]), 'Other.md': Buffer.from('Second') }, startupError = '', startupDelay = 0, restoreLast = false) {
   const disk = new Map(Object.entries(initial));
   const calls = [];
   let notes = [];
@@ -34,7 +33,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   const opened = [];
   const external = [];
   function snapshot(ok, error) {
-    return { ok, notes: [...notes], path, content, dirty: content !== saved, change, ...(error ? { error } : {}) };
+    return { ok, notes: [...notes], path, content, dirty: content !== saved, vaultOpen: hasVault, change, ...(error ? { error } : {}) };
   }
   const dom = new JSDOM(html, {
     url: 'https://inkstow.invalid/', runScripts: 'dangerously', pretendToBeVisual: true,
@@ -61,12 +60,9 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
         switch (request.operation) {
           case 'startup':
             if (startupDelay) await new Promise((resolve) => setTimeout(resolve, startupDelay));
+            if (restoreLast) { hasVault = true; notes = [...disk.keys()].sort(); }
             return snapshot(!startupError, startupError);
           case 'pickVault':
-            if (content !== saved) return snapshot(false, 'Unsaved changes.');
-            hasVault = true; notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
-          case 'open':
-            if (request.folder !== folder) return snapshot(false, 'Vault folder not found.');
             if (content !== saved) return snapshot(false, 'Unsaved changes.');
             hasVault = true; notes = [...disk.keys()].sort(); path = ''; content = saved = ''; return snapshot(true);
           case 'list': return snapshot(true);
@@ -201,8 +197,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
   const { document, Event } = dom.window;
   const pause = () => new Promise((resolve) => setTimeout(resolve, 35));
   async function open() {
-    document.querySelector('#folder').value = folder;
-    document.querySelector('#vault-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    document.querySelector('#pick-vault').click();
     await pause();
   }
   async function select(name) {
@@ -525,16 +520,29 @@ test('bundled editor has no remote runtime assets or links', () => {
   assert.doesNotMatch(html, /script-src 'unsafe-inline'/);
 });
 
-test('native picker opens vault and startup failure remains visible', async () => {
+test('empty state opens a vault with the native picker', async () => {
   const ui = await setup();
   try {
     await ui.pause();
+    assert.equal(ui.document.querySelector('#empty-vault').hidden, false);
+    assert.equal(ui.document.querySelector('main').hidden, true);
     ui.document.querySelector('#pick-vault').click();
     await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'pickVault');
+    assert.equal(ui.document.querySelector('#empty-vault').hidden, true);
+    assert.equal(ui.document.querySelector('main').hidden, false);
     assert.equal(ui.document.querySelectorAll('#notes button').length, 2);
     // Startup is requested when the editor first loads, not on a button click.
     assert.ok(ui.calls.some((call) => call.operation === 'startup'));
+  } finally { ui.dom.window.close(); }
+});
+
+test('last vault reopens into the notes view on startup', async () => {
+  const ui = await setup(undefined, '', 0, true);
+  try {
+    assert.equal(ui.document.querySelector('#empty-vault').hidden, true);
+    assert.equal(ui.document.querySelector('main').hidden, false);
+    assert.equal(ui.document.querySelectorAll('#notes button').length, 2);
   } finally { ui.dom.window.close(); }
 });
 
@@ -547,6 +555,7 @@ test('missing last vault stays explained across refresh until a vault opens', as
     await ui.pause();
     assert.equal(message.hidden, false);
     assert.match(message.textContent, /folder missing/);
+    assert.equal(ui.document.querySelector('#empty-vault').hidden, false);
     await ui.open();
     assert.equal(message.hidden, true);
   } finally { ui.dom.window.close(); }
@@ -706,7 +715,7 @@ test('selecting another note does not dim the entire window while loading', asyn
     const next = [...ui.document.querySelectorAll('#notes button')].find((b) => b.textContent === 'Other.md');
     next.click(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'select');
-    assert.equal(ui.document.querySelector('#folder').disabled, false);
+    assert.equal(ui.document.querySelector('#pick-vault').disabled, false);
     assert.equal(ui.document.querySelector('#save').disabled, false);
     assert.equal(current.disabled, false);
     assert.equal(next.disabled, false);
@@ -733,7 +742,7 @@ test('an edit reply during a pending selection cannot dim the window', async () 
     next.click(); await ui.pause();
     releaseEdit(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'select');
-    assert.equal(ui.document.querySelector('#folder').disabled, false);
+    assert.equal(ui.document.querySelector('#pick-vault').disabled, false);
     assert.equal(ui.document.querySelector('#save').disabled, false);
     assert.equal(next.disabled, false);
     releaseSelect(); await ui.pause();
@@ -749,7 +758,7 @@ test('saving does not dim unrelated controls while the bridge is busy', async ()
     const release = ui.delaySave();
     ui.document.querySelector('#save').click(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'save');
-    assert.equal(ui.document.querySelector('#folder').disabled, false);
+    assert.equal(ui.document.querySelector('#pick-vault').disabled, false);
     assert.equal(ui.document.querySelector('#notes button').disabled, false);
     release(); await ui.pause();
     assert.equal(ui.document.querySelector('#dirty').hidden, true);
@@ -781,7 +790,7 @@ test('moving a note does not dim the window while the bridge is busy', async () 
     ui.document.querySelector('#move-path').value = 'Renamed';
     ui.document.querySelector('#move-with-links').click(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'move');
-    assert.equal(ui.document.querySelector('#folder').disabled, false);
+    assert.equal(ui.document.querySelector('#pick-vault').disabled, false);
     assert.equal(ui.document.querySelector('#notes button').disabled, false);
     release(); await ui.pause();
     assert.equal(ui.document.querySelector('#title').textContent, 'Renamed.md');
@@ -925,14 +934,9 @@ test('dirty note refuses navigation, save failures and bridge errors keep text v
     assert.equal(ui.document.querySelector('#dirty').hidden, false);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'unsaved');
     assert.deepEqual(ui.disk.get('BOM.md'), Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello')]));
-    ui.document.querySelector('#vault-form').dispatchEvent(new ui.dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    ui.document.querySelector('#pick-vault').click();
     await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/);
-    assert.equal(ui.document.querySelector('.cm-line').textContent, 'unsaved');
-    ui.document.querySelector('#folder').value = '/not-a-vault';
-    ui.document.querySelector('#vault-form').dispatchEvent(new ui.dom.window.Event('submit', { bubbles: true, cancelable: true }));
-    await ui.pause();
-    assert.match(ui.document.querySelector('#error').textContent, /Vault folder not found/);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'unsaved');
   } finally { ui.dom.window.close(); }
 });

@@ -1,5 +1,3 @@
-const folder = document.querySelector('#folder');
-const form = document.querySelector('#vault-form');
 const notes = document.querySelector('#notes');
 const error = document.querySelector('#error');
 const saveButton = document.querySelector('#save');
@@ -17,6 +15,8 @@ export function showError(message, missingVaultError) {
 }
 
 export function render({ snapshot, controlsLocked, mixedLineEndings, syncFailed, content, changeNote }) {
+  setBoolean(document.querySelector('#empty-vault'), 'hidden', snapshot.vaultOpen);
+  setBoolean(document.querySelector('main'), 'hidden', !snapshot.vaultOpen);
   const label = snapshot.path || 'No note selected';
   const title = document.querySelector('#title');
   if (title.textContent !== label) title.textContent = label;
@@ -27,8 +27,6 @@ export function render({ snapshot, controlsLocked, mixedLineEndings, syncFailed,
   for (const button of document.querySelectorAll('.decision button')) setBoolean(button, 'disabled', controlsLocked);
   setBoolean(saveButton, 'disabled', controlsLocked || mixedLineEndings || !snapshot.path);
   setBoolean(undoButton, 'disabled', controlsLocked || mixedLineEndings || !snapshot.path);
-  setBoolean(folder, 'disabled', controlsLocked);
-  setBoolean(form.querySelector('button'), 'disabled', controlsLocked);
   setBoolean(document.querySelector('#pick-vault'), 'disabled', controlsLocked);
   setBoolean(document.querySelector('#create-form button'), 'disabled', controlsLocked);
   for (const id of ['move', 'trash']) {

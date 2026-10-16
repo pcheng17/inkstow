@@ -10,14 +10,14 @@
 <body>
   <header>
     <h1>Inkstow</h1>
-    <form id="vault-form">
-      <label for="folder">Vault folder (absolute path)</label>
-      <input id="folder" type="text" required autocomplete="off" placeholder="/path/to/disposable/vault">
-      <button type="submit">Open vault</button>
-      <button id="pick-vault" type="button">Choose folder…</button>
-    </form>
   </header>
-  <main>
+  <p id="error" role="alert" hidden></p>
+  <section id="empty-vault" aria-label="No vault open">
+    <h2>No vault open</h2>
+    <p>Open a folder of Markdown notes to begin.</p>
+    <button id="pick-vault" type="button">Open vault…</button>
+  </section>
+  <main hidden>
     <aside aria-label="Notes"><h2>Notes</h2>
       <form id="create-form"><label for="new-path">New note path</label><input id="new-path" required autocomplete="off"><button type="submit">Create note</button></form>
       <ul id="notes"></ul>
@@ -33,7 +33,6 @@
       <div id="trash-choice" class="decision" role="group" aria-label="Confirm move to system trash" hidden>
         <span>Move this note to system trash?</span><button id="trash-confirm" type="button">Confirm move to trash</button><button id="trash-cancel" type="button">Cancel trash</button>
       </div>
-      <p id="error" role="alert" hidden></p>
       <div id="conflict" class="decision" role="group" aria-label="Outside change" hidden>
         <span>This note changed outside Inkstow. Choose how to resolve your unsaved edits.</span>
         <button id="reload" type="button">Reload from disk</button>

@@ -257,15 +257,13 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     });
     window.set_html(kLocalHtml);
     for (int attempt = 0; attempt < 100 && observed.find("ready") == std::string::npos; ++attempt) {
-        window.eval("if (document.querySelector('#folder')) probe('ready')");
+        window.eval("if (document.querySelector('#pick-vault')) probe('ready')");
         pumpFor(std::chrono::milliseconds(100));
     }
     check(observed.find("ready") != std::string::npos, "Embedded editor did not load");
-    const std::string folder = pathBytes(root);
-    window.eval(
-        "document.querySelector('#folder').value=" + nlohmann::json(folder).dump() +
-        ";document.querySelector('#vault-form button').click();");
+    window.eval("document.querySelector('#pick-vault').click()");
     pumpFor(std::chrono::milliseconds(350));
+    check(shell.mPickerCalls == 1, "Empty-state button did not invoke the folder picker");
     window.eval("document.querySelector('#notes button').click()");
     pumpFor(std::chrono::milliseconds(350));
     replaceEditor(window, "Mine");
@@ -543,7 +541,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         "[[New link]]");
     put(root / "Target.md", "Target");
     put(root / "image.png", "image");
-    window.eval("document.querySelector('#vault-form button').click()");
+    window.eval("document.querySelector('#pick-vault').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
         "document.querySelector('#new-path').value='Target';"
@@ -790,16 +788,13 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     // Exercise native menus with a disposable vault after conflict/recovery scenarios.
     put(note, "[[image.png]]");
     put(root / "image.png", "image");
+    const int pickerCalls = shell.mPickerCalls;
     activateMenu(window, "open");
-    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == 0; ++attempt)
+    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == pickerCalls; ++attempt)
         pumpFor(std::chrono::milliseconds(100));
     check(
-        shell.mPickerCalls == 1 && shell.mLast == shell.mFolder,
+        shell.mPickerCalls == pickerCalls + 1 && shell.mLast == shell.mFolder,
         "Native Open menu did not invoke the folder picker");
-    window.eval("document.querySelector('#pick-vault').click()");
-    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == 1; ++attempt)
-        pumpFor(std::chrono::milliseconds(100));
-    check(shell.mPickerCalls == 2, "Picker control did not use the menu's native service");
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Note.md').click()");
