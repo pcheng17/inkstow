@@ -524,6 +524,7 @@ test('empty state opens a vault with the native picker', async () => {
   const ui = await setup();
   try {
     await ui.pause();
+    assert.equal(ui.document.querySelector('header'), null);
     assert.equal(ui.document.querySelector('#empty-vault').hidden, false);
     assert.equal(ui.document.querySelector('main').hidden, true);
     ui.document.querySelector('#pick-vault').click();
