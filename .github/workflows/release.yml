@@ -205,6 +205,7 @@ jobs:
           Compress-Archive -Path dist/inkstow -DestinationPath "artifacts/inkstow-$env:TAG-windows-x86_64.zip"
           $scratch = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
           New-Item -ItemType Directory -Force $scratch | Out-Null
+          $app = $null
           try {
             Expand-Archive "artifacts/inkstow-$env:TAG-windows-x86_64.zip" -DestinationPath $scratch
             # Do not use a previously opened vault or installed toolkit DLLs.
@@ -218,7 +219,10 @@ jobs:
             if ($app.HasExited) { throw "Extracted app exited at startup with code $($app.ExitCode)" }
             if ($app.MainWindowHandle -eq 0) { throw 'Extracted app started but showed no window' }
           } finally {
-            if ($app) { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
+            if ($app) {
+              if (-not $app.HasExited) { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
+              if (-not $app.WaitForExit(15000)) { throw 'Extracted app did not exit after stop request' }
+            }
             Remove-Item -Recurse -Force $scratch
           }
           $compressed = (Get-Item "artifacts/inkstow-$env:TAG-windows-x86_64.zip").Length
