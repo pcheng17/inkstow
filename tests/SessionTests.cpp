@@ -457,6 +457,41 @@ TEST_CASE("Session follows attachment links safely")
     if (!ec) REQUIRE(!session.followAttachment("link.png", &error));
 }
 
+TEST_CASE("Session follows missing note links without creating unsafe targets")
+{
+    TempVault temp;
+    REQUIRE(fs::create_directory(temp.mPath / "Folder"));
+    write(temp.mPath / "Folder" / "Source.md", "[[New]] [[/Root]] [[image.png]]");
+    write(temp.mPath / "Folder" / "image.png", "image");
+    Session session;
+    std::string error;
+    std::optional<fs::path> attachment;
+    REQUIRE(session.openVault(utf8Path(temp.mPath), &error));
+    REQUIRE(session.selectNote("Folder/Source.md", &error));
+    REQUIRE(session.followLink("New|alias", &attachment, &error));
+    REQUIRE(session.getPath() == "Folder/New.md");
+    REQUIRE(session.getContent().empty());
+    REQUIRE(read(temp.mPath / "Folder" / "New.md").empty());
+    REQUIRE(session.selectNote("Folder/Source.md", &error));
+    REQUIRE(session.followLink("/Root#heading", &attachment, &error));
+    REQUIRE(session.getPath() == "Root.md");
+    REQUIRE(session.selectNote("Folder/Source.md", &error));
+    REQUIRE(session.followLink("Sub/Deep.md", &attachment, &error));
+    REQUIRE(session.getPath() == "Folder/Sub/Deep.md");
+    REQUIRE(session.selectNote("Folder/Source.md", &error));
+    REQUIRE(session.followLink("image.png", &attachment, &error));
+    REQUIRE(attachment == fs::canonical(temp.mPath / "Folder" / "image.png"));
+    REQUIRE(session.getPath() == "Folder/Source.md");
+    for (const auto& link : {"missing.png", "../Escape", "/.hidden", "", "https://example.org"}) {
+        REQUIRE_FALSE(session.followLink(link, &attachment, &error));
+        REQUIRE(session.getPath() == "Folder/Source.md");
+    }
+    REQUIRE_FALSE(fs::exists(temp.mPath / "Escape.md"));
+    session.setContent("unsaved");
+    REQUIRE_FALSE(session.followLink("Another", &attachment, &error));
+    REQUIRE_FALSE(fs::exists(temp.mPath / "Folder" / "Another.md"));
+}
+
 TEST_CASE("Session uses discovered case on case insensitive volumes")
 {
     TempVault temp;

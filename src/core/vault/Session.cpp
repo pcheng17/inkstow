@@ -516,6 +516,8 @@ bool Session::followLink(
     const auto target = mVault->resolveWikilink(link, mPath, error);
     if (!error->empty()) return false;
     if (!target) {
+        const auto path = mVault->missingLinkedNotePath(link, mPath);
+        if (path) return createNote(*path, error);
         *error = "Link not found.";
         return false;
     }

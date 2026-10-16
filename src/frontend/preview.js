@@ -49,7 +49,16 @@ function markdownLink(source, node) {
   // Markdown escapes ASCII punctuation in destinations; the vault expects literal paths.
   const target = destination.replace(/\\([!-/:-@\[-`{-~])/g, '$1');
   const kind = target && linkKind(target);
-  return kind ? { kind, target, labelEnd } : null;
+  if (!kind) return null;
+  if (kind === 'external') return { kind, target, labelEnd };
+  // Escaped delimiters are filename characters, not wikilink fragments or aliases.
+  // The vault does not support notes with these characters, so do not navigate them.
+  if (/%(?:23|7c)/i.test(target)) return null;
+  try {
+    return { kind, target: decodeURIComponent(target), labelEnd };
+  } catch {
+    return null; // Malformed URL escapes are not navigable paths.
+  }
 }
 
 function inCode(state, pos) {

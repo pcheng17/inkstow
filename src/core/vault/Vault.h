@@ -22,6 +22,10 @@ public:
     // An absent target with an empty error is unresolved; a nonempty error is a vault failure.
     std::optional<std::string> resolveWikilink(
         const std::string& link, const std::string& source, std::string* error) const;
+    // For an unresolved link, choose a visible Markdown path near its source.
+    // Never create explicit non-Markdown destinations or unsafe paths.
+    std::optional<std::string> missingLinkedNotePath(
+        const std::string& link, const std::string& source) const;
     std::optional<std::filesystem::path> attachmentPath(const std::string& relative) const;
     bool moveNote(
         const std::string& from,

@@ -513,7 +513,8 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         "Discard did not resolve the missing note without writing");
 
     put(root / "Source.md",
-        "# Preview\n**bold** and *italic* with `code`\n- item\n> quote\n[[Target]] [[image.png]]");
+        "# Preview\n**bold** and *italic* with `code`\n- item\n> quote\n[[Target]] [[image.png]] "
+        "[[New link]]");
     put(root / "Target.md", "Target");
     put(root / "image.png", "image");
     window.eval("document.querySelector('#vault-form button').click()");
@@ -558,7 +559,8 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
-            "ready:!document.querySelector('#follow').disabled}))");
+            "ready:!document.querySelector('#trash').disabled && "
+            "!!document.querySelector('.cm-preview-link')}))");
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Source.md") != std::string::npos &&
             observed.find("\\\"ready\\\":true") != std::string::npos)
@@ -617,10 +619,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         check(capture->mSaved, "Could not save real webview screenshot");
     }
 #endif
-    window.eval(
-        "{function clickLink(){if(document.querySelector('#follow').disabled){"
-        "setTimeout(clickLink,25);return;}document.querySelector('.cm-preview-link').click();}"
-        "clickLink();}");
+    window.eval("document.querySelector('.cm-preview-link').click()");
     for (int attempt = 0; attempt < 30; ++attempt) {
         window.eval("probe(document.querySelector('#title').textContent)");
         pumpFor(std::chrono::milliseconds(100));
@@ -630,7 +629,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
             "error:document.querySelector('#error').textContent,"
-            "disabled:document.querySelector('#follow').disabled}))");
+            "link:document.querySelector('.cm-preview-link')?.textContent}))");
         pumpFor(std::chrono::milliseconds(150));
         throw std::runtime_error("Follow did not navigate: " + observed);
     }
@@ -639,12 +638,32 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         ".find(b=>b.textContent==='Source.md').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
-        "document.querySelector('#link').value='image.png';"
-        "document.querySelector('#open-attachment').click()");
+        "[...document.querySelectorAll('.cm-preview-link')]"
+        ".find(link=>link.dataset.target==='image.png').click()");
     pumpFor(std::chrono::milliseconds(350));
     check(
         !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
         "Attachment did not use shell service");
+    window.eval(
+        "[...document.querySelectorAll('.cm-preview-link')]"
+        ".find(link=>link.dataset.target==='New link').click()");
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        observed.clear();
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "ready:!document.querySelector('#trash').disabled}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (fs::exists(root / "New link.md") && observed.find("New link.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        fs::exists(root / "New link.md") && observed.find("New link.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos,
+        "Following missing link did not open the created note");
+    window.eval(
+        "[...document.querySelectorAll('#notes button')]"
+        ".find(b=>b.textContent==='Source.md').click()");
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
@@ -709,7 +728,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
             "text:document.querySelector('.cm-content').textContent,"
-            "ready:!document.querySelector('#follow').disabled && "
+            "ready:!document.querySelector('#trash').disabled && "
             "!!document.querySelector('#editor [contenteditable=true]')}))");
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Note.md") != std::string::npos &&
