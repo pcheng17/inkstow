@@ -30,54 +30,43 @@ std::string pathBytes(const std::filesystem::path& path)
     return {utf8.begin(), utf8.end()};
 }
 
+struct Shell : inkstow::webview_shell::ShellServices
+{
+    std::string mLast;
+    std::string mPicked;
+    std::string mOpenedAttachment;
+    std::string mWatchingVault;
+    std::string mWatchingNote;
+    void watchVault(const std::string& folder) override { mWatchingVault = folder; }
+    void watchNote(const std::string& note) override { mWatchingNote = note; }
+    bool openAttachment(const std::filesystem::path& path) override
+    {
+        mOpenedAttachment = pathBytes(path);
+        return true;
+    }
+    std::string lastVault() override { return mLast; }
+    void setLastVault(const std::string& path) override { mLast = path; }
+    std::string pickVault() override { return mPicked; }
+};
+
+void writeInitialNotes(const std::filesystem::path& root)
+{
+    std::ofstream bom(root / "BOM.md", std::ios::binary);
+    bom << "\xEF\xBB\xBF"
+           "Original";
+    std::ofstream(root / "Second.md", std::ios::binary) << "Second";
+}
+
 } // namespace
 
-TEST_CASE("Bridge handles vault operations, navigation, conflicts and shell failures")
+TEST_CASE("Bridge starts, picks and refreshes disposable vaults")
 {
     namespace fs = std::filesystem;
     inkstow::portable::test::TempVault vault;
     const fs::path& root = vault.mPath;
-    const fs::path note = root / "BOM.md";
-    {
-        std::ofstream output(note, std::ios::binary);
-        output << "\xEF\xBB\xBF"
-                  "Original";
-    }
-    {
-        std::ofstream output(root / "Second.md", std::ios::binary);
-        output << "Second";
-    }
-    struct Shell : inkstow::webview_shell::ShellServices
-    {
-        std::string mLast;
-        std::string mPicked;
-        std::string mOpenedAttachment;
-        std::string mWatchingVault;
-        std::string mWatchingNote;
-        void watchVault(const std::string& folder) override { mWatchingVault = folder; }
-        void watchNote(const std::string& note) override { mWatchingNote = note; }
-        bool openAttachment(const std::filesystem::path& path) override
-        {
-            mOpenedAttachment = pathBytes(path);
-            return true;
-        }
-        std::string lastVault() override { return mLast; }
-        void setLastVault(const std::string& path) override { mLast = path; }
-        std::string pickVault() override { return mPicked; }
-    } shell;
-    std::string openedUrl;
-    std::filesystem::path openedLink;
-    inkstow::webview_shell::Bridge bridge(
-        &shell,
-        [&](const std::filesystem::path& path, std::string*) {
-            openedLink = path;
-            return true;
-        },
-        {},
-        [&](const std::string& url, std::string*) {
-            openedUrl = url;
-            return true;
-        });
+    writeInitialNotes(root);
+    Shell shell;
+    inkstow::webview_shell::Bridge bridge(&shell);
     REQUIRE(
         request(
             bridge,
@@ -146,6 +135,31 @@ TEST_CASE("Bridge handles vault operations, navigation, conflicts and shell fail
                 {"operation", "refresh"}
     })["notes"] ==
         Json::array({"BOM.md", "Foo.bar.md", "Second.md"}));
+}
+
+TEST_CASE("Bridge navigates links and URLs and guards unsaved edits")
+{
+    namespace fs = std::filesystem;
+    inkstow::portable::test::TempVault vault;
+    const fs::path& root = vault.mPath;
+    writeInitialNotes(root);
+    const fs::path note = root / "BOM.md";
+    Shell shell;
+    std::ofstream(root / "Foo.bar.md") << "Dot note";
+    std::ofstream(root / "image.png") << "image";
+    std::string openedUrl;
+    std::filesystem::path openedLink;
+    inkstow::webview_shell::Bridge bridge(
+        &shell,
+        [&](const std::filesystem::path& path, std::string*) {
+            openedLink = path;
+            return true;
+        },
+        {},
+        [&](const std::string& url, std::string*) {
+            openedUrl = url;
+            return true;
+        });
     REQUIRE(
         request(
             bridge,
@@ -344,6 +358,22 @@ TEST_CASE("Bridge handles vault operations, navigation, conflicts and shell fail
     REQUIRE(
         diskBytes(note) == "\xEF\xBB\xBF"
                            "Changed");
+}
+
+TEST_CASE("Bridge resolves conflicts and missing-note recovery")
+{
+    namespace fs = std::filesystem;
+    inkstow::portable::test::TempVault vault;
+    const fs::path& root = vault.mPath;
+    std::ofstream(root / "Second.md", std::ios::binary) << "Second";
+    inkstow::webview_shell::Bridge bridge;
+    REQUIRE(
+        request(
+            bridge,
+            {
+                {"operation",          "open"},
+                {   "folder", pathBytes(root)}
+    })["ok"] == true);
     REQUIRE(
         request(
             bridge,
@@ -556,6 +586,16 @@ TEST_CASE("Bridge handles vault operations, navigation, conflicts and shell fail
             Json{
                 {"operation", "list"}
     })["content"] == "Recover again");
+}
+
+TEST_CASE("Bridge clears recovery decisions when switching vaults")
+{
+    namespace fs = std::filesystem;
+    inkstow::portable::test::TempVault vault;
+    const fs::path& root = vault.mPath;
+    std::ofstream(root / "BOM.md", std::ios::binary) << "\xEF\xBB\xBF"
+                                                        "Original";
+    Shell shell;
     const fs::path alternative = root / "Alternative";
     fs::create_directories(alternative);
     {
@@ -686,7 +726,13 @@ TEST_CASE("Bridge handles vault operations, navigation, conflicts and shell fail
             {
                 {"operation", "refresh"}
     })["change"] == "missing");
-    fs::remove_all(root);
+}
+
+TEST_CASE("Bridge note actions and attachment shell failures")
+{
+    namespace fs = std::filesystem;
+    inkstow::portable::test::TempVault vault;
+    const fs::path& root = vault.mPath;
     fs::create_directories(root / "Folder");
     {
         std::ofstream(root / "Source.md") << "[[Target]] [[image.png]]";
