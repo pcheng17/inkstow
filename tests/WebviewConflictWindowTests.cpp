@@ -279,7 +279,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         observed.find("\\\"conflict\\\":true") != std::string::npos,
         "No conflict in real window");
     check(observed.find("Mine") != std::string::npos, "Outside edit lost local text");
-    window.eval("document.querySelector('#save').click()");
+    window.eval("inkstowSave()");
     pumpFor(std::chrono::milliseconds(350));
     check(bytes(note) == "Outside", "Stale save replaced outside file");
     window.eval(
@@ -469,7 +469,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         "Quit prompt did not open while refresh reply was held");
     window.eval(
         "document.querySelector('#quit-cancel').click();"
-        "document.querySelector('#save').click();"
+        "inkstowSave();"
         "window.releaseRefresh();window.holdRefresh=false");
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
@@ -836,8 +836,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
             "text:document.querySelector('.cm-content').textContent,"
-            "ready:!document.querySelector('#save').disabled && "
-            "!!document.querySelector('#editor [contenteditable=true]')}))");
+            "ready:!!document.querySelector('#editor [contenteditable=true]')}))");
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Note.md") != std::string::npos &&
             observed.find("[[image.png]]") != std::string::npos &&
@@ -873,8 +872,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
             "text:document.querySelector('.cm-content').textContent,"
-            "error:document.querySelector('#error').textContent,"
-            "disabled:document.querySelector('#save').disabled}))");
+            "error:document.querySelector('#error').textContent}))");
         pumpFor(std::chrono::milliseconds(150));
         throw std::runtime_error(
             "Native Save menu did not invoke editor save: " + observed + ", disk=" + bytes(note));

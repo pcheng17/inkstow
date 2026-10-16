@@ -261,7 +261,7 @@ test('inactive Markdown renders but selection across lines exposes source withou
     assert.equal(ui.document.querySelectorAll('.cm-line')[1].textContent, '**bold** and *italic* with `code`');
     assert.equal(ui.document.querySelectorAll('.cm-line')[2].textContent, '- list');
     view.dispatch({ selection: { anchor: 0 } });
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(source));
   } finally { ui.dom.window.close(); }
 });
@@ -282,7 +282,7 @@ test('fenced and indented code render inactive lines and restore editable source
     view.dispatch({ selection: { anchor: view.state.doc.line(6).from + 2 } });
     assert.equal(ui.document.querySelectorAll('.cm-line')[5].textContent, '    indented');
     assert.equal(ui.document.querySelectorAll('.cm-line')[5].classList.contains('cm-block-code'), false);
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(source));
   } finally { ui.dom.window.close(); }
 });
@@ -450,7 +450,7 @@ test('dirty rendered navigation is refused and undo preserves source and CRLF by
     assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/i);
     assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
     ui.document.querySelector('#undo').click(); await ui.pause();
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     assert.deepEqual(ui.disk.get('Source.md'), Buffer.from(source));
   } finally { ui.dom.window.close(); }
 });
@@ -538,6 +538,19 @@ test('empty state opens a vault with the native picker', async () => {
   } finally { ui.dom.window.close(); }
 });
 
+test('Save is absent from the toolbar but Ctrl+S still saves', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('Other.md'); await ui.type('Saved by shortcut');
+    assert.equal(ui.document.querySelector('#save'), null);
+    ui.document.dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 's', ctrlKey: true, bubbles: true, cancelable: true }));
+    await ui.pause();
+    assert.equal(ui.disk.get('Other.md').toString(), 'Saved by shortcut');
+    assert.equal(ui.document.querySelector('#dirty').hidden, true);
+  } finally { ui.dom.window.close(); }
+});
+
 test('last vault reopens into the notes view on startup', async () => {
   const ui = await setup(undefined, '', 0, true);
   try {
@@ -597,7 +610,6 @@ test('Cancel during a pending Save and quit ignores queued quit requests after s
     ui.dom.window.inkstowAskQuit(); await ui.pause();
     ui.document.querySelector('#quit-save').click(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'save');
-    assert.equal(ui.document.querySelector('#save').disabled, true);
     assert.equal(ui.document.querySelector('#notes button').disabled, true);
     ui.dom.window.inkstowAskQuit(); // A second Quit waits behind the pending save.
     ui.document.querySelector('#quit-cancel').click();
@@ -717,7 +729,6 @@ test('selecting another note does not dim the entire window while loading', asyn
     next.click(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'select');
     assert.equal(ui.document.querySelector('#pick-vault').disabled, false);
-    assert.equal(ui.document.querySelector('#save').disabled, false);
     assert.equal(current.disabled, false);
     assert.equal(next.disabled, false);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'Hello');
@@ -744,7 +755,6 @@ test('an edit reply during a pending selection cannot dim the window', async () 
     releaseEdit(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'select');
     assert.equal(ui.document.querySelector('#pick-vault').disabled, false);
-    assert.equal(ui.document.querySelector('#save').disabled, false);
     assert.equal(next.disabled, false);
     releaseSelect(); await ui.pause();
     assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
@@ -757,7 +767,7 @@ test('saving does not dim unrelated controls while the bridge is busy', async ()
   try {
     await ui.open(); await ui.select('BOM.md'); await ui.type('Changed');
     const release = ui.delaySave();
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'save');
     assert.equal(ui.document.querySelector('#pick-vault').disabled, false);
     assert.equal(ui.document.querySelector('#notes button').disabled, false);
@@ -865,7 +875,7 @@ test('open, edit, selection, undo and BOM-preserving save', async () => {
     await ui.pause();
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'Hello');
     await ui.type('Hello saved');
-    ui.document.querySelector('#save').click();
+    ui.dom.window.inkstowSave();
     await ui.pause();
     assert.deepEqual(ui.disk.get('BOM.md'), Buffer.from([0xef, 0xbb, 0xbf, ...encoder.encode('Hello saved')]));
     assert.equal(ui.document.querySelector('#dirty').hidden, true);
@@ -885,12 +895,12 @@ test('uniform CRLF, LF and CR notes preserve BOM, separators and special UTF-8 t
         await ui.open(); await ui.select('Separators.md');
         assert.equal(ui.document.querySelector('#dirty').hidden, true, `pristine ${JSON.stringify(separator)}`);
         assert.equal(ui.document.querySelector('#error').hidden, true);
-        ui.document.querySelector('#save').click(); await ui.pause();
+        ui.dom.window.inkstowSave(); await ui.pause();
         assert.deepEqual(ui.disk.get('Separators.md'), bytes(original), 'save without edits');
         await ui.type('Edited');
         assert.equal(ui.calls.at(-1).content, `Edited${separator}NBSP:\u00a0 U+2028:\u2028 U+2029:\u2029${separator}End${separator}`);
         assert.equal(ui.document.querySelector('#dirty').hidden, false);
-        ui.document.querySelector('#save').click(); await ui.pause();
+        ui.dom.window.inkstowSave(); await ui.pause();
         assert.deepEqual(ui.disk.get('Separators.md'), bytes(`Edited${separator}NBSP:\u00a0 U+2028:\u2028 U+2029:\u2029${separator}End${separator}`));
         assert.equal(ui.document.querySelector('#dirty').hidden, true);
       } finally { ui.dom.window.close(); }
@@ -907,7 +917,6 @@ test('mixed CRLF, LF and CR notes are read-only and cannot save, retaining disk 
     assert.match(ui.document.querySelector('#error').textContent, /mixed.*line endings/i);
     assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'false');
     assert.equal(ui.document.querySelector('#dirty').hidden, true);
-    assert.equal(ui.document.querySelector('#save').disabled, true);
     assert.equal(ui.document.querySelector('#undo').disabled, true);
     ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     ui.document.dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }));
@@ -916,7 +925,7 @@ test('mixed CRLF, LF and CR notes are read-only and cannot save, retaining disk 
     assert.deepEqual(ui.disk.get('Mixed.md'), bytes);
     await ui.select('Other.md');
     assert.equal(ui.document.querySelector('#error').hidden, true);
-    assert.equal(ui.document.querySelector('#save').disabled, false);
+    assert.equal(ui.document.querySelector('#undo').disabled, false);
   } finally { ui.dom.window.close(); }
 });
 
@@ -930,7 +939,7 @@ test('dirty note refuses navigation, save failures and bridge errors keep text v
     assert.equal(ui.document.querySelector('#notes button[aria-current="true"]').textContent, 'BOM.md');
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'unsaved');
     ui.injectError('Disk changed outside Inkstow.');
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /Disk changed outside Inkstow/);
     assert.equal(ui.document.querySelector('#dirty').hidden, false);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'unsaved');
@@ -947,12 +956,12 @@ test('stale clean save reloads the visible editor before later edits can be save
   try {
     await ui.open(); await ui.select('Note.md');
     ui.disk.set('Note.md', Buffer.from('Outside'));
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /changed on disk/i);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'Outside');
     assert.equal(ui.document.querySelector('#dirty').hidden, true);
     await ui.type('Edited outside');
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     assert.equal(ui.disk.get('Note.md').toString(), 'Edited outside');
   } finally { ui.dom.window.close(); }
 });
@@ -966,7 +975,7 @@ test('outside change offers reload, keep mine, and unsaved editable merge marker
     await ui.pause();
     assert.equal(ui.document.querySelector('#conflict').hidden, false);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'Mine');
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /changed on disk/i);
     assert.equal(ui.disk.get('Note.md').toString(), 'Outside');
     ui.document.querySelector('#merge').click(); await ui.pause();
@@ -990,12 +999,11 @@ test('CRLF and CR merged markers stay editable without changing untouched line e
       ui.dom.window.dispatchEvent(new ui.dom.window.Event('focus')); await ui.pause();
       ui.document.querySelector('#merge').click(); await ui.pause();
       assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'true');
-      assert.equal(ui.document.querySelector('#save').disabled, false);
       const line = ui.document.querySelectorAll('.cm-line')[1];
       line.textContent = 'Reviewed';
       ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.Event('input', { bubbles: true }));
       await ui.pause();
-      ui.document.querySelector('#save').click(); await ui.pause();
+      ui.dom.window.inkstowSave(); await ui.pause();
       assert.deepEqual(ui.disk.get('Note.md'), Buffer.from(
         `<<<<<<< mine${separator}Reviewed${separator}Line${separator}=======${separator}Outside${separator}Line${separator}>>>>>>> outside`));
     } finally { ui.dom.window.close(); }
@@ -1094,7 +1102,7 @@ test('note actions require explicit move and trash choices and preserve errors a
     ui.document.querySelector('#trash-confirm').click(); await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/i);
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'Unsaved');
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     ui.enableTrash();
     ui.document.querySelector('#trash').click();
     ui.document.querySelector('#trash-confirm').click(); await ui.pause();
@@ -1113,7 +1121,7 @@ test('note action errors without a snapshot leave the editor unlocked', async ()
     ui.document.querySelector('#move-without-links').click(); await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /serialize vault state/);
     assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
-    assert.equal(ui.document.querySelector('#save').disabled, false);
+    assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'true');
     await ui.type('Still editable');
     assert.equal(ui.document.querySelector('#dirty').hidden, false);
   } finally { ui.dom.window.close(); }
@@ -1185,7 +1193,7 @@ test('rejected edit cannot silently switch or save unsynchronized text', async (
     await ui.select('Other.md');
     assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'local only');
-    ui.document.querySelector('#save').click(); await ui.pause();
+    ui.dom.window.inkstowSave(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'edit');
     assert.match(ui.document.querySelector('#error').textContent, /not accepted by the bridge/);
   } finally { ui.dom.window.close(); }

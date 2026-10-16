@@ -3,7 +3,6 @@ import { render as renderUi, showError as showUiError, bindNoteControls } from '
 
 const busy = document.querySelector('#busy');
 const quitPrompt = document.querySelector('#quit-prompt');
-const saveButton = document.querySelector('#save');
 const undoButton = document.querySelector('#undo');
 let snapshot = { notes: [], path: '', content: '', dirty: false, vaultOpen: false };
 let locked = false;
@@ -278,7 +277,6 @@ window.inkstowFollow = () => {
 };
 window.inkstowSave = save;
 window.inkstowUndo = () => editor.undo();
-saveButton.addEventListener('click', window.inkstowSave);
 undoButton.addEventListener('click', window.inkstowUndo);
 navigate({ operation: 'startup' });
 

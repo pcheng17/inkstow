@@ -1,6 +1,5 @@
 const notes = document.querySelector('#notes');
 const error = document.querySelector('#error');
-const saveButton = document.querySelector('#save');
 const undoButton = document.querySelector('#undo');
 
 function setBoolean(element, property, value) {
@@ -25,7 +24,6 @@ export function render({ snapshot, controlsLocked, mixedLineEndings, syncFailed,
   setBoolean(document.querySelector('#conflict'), 'hidden', snapshot.change !== 'conflict');
   setBoolean(document.querySelector('#missing'), 'hidden', snapshot.change !== 'missing');
   for (const button of document.querySelectorAll('.decision button')) setBoolean(button, 'disabled', controlsLocked);
-  setBoolean(saveButton, 'disabled', controlsLocked || mixedLineEndings || !snapshot.path);
   setBoolean(undoButton, 'disabled', controlsLocked || mixedLineEndings || !snapshot.path);
   setBoolean(document.querySelector('#pick-vault'), 'disabled', controlsLocked);
   setBoolean(document.querySelector('#create-form button'), 'disabled', controlsLocked);
