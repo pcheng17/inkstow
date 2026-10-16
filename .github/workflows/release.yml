@@ -66,44 +66,48 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Install dependencies
-        run: sudo ./scripts/install --system
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - name: Install build and system WebKitGTK dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libwebkit2gtk-4.1-dev xvfb xauth
       - name: Configure, build and test
         run: |
+          set -euo pipefail
           cmake --preset release
-          cmake --build --preset release --target inkstow unit-tests ui-tests --parallel 2
-          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            cmake --build --preset release --target inkstow-webview --parallel 2
-          fi
+          cmake --build --preset release --target inkstow-webview unit-tests --parallel 2
+          ctest --test-dir build/release -N | grep -q webview-conflict-window-tests
           ctest --preset release
-      - name: Bundle Qt and its runtime libraries
-        env:
-          GH_TOKEN: ${{ github.token }}
-          APPIMAGE_EXTRACT_AND_RUN: '1'
+      - name: Package and smoke test the extracted app
         shell: bash
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
         run: |
           set -euo pipefail
-          mkdir -p tools dist artifacts
-          gh release download 1-alpha-20251107-1 -R linuxdeploy/linuxdeploy \
-            -p linuxdeploy-x86_64.AppImage -D tools
-          gh release download 1-alpha-20250213-1 -R linuxdeploy/linuxdeploy-plugin-qt \
-            -p linuxdeploy-plugin-qt-x86_64.AppImage -D tools
-          echo 'c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d  tools/linuxdeploy-x86_64.AppImage' | sha256sum -c -
-          echo '15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724  tools/linuxdeploy-plugin-qt-x86_64.AppImage' | sha256sum -c -
-          chmod +x tools/*.AppImage
-          tools/linuxdeploy-x86_64.AppImage --appdir dist/AppDir \
-            --executable build/release/inkstow \
-            --desktop-file packaging/inkstow.desktop \
-            --icon-file packaging/inkstow.svg --plugin qt
-          test -x dist/AppDir/AppRun
-          test -f dist/AppDir/usr/plugins/platforms/libqxcb.so
-          test -f dist/AppDir/usr/lib/libQt6Widgets.so.6
-          # Ship JPEG and GIF; PNG and BMP are built into QtGui.
-          rm -f dist/AppDir/usr/plugins/imageformats/libqico.so
-          test -f dist/AppDir/usr/plugins/imageformats/libqjpeg.so
-          test -f dist/AppDir/usr/plugins/imageformats/libqgif.so
-          tar -czf artifacts/inkstow-${{ needs.validate.outputs.tag }}-linux-x86_64.tar.gz \
-            -C dist --transform='s/^AppDir/inkstow/' AppDir
+          test -s build/release/generated/LocalHtml.h # Offline frontend is compiled into the executable.
+          ldd build/release/inkstow-webview | grep -q 'libwebkit2gtk-4.1.so'
+          ! ldd build/release/inkstow-webview | grep -E 'libQt[0-9]'
+          mkdir -p dist/inkstow artifacts
+          cp build/release/inkstow-webview packaging/inkstow.desktop packaging/inkstow.svg \
+            packaging/RUNTIME.txt dist/inkstow/
+          tar -czf "artifacts/inkstow-$TAG-linux-x86_64.tar.gz" -C dist inkstow
+          scratch=$(mktemp -d)
+          trap 'rm -rf "$scratch"' EXIT
+          tar -xzf "artifacts/inkstow-$TAG-linux-x86_64.tar.gz" -C "$scratch"
+          mkdir -p "$scratch/config" "$scratch/data"
+          env HOME="$scratch" XDG_CONFIG_HOME="$scratch/config" XDG_DATA_HOME="$scratch/data" \
+            xvfb-run -a "$scratch/inkstow/inkstow-webview" &
+          pid=$!
+          sleep 5
+          kill -0 "$pid" || { echo 'Extracted app exited at startup.' >&2; wait "$pid"; exit 1; }
+          kill "$pid"
+          wait "$pid" || true
+          compressed=$(stat -c %s "artifacts/inkstow-$TAG-linux-x86_64.tar.gz")
+          unpacked=$(find dist/inkstow -type f -printf '%s\n' | awk '{sum+=$1} END {printf "%.0f", sum}')
+          printf '### Linux x86_64 release artifact\n\n| Archive | Compressed bytes | Unpacked file bytes | External runtime |\n| --- | ---: | ---: | --- |\n| inkstow-%s-linux-x86_64.tar.gz | %s | %s | System WebKitGTK 4.1 / GTK 3 |\n' \
+            "$TAG" "$compressed" "$unpacked" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -117,51 +121,48 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      # Homebrew's Qt links ICU and ships plugins that pull QtQuick and OpenSSL into
-      # the bundle; the official qtbase build keeps the app much smaller.
-      - uses: jurplel/install-qt-action@v4
+      - uses: actions/setup-node@v4
         with:
-          version: '6.8.3'
-          host: mac
-          target: desktop
-          arch: clang_64
-          cache: true
+          node-version: '22.19.0'
       - name: Configure, build and test
         run: |
-          cmake --preset release -DQt6_DIR="$QT_ROOT_DIR/lib/cmake/Qt6"
-          cmake --build --preset release --target inkstow unit-tests ui-tests --parallel 2
-          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            cmake --build --preset release --target inkstow-webview --parallel 2
-          fi
+          set -euo pipefail
+          test "$(uname -m)" = arm64 # macos-15 must be a native Apple Silicon runner.
+          cmake --preset release
+          cmake --build --preset release --target inkstow-webview unit-tests --parallel 2
+          ctest --test-dir build/release -N | grep -q webview-conflict-window-tests
           ctest --preset release
-      - name: Bundle Qt in the app
+      - name: Package and smoke test the app bundle
         shell: bash
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
         run: |
           set -euo pipefail
+          test -s build/release/generated/LocalHtml.h
           mkdir -p artifacts dist
           app=build/release/Inkstow.app
-          "$QT_ROOT_DIR/bin/macdeployqt" "$app"
-          # Ship JPEG and GIF; PNG and BMP are built into QtGui.
-          find "$app/Contents/PlugIns/imageformats" -type f \
-            ! -name libqjpeg.dylib ! -name libqgif.dylib -delete
-          rm -rf "$app/Contents/PlugIns/iconengines" "$app/Contents/Frameworks/QtSvg.framework"
-          # Official Qt frameworks are universal; keep only the arm64 slice and re-sign.
-          ditto --arch arm64 "$app" dist/Inkstow.app
+          test -x "$app/Contents/MacOS/Inkstow"
+          cp packaging/RUNTIME.txt "$app/Contents/Resources/RUNTIME.txt"
+          # The system WKWebView and AppKit frameworks are not vendored.
+          ditto "$app" dist/Inkstow.app
           codesign --force --deep --sign - dist/Inkstow.app
           codesign --verify --deep --strict dist/Inkstow.app
-          test -d dist/Inkstow.app/Contents/Frameworks/QtWidgets.framework
-          test -f dist/Inkstow.app/Contents/PlugIns/platforms/libqcocoa.dylib
-          test -f dist/Inkstow.app/Contents/PlugIns/imageformats/libqjpeg.dylib
-          test -f dist/Inkstow.app/Contents/PlugIns/imageformats/libqgif.dylib
-          # Missing libraries or plugins abort at startup, so check the bundle launches.
-          # Unset the job's Qt plugin path so plugins load only from the bundle.
-          env -u QT_PLUGIN_PATH dist/Inkstow.app/Contents/MacOS/Inkstow &
+          scratch=$(mktemp -d)
+          trap 'rm -rf "$scratch"' EXIT
+          mkdir -p "$scratch/config" "$scratch/data"
+          HOME="$scratch" XDG_CONFIG_HOME="$scratch/config" XDG_DATA_HOME="$scratch/data" \
+            dist/Inkstow.app/Contents/MacOS/Inkstow &
           pid=$!
           sleep 5
-          kill -0 "$pid" || { echo 'Bundled app exited at startup.' >&2; exit 1; }
+          kill -0 "$pid" || { echo 'Bundled app exited at startup.' >&2; wait "$pid"; exit 1; }
           kill "$pid"
+          wait "$pid" || true
           ditto -c -k --sequesterRsrc --keepParent dist/Inkstow.app \
-            "artifacts/inkstow-${{ needs.validate.outputs.tag }}-macos-arm64.zip"
+            "artifacts/inkstow-$TAG-macos-arm64.zip"
+          compressed=$(stat -f %z "artifacts/inkstow-$TAG-macos-arm64.zip")
+          unpacked=$(find dist/Inkstow.app -type f -exec stat -f %z {} + | awk '{sum+=$1} END {printf "%.0f", sum}')
+          printf '### macOS arm64 release artifact\n\n| Archive | Compressed bytes | Unpacked file bytes | External runtime |\n| --- | ---: | ---: | --- |\n| inkstow-%s-macos-arm64.zip | %s | %s | OS WKWebView |\n' \
+            "$TAG" "$compressed" "$unpacked" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
@@ -171,58 +172,64 @@ jobs:
   windows:
     needs: validate
     runs-on: windows-2022
-    env:
-      QT_FORCE_STDERR_LOGGING: '1'
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: jurplel/install-qt-action@v4
+      - uses: actions/setup-node@v4
         with:
-          version: '6.8.3'
-          host: windows
-          target: desktop
-          arch: win64_msvc2022_64
-          cache: true
+          node-version: '22.19.0'
       - name: Configure, build and test
         shell: pwsh
         run: |
           cmake --preset release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --build --preset release --config Release --target inkstow unit-tests ui-tests --parallel 2
+          cmake --build --preset release --config Release --target inkstow-webview unit-tests --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
-            cmake --build --preset release --config Release --target inkstow-webview --parallel 2
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+          $tests = ctest --test-dir build/release -C Release -N
+          if ($LASTEXITCODE -ne 0 -or -not ($tests -match 'webview-conflict-window-tests')) { throw 'Missing real-window smoke test' }
           ctest --preset release -C Release --repeat until-fail:10 --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Bundle Qt DLLs and plugins
+      - name: Package and smoke test the extracted app
         shell: pwsh
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
         run: |
+          if (-not (Test-Path build/release/generated/LocalHtml.h)) { throw 'Offline frontend not built' }
           New-Item -ItemType Directory -Force artifacts, dist/inkstow | Out-Null
-          Copy-Item build/release/Release/inkstow.exe dist/inkstow/
-          # A Widgets app needs no software OpenGL, shader compiler, SVG, or the
-          # networking plugins that would pull in Qt6Network. Ship JPEG and GIF;
-          # PNG and BMP are built into QtGui.
-          & windeployqt --release --no-translations --no-opengl-sw --no-system-d3d-compiler `
-            --skip-plugin-types iconengines,tls,networkinformation,generic `
-            --exclude-plugins qico,qsvg --dir dist/inkstow dist/inkstow/inkstow.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($plugin in 'platforms/qwindows.dll', 'imageformats/qjpeg.dll', 'imageformats/qgif.dll') {
-            if (-not (Test-Path "dist/inkstow/$plugin")) { throw "Missing Qt plugin $plugin" }
+          Copy-Item build/release/Release/inkstow-webview.exe dist/inkstow/
+          Copy-Item packaging/RUNTIME.txt dist/inkstow/
+          # WebView2 Evergreen is an external runtime, not a shipped DLL.
+          if (Test-Path dist/inkstow/WebView2Loader.dll) { throw 'Unexpected bundled WebView2 loader' }
+          Compress-Archive -Path dist/inkstow -DestinationPath "artifacts/inkstow-$env:TAG-windows-x86_64.zip"
+          $scratch = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
+          New-Item -ItemType Directory -Force $scratch | Out-Null
+          try {
+            Expand-Archive "artifacts/inkstow-$env:TAG-windows-x86_64.zip" -DestinationPath $scratch
+            # Do not use a previously opened vault or installed toolkit DLLs.
+            $env:APPDATA = Join-Path $scratch 'AppData'
+            $env:LOCALAPPDATA = Join-Path $scratch 'LocalAppData'
+            New-Item -ItemType Directory -Force $env:APPDATA, $env:LOCALAPPDATA | Out-Null
+            $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+            $app = Start-Process (Join-Path $scratch 'inkstow/inkstow-webview.exe') -PassThru
+            Start-Sleep -Seconds 5
+            $app.Refresh()
+            if ($app.HasExited) { throw "Extracted app exited at startup with code $($app.ExitCode)" }
+            if ($app.MainWindowHandle -eq 0) { throw 'Extracted app started but showed no window' }
+          } finally {
+            if ($app) { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
+            Remove-Item -Recurse -Force $scratch
           }
-          # Missing DLLs or plugins stop the window from appearing, so check the bundle
-          # opens one without the job's Qt install on PATH or the plugin path.
-          $env:QT_PLUGIN_PATH = $null
-          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-          $app = Start-Process dist/inkstow/inkstow.exe -PassThru
-          Start-Sleep -Seconds 5
-          $app.Refresh()
-          if ($app.HasExited) { throw "Bundled app exited at startup with code $($app.ExitCode)" }
-          if ($app.MainWindowHandle -eq 0) { throw 'Bundled app started but showed no window' }
-          Stop-Process -Id $app.Id
-          Compress-Archive -Path dist/inkstow -DestinationPath "artifacts/inkstow-${{ needs.validate.outputs.tag }}-windows-x86_64.zip"
+          $compressed = (Get-Item "artifacts/inkstow-$env:TAG-windows-x86_64.zip").Length
+          $unpacked = (Get-ChildItem dist/inkstow -Recurse -File | Measure-Object -Property Length -Sum).Sum
+          @"
+          ### Windows x86_64 release artifact
+
+          | Archive | Compressed bytes | Unpacked file bytes | External runtime |
+          | --- | ---: | ---: | --- |
+          | inkstow-$env:TAG-windows-x86_64.zip | $compressed | $unpacked | WebView2 Evergreen (required) |
+
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
           name: windows

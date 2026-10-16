@@ -1,0 +1,24 @@
+Inkstow release runtime requirements
+====================================
+The offline editor (including its JavaScript, HTML and CSS) is embedded in the
+app. No network connection is needed to load the editor.
+
+Linux x86_64: Extract the archive and run ./inkstow/inkstow-webview. This
+archive includes the app and desktop metadata, NOT GTK 3, WebKitGTK 4.1 or
+their system dependencies. Install your distribution's WebKitGTK 4.1 runtime
+(e.g. libwebkit2gtk-4.1-0 on Ubuntu 24.04) and GTK 3 runtime. To install
+inkstow.desktop, place the executable on PATH and install the desktop file
+and inkstow.svg in your desktop environment's application/icon directories.
+
+macOS arm64: Extract the ZIP and open Inkstow.app. The OS supplies AppKit
+and WKWebView; these frameworks are not copied into the bundle.
+
+Windows x86_64: Extract the ZIP and run inkstow-webview.exe. Microsoft
+WebView2 Evergreen Runtime must be installed separately (machine-wide or
+per-user); it is not bundled. Download it from
+https://developer.microsoft.com/microsoft-edge/webview2/ if missing. The
+Microsoft Visual C++ Redistributable (x64) is also required for MSVC's
+dynamic C++ runtime; it is not bundled.
+
+The archive-size measurements in release CI include the app and shipped
+assets; they exclude these externally supplied system/OS runtimes.
