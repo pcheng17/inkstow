@@ -19,8 +19,14 @@ set_tests_properties(highlighter-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=o
 add_executable(inkstow-tests EXCLUDE_FROM_ALL
                DoctestMain.cpp VaultTests.cpp SessionTests.cpp GuardedReplaceTests.cpp)
 target_link_libraries(inkstow-tests PRIVATE portable-core doctest::doctest inkstow-warnings)
+if(INKSTOW_BUILD_WEBVIEW)
+  target_sources(inkstow-tests PRIVATE WebviewBridgeTests.cpp WebviewWatchTests.cpp
+                                       WebviewNavigationTests.cpp)
+  target_link_libraries(inkstow-tests PRIVATE webview-bridge webview-watch)
+  target_include_directories(inkstow-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/desktop)
+endif()
 target_compile_definitions(inkstow-tests PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
-add_test(NAME inkstow-tests COMMAND inkstow-tests)
+add_test(NAME inkstow-tests COMMAND inkstow-tests --test-case-exclude=NavigationPolicy*)
 
 add_executable(portable-core-tests EXCLUDE_FROM_ALL PortableCoreTests.cpp)
 target_link_libraries(portable-core-tests PRIVATE portable-core inkstow-warnings)
@@ -32,34 +38,15 @@ add_custom_target(unit-tests DEPENDS core-tests highlighter-tests portable-core-
 if(INKSTOW_BUILD_WEBVIEW)
   # CTest runs the JS test too; the CI test-build path must generate its assets.
   add_dependencies(unit-tests webview-assets)
-  add_executable(webview-watch-tests EXCLUDE_FROM_ALL WebviewWatchTests.cpp)
-  target_include_directories(webview-watch-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/desktop)
-  target_link_libraries(webview-watch-tests PRIVATE webview-watch inkstow-warnings)
-  add_test(NAME webview-watch-tests COMMAND webview-watch-tests)
-  add_dependencies(unit-tests webview-watch-tests)
-
-  add_executable(webview-bridge-tests EXCLUDE_FROM_ALL WebviewBridgeTests.cpp)
-  target_link_libraries(webview-bridge-tests PRIVATE webview-bridge inkstow-warnings)
-  add_test(NAME webview-bridge-tests COMMAND webview-bridge-tests)
-  add_dependencies(unit-tests webview-bridge-tests)
-
-  add_executable(webview-navigation-tests EXCLUDE_FROM_ALL WebviewNavigationTests.cpp)
-  target_include_directories(webview-navigation-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/desktop)
-  target_link_libraries(webview-navigation-tests PRIVATE inkstow-warnings)
-  add_test(NAME webview-navigation-tests COMMAND webview-navigation-tests)
-  add_dependencies(unit-tests webview-navigation-tests)
-
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_program(XVFB_RUN_EXECUTABLE xvfb-run)
     if(XVFB_RUN_EXECUTABLE)
-      add_executable(webview-native-navigation-tests EXCLUDE_FROM_ALL
-                     WebviewNativeNavigationTests.cpp
-                     ${PROJECT_SOURCE_DIR}/src/desktop/NavigationPolicyLinux.cpp)
-      target_include_directories(webview-native-navigation-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/desktop)
-      target_link_libraries(webview-native-navigation-tests PRIVATE webview::core_static inkstow-warnings)
-      add_test(NAME webview-native-navigation-tests
-               COMMAND "${XVFB_RUN_EXECUTABLE}" -a $<TARGET_FILE:webview-native-navigation-tests>)
-      add_dependencies(unit-tests webview-native-navigation-tests)
+      target_sources(inkstow-tests PRIVATE WebviewNativeNavigationTests.cpp
+                                          ${NAVIGATION_POLICY_SOURCE})
+      target_link_libraries(inkstow-tests PRIVATE webview::core_static)
+      add_test(NAME inkstow-native-navigation-tests
+               COMMAND "${XVFB_RUN_EXECUTABLE}" -a $<TARGET_FILE:inkstow-tests>
+                       --test-case=NavigationPolicy*)
     endif()
   endif()
 

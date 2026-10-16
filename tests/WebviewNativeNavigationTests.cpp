@@ -1,10 +1,11 @@
+#include <doctest/doctest.h>
+
 #include "NavigationPolicy.h"
 #include "WebviewHeader.h"
 
 #include <webkit2/webkit2.h>
 
 #include <chrono>
-#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -22,7 +23,7 @@ void pumpFor(std::chrono::milliseconds duration)
 }
 } // namespace
 
-int main() // NOLINT(bugprone-exception-escape)
+TEST_CASE("NavigationPolicy keeps the embedded Linux page bound and blocks subframes")
 {
     int trusted = 0;
     int untrusted = 0;
@@ -41,29 +42,22 @@ int main() // NOLINT(bugprone-exception-escape)
         "window.addEventListener('message', () => window.probe('evil'))"
         "</script><h1>trusted</h1>");
     pumpFor(std::chrono::milliseconds(2000));
-    if (trusted != 1) {
-        throw std::runtime_error("Embedded page did not receive its binding");
-    }
+    REQUIRE(trusted == 1);
     auto* view = WEBKIT_WEB_VIEW(window.browser_controller().value());
     window.eval(
         "const frame = document.createElement('iframe');"
         "frame.src = 'data:text/html,<script>parent.postMessage(1, \"*\")<\\/script>';"
         "document.body.append(frame);");
     pumpFor(std::chrono::milliseconds(1000));
-    if (untrusted != 0) {
-        throw std::runtime_error("Subframe escaped navigation policy");
-    }
+    REQUIRE(untrusted == 0);
     window.navigate("data:text/html,<script>window.probe('evil')</script>");
     pumpFor(std::chrono::milliseconds(1000));
     window.navigate("about:blank");
     pumpFor(std::chrono::milliseconds(1000));
     window.eval("if (document.querySelector('h1')) window.probe('trusted')");
     pumpFor(std::chrono::milliseconds(100));
-    if (trusted != 2 || untrusted != 0) {
-        throw std::runtime_error("Navigation replaced the embedded page or reached its binding");
-    }
+    REQUIRE((trusted == 2 && untrusted == 0));
     const char* uri = webkit_web_view_get_uri(view);
-    if (!uri || std::string(uri) != "about:blank") {
-        throw std::runtime_error("Embedded page navigated away");
-    }
+    REQUIRE(uri != nullptr);
+    REQUIRE(std::string(uri) == "about:blank");
 }

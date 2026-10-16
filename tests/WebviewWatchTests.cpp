@@ -1,5 +1,7 @@
 #include "VaultWatch.h"
 
+#include <doctest/doctest.h>
+
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -46,7 +48,7 @@ struct TempVault
 };
 } // namespace
 
-int run()
+TEST_CASE("VaultWatch reports selected note and folder changes")
 {
     namespace fs = std::filesystem;
     TempVault vault;
@@ -69,7 +71,7 @@ int run()
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         while (events.load() == 0 && std::chrono::steady_clock::now() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(30));
-        if (events.load() == 0) throw std::runtime_error("Selected note change was not reported");
+        REQUIRE(events.load() > 0);
         const int previous = events.load();
         {
             std::ofstream file(root / "Folder" / "Added.md");
@@ -77,16 +79,6 @@ int run()
         }
         while (events.load() == previous && std::chrono::steady_clock::now() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(30));
-        if (events.load() == previous) throw std::runtime_error("Folder change was not reported");
-    }
-    return 0;
-}
-
-int main()
-{
-    try {
-        return run();
-    } catch (const std::exception&) {
-        return 1;
+        REQUIRE(events.load() > previous);
     }
 }
