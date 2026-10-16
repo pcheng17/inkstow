@@ -4,7 +4,7 @@ import { defaultKeymap, history, historyKeymap, undo } from '@codemirror/command
 import { markdown } from '@codemirror/lang-markdown';
 import { livePreview, sourceLinkAt } from './preview.js';
 
-export function createNoteEditor({ save, followLink, onEdit, onChange, canFollow, selectedPath }) {
+export function createNoteEditor({ save, followLink, onEdit, onChange, selectedPath }) {
   const editable = new Compartment();
   let mixedLineEndings = false;
   let locked = false;
@@ -76,7 +76,7 @@ export function createNoteEditor({ save, followLink, onEdit, onChange, canFollow
       view.dispatch({ effects: editable.reconfigure(EditorView.editable.of(!locked && !mixedLineEndings && Boolean(selectedPath()))) });
     },
     followAtCursor() {
-      if (!canFollow() || composing || view.composing) return false;
+      if (composing || view.composing) return;
       const link = sourceLinkAt(view.state, view.state.selection.main.head);
       if (!link) return false;
       followLink(link.kind, link.target);

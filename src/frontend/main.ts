@@ -41,7 +41,7 @@ function render() {
 
 const editor = createNoteEditor({
   save: () => save(), followLink: (kind, target) => followLink(kind, target),
-  selectedPath: () => snapshot.path, canFollow: () => !locked && Boolean(snapshot.path),
+  selectedPath: () => snapshot.path,
   onChange: render,
   onEdit: (text) => {
     request({ operation: 'edit', content: text }).then((reply) => {
@@ -253,7 +253,7 @@ for (const [id, operation] of [['reload', 'reload'], ['keep-mine', 'keepMine'], 
 }
 window.inkstowFollow = () => {
   if (locked || !snapshot.path) return;
-  if (!editor.followAtCursor()) showError('Place the cursor inside a supported link to follow it.');
+  if (editor.followAtCursor() === false) showError('Place the cursor inside a supported link to follow it.');
 };
 window.inkstowSave = save;
 window.inkstowUndo = () => editor.undo();

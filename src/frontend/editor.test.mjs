@@ -491,6 +491,8 @@ test('composition input edits active link source without following its shortcut'
     editor.dispatchEvent(new ui.dom.window.CompositionEvent('compositionstart', { bubbles: true, data: '語' }));
     editor.dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
       { key: 'Enter', altKey: true, bubbles: true }));
+    ui.dom.window.inkstowFollow();
+    assert.equal(ui.document.querySelector('#error').hidden, true);
     assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
     editor.dispatchEvent(new ui.dom.window.InputEvent('beforeinput',
       { bubbles: true, inputType: 'insertCompositionText', data: '語', isComposing: true }));
