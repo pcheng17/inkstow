@@ -228,7 +228,7 @@ jobs:
 
           | Archive | Compressed bytes | Unpacked file bytes | External runtime |
           | --- | ---: | ---: | --- |
-          | inkstow-$env:TAG-windows-x86_64.zip | $compressed | $unpacked | WebView2 Evergreen (required) |
+          | inkstow-$env:TAG-windows-x86_64.zip | $compressed | $unpacked | WebView2 Evergreen, VC++ Redistributable |
 
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - uses: actions/upload-artifact@v4
