@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const [source, header] = process.argv.slice(2);
 if (!source || !header) throw new Error('Expected source directory and output header');
 const { outputFiles } = await build({
-  entryPoints: [join(source, 'editor.js')],
+  entryPoints: [join(source, 'main.ts')],
   nodePaths: [join(dirname(fileURLToPath(import.meta.url)), 'node_modules')],
   bundle: true,
   minify: true,

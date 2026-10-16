@@ -78,23 +78,25 @@ if(INKSTOW_BUILD_WEBVIEW)
     set(NPM_COMMAND "${NPM_EXECUTABLE}")
   endif()
   find_program(NODE_EXECUTABLE node REQUIRED)
+  set(FRONTEND_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/frontend")
   set(WEBVIEW_ASSET_DIR "${CMAKE_CURRENT_BINARY_DIR}/webview-assets")
   file(MAKE_DIRECTORY "${WEBVIEW_ASSET_DIR}")
-  configure_file(src/webview/package.json "${WEBVIEW_ASSET_DIR}/package.json" COPYONLY)
-  configure_file(src/webview/package-lock.json "${WEBVIEW_ASSET_DIR}/package-lock.json" COPYONLY)
-  configure_file(src/webview/build.mjs "${WEBVIEW_ASSET_DIR}/build.mjs" COPYONLY)
-  configure_file(src/webview/editor.test.mjs "${WEBVIEW_ASSET_DIR}/editor.test.mjs" COPYONLY)
+  configure_file("${FRONTEND_SOURCE_DIR}/package.json" "${WEBVIEW_ASSET_DIR}/package.json" COPYONLY)
+  configure_file("${FRONTEND_SOURCE_DIR}/package-lock.json" "${WEBVIEW_ASSET_DIR}/package-lock.json" COPYONLY)
+  configure_file("${FRONTEND_SOURCE_DIR}/build.mjs" "${WEBVIEW_ASSET_DIR}/build.mjs" COPYONLY)
+  configure_file("${FRONTEND_SOURCE_DIR}/editor.test.mjs" "${WEBVIEW_ASSET_DIR}/editor.test.mjs" COPYONLY)
   add_custom_command(OUTPUT "${WEBVIEW_ASSET_DIR}/installed.stamp"
     COMMAND ${NPM_COMMAND} ci --ignore-scripts --no-audit --no-fund
     COMMAND "${CMAKE_COMMAND}" -E touch "${WEBVIEW_ASSET_DIR}/installed.stamp"
     WORKING_DIRECTORY "${WEBVIEW_ASSET_DIR}"
-    DEPENDS src/webview/package.json src/webview/package-lock.json
+    DEPENDS "${FRONTEND_SOURCE_DIR}/package.json" "${FRONTEND_SOURCE_DIR}/package-lock.json"
     VERBATIM)
   add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
     COMMAND "${NODE_EXECUTABLE}" "${WEBVIEW_ASSET_DIR}/build.mjs"
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/webview" "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
-    DEPENDS "${WEBVIEW_ASSET_DIR}/installed.stamp" src/webview/build.mjs
-            src/webview/index.html src/webview/editor.js src/webview/preview.js src/webview/style.css
+            "${FRONTEND_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
+    DEPENDS "${WEBVIEW_ASSET_DIR}/installed.stamp" "${FRONTEND_SOURCE_DIR}/build.mjs"
+            "${FRONTEND_SOURCE_DIR}/index.html" "${FRONTEND_SOURCE_DIR}/main.ts"
+            "${FRONTEND_SOURCE_DIR}/preview.js" "${FRONTEND_SOURCE_DIR}/style.css"
     VERBATIM)
   add_custom_target(webview-assets DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h")
   add_subdirectory(src/desktop)
