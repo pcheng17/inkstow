@@ -491,6 +491,8 @@ test('composition input edits active link source without following its shortcut'
     editor.dispatchEvent(new ui.dom.window.CompositionEvent('compositionstart', { bubbles: true, data: '語' }));
     editor.dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
       { key: 'Enter', altKey: true, bubbles: true }));
+    ui.dom.window.inkstowFollow();
+    assert.equal(ui.document.querySelector('#error').hidden, true);
     assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
     editor.dispatchEvent(new ui.dom.window.InputEvent('beforeinput',
       { bubbles: true, inputType: 'insertCompositionText', data: '語', isComposing: true }));
@@ -742,6 +744,22 @@ test('saving does not dim unrelated controls while the bridge is busy', async ()
     assert.equal(ui.document.querySelector('#notes button').disabled, false);
     release(); await ui.pause();
     assert.equal(ui.document.querySelector('#dirty').hidden, true);
+  } finally { ui.dom.window.close(); }
+});
+
+test('move and trash decisions dismiss on Escape without sending a bridge mutation', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md');
+    for (const [button, panel] of [['move', 'move-choice'], ['trash', 'trash-choice']]) {
+      ui.document.querySelector(`#${button}`).click();
+      assert.equal(ui.document.querySelector(`#${panel}`).hidden, false);
+      ui.document.querySelector(`#${panel}`).dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+        { key: 'Escape', bubbles: true, cancelable: true }));
+      assert.equal(ui.document.querySelector(`#${panel}`).hidden, true);
+    }
+    assert.equal(ui.calls.filter((call) => ['move', 'trash'].includes(call.operation)).length, 0);
+    assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
   } finally { ui.dom.window.close(); }
 });
 
