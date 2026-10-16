@@ -336,7 +336,9 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         observed.find("Local for keep") != std::string::npos &&
             observed.find("\\\"conflict\\\":true") != std::string::npos,
         "Outside change lost unsaved edits before Keep mine");
-    clickDecision(window, "#keep-mine");
+    // The visible button remains enabled while refresh locks the editor. Click before
+    // the refresh bridge reply, as a user can when the native bridge is slow.
+    window.eval("window.inkstowRefresh();document.querySelector('#keep-mine').click()");
     for (int attempt = 0; attempt < 50 && bytes(note) != "Local for keep"; ++attempt) {
         pumpFor(std::chrono::milliseconds(100));
     }
@@ -349,6 +351,53 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         observed.find("\\\"dirty\\\":false") != std::string::npos &&
             observed.find("\\\"conflict\\\":false") != std::string::npos,
         "Keep mine did not resolve conflict");
+
+    replaceEditor(window, "Local for changed keep");
+    put(note, "First outside keep");
+    window.eval("window.dispatchEvent(new Event('focus'))");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval("probe(JSON.stringify({conflict:!document.querySelector('#conflict').hidden}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("\\\"conflict\\\":true") != std::string::npos,
+        "Changed-version Keep mine did not show initial conflict");
+    put(note, "Second outside keep");
+    window.eval("window.inkstowRefresh();document.querySelector('#keep-mine').click()");
+    pumpFor(std::chrono::milliseconds(500));
+    check(bytes(note) == "Second outside keep", "Keep mine overwrote an unseen outside version");
+    window.eval(
+        "probe(JSON.stringify({conflict:!document.querySelector('#conflict').hidden,"
+        "error:document.querySelector('#error').textContent}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        observed.find("\\\"conflict\\\":true") != std::string::npos &&
+            observed.find("review the new conflict") != std::string::npos,
+        "Changed outside version did not ask for a new Keep mine decision");
+    clickDecision(window, "#keep-mine");
+    for (int attempt = 0; attempt < 50 && bytes(note) != "Local for changed keep"; ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(bytes(note) == "Local for changed keep", "Reconfirmed Keep mine did not save edits");
+
+    replaceEditor(window, "Local for modal keep");
+    put(note, "Outside modal keep");
+    window.eval("window.dispatchEvent(new Event('focus'))");
+    pumpFor(std::chrono::milliseconds(350));
+    window.eval(
+        "window.inkstowRefresh();document.querySelector('#keep-mine').click();"
+        "window.inkstowAskQuit()");
+    pumpFor(std::chrono::milliseconds(500));
+    window.eval("probe(JSON.stringify({prompt:!document.querySelector('#quit-prompt').hidden}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        bytes(note) == "Outside modal keep" &&
+            observed.find("\\\"prompt\\\":true") != std::string::npos,
+        "Keep mine replayed behind the quit prompt");
+    window.eval("document.querySelector('#quit-cancel').click()");
+    pumpFor(std::chrono::milliseconds(150));
+    clickDecision(window, "#keep-mine");
+    for (int attempt = 0; attempt < 50 && bytes(note) != "Local for modal keep"; ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    check(bytes(note) == "Local for modal keep", "Keep mine did not resume after cancel");
 
     replaceEditor(window, "Local for reload");
     put(note, "Outside reload");

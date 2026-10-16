@@ -49,6 +49,7 @@ public:
     bool hasVault() const { return mVault.has_value(); }
     const std::string& getContent() const { return mContent; }
     const std::string& getPath() const { return mPath; }
+    std::uint64_t getConflictRevision() const { return mConflictRevision; }
     // Borrowed view; valid until the session opens another vault or is destroyed.
     std::span<const std::string> getNotes() const { return mNotes; }
 
@@ -64,6 +65,8 @@ private:
     std::string mSavedContent;
     std::string mSavedBytes;
     std::optional<std::string> mConflictBytes;
+    // Changes only when the reported outside bytes change, not on repeated refreshes.
+    std::uint64_t mConflictRevision = 0;
     bool mHasBom = false;
 };
 
