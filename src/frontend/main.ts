@@ -13,6 +13,8 @@ let controlsLocked = false;
 let syncFailed = false;
 let missingVaultError = '';
 let busyTimer;
+let refreshing = false;
+let pendingKeepMine = null;
 
 const mixedEndingsError = 'This note has mixed CRLF, LF, or CR line endings. Editing and saving are disabled to preserve its bytes (see #63).';
 
@@ -176,7 +178,14 @@ async function save() {
 }
 
 async function resolve(operation) {
-  if (locked || !snapshot.path) return;
+  if (locked) {
+    if (operation === 'keepMine' && refreshing && quitPrompt.hidden && !pendingKeepMine &&
+        snapshot.path && snapshot.change === 'conflict') {
+      pendingKeepMine = { path: snapshot.path, conflictRevision: snapshot.conflictRevision };
+    }
+    return;
+  }
+  if (!snapshot.path) return;
   lockForAction();
   await queue;
   if (syncFailed) {
@@ -198,17 +207,30 @@ async function refresh() {
   // Keep edits blocked while the bridge checks disk, but don't disable and redraw the
   // entire UI for a background refresh that usually has nothing new to show.
   setLocked(true, false);
+  refreshing = true;
   await queue;
+  let refreshOk = false;
   if (!syncFailed) {
     const reply = await request({ operation: 'refresh' });
+    refreshOk = reply.ok;
     if (reply.path === snapshot.path) {
       snapshot = reply;
       if (reply.ok && reply.change === 'reloaded') editor.load(reply.content);
     }
     showReplyError(reply, 'Could not check for outside changes.');
   }
-  setLocked(false, false);
+  refreshing = false;
+  if (quitPrompt.hidden) setLocked(false, false);
   render();
+  const decision = pendingKeepMine;
+  pendingKeepMine = null;
+  if (!decision || !refreshOk || !quitPrompt.hidden || controlsLocked || syncFailed ||
+      snapshot.path !== decision.path || snapshot.change !== 'conflict') return;
+  if (snapshot.conflictRevision !== decision.conflictRevision) {
+    showError('Outside note changed again; review the new conflict before choosing Keep mine.');
+    return;
+  }
+  resolve('keepMine');
 }
 
 let quitAttempt = 0;

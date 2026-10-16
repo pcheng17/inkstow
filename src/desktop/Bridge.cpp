@@ -330,12 +330,13 @@ std::string Bridge::handle(const std::string& arguments)
             }
         }
         reply = {
-            {     "ok",               success},
-            {  "notes",   mSession.getNotes()},
-            {   "path",    mSession.getPath()},
-            {"content", mSession.getContent()},
-            {  "dirty",    mSession.isDirty()},
-            { "change",   changeName(mChange)}
+            {              "ok",                        success},
+            {           "notes",            mSession.getNotes()},
+            {            "path",             mSession.getPath()},
+            {         "content",          mSession.getContent()},
+            {           "dirty",             mSession.isDirty()},
+            {          "change",            changeName(mChange)},
+            {"conflictRevision", mSession.getConflictRevision()}
         };
         if (!error.empty()) reply["error"] = error;
         return reply.dump();
