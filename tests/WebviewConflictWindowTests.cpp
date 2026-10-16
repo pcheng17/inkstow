@@ -620,30 +620,62 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     }
 #endif
     window.eval("document.querySelector('.cm-preview-link').click()");
-    for (int attempt = 0; attempt < 30; ++attempt) {
-        window.eval("probe(document.querySelector('#title').textContent)");
-        pumpFor(std::chrono::milliseconds(100));
-        if (observed.find("Renamed.md") != std::string::npos) break;
-    }
-    if (observed.find("Renamed.md") == std::string::npos) {
+    observed.clear();
+    for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
-            "error:document.querySelector('#error').textContent,"
-            "link:document.querySelector('.cm-preview-link')?.textContent}))");
-        pumpFor(std::chrono::milliseconds(150));
-        throw std::runtime_error("Follow did not navigate: " + observed);
+            "ready:!document.querySelector('#trash').disabled,"
+            "error:document.querySelector('#error').textContent}));");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Renamed.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
     }
+    if (observed.find("Renamed.md") == std::string::npos ||
+        observed.find("\\\"ready\\\":true") == std::string::npos)
+        throw std::runtime_error("Follow did not finish: " + observed);
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Source.md').click()");
-    pumpFor(std::chrono::milliseconds(350));
+    observed.clear();
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "ready:!document.querySelector('#trash').disabled,"
+            "attachment:!![...document.querySelectorAll('.cm-preview-link')]"
+            ".find(link=>link.dataset.target==='image.png'),"
+            "error:document.querySelector('#error').textContent}));");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Source.md") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos &&
+            observed.find("\\\"attachment\\\":true") != std::string::npos)
+            break;
+    }
+    if (observed.find("Source.md") == std::string::npos ||
+        observed.find("\\\"ready\\\":true") == std::string::npos ||
+        observed.find("\\\"attachment\\\":true") == std::string::npos)
+        throw std::runtime_error("Source note was not ready for attachment: " + observed);
     window.eval(
         "[...document.querySelectorAll('.cm-preview-link')]"
         ".find(link=>link.dataset.target==='image.png').click()");
-    pumpFor(std::chrono::milliseconds(350));
-    check(
-        !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
-        "Attachment did not use shell service");
+    for (int attempt = 0; attempt < 50 && openedAttachment.empty(); ++attempt)
+        pumpFor(std::chrono::milliseconds(100));
+    if (openedAttachment.empty() || !fs::equivalent(openedAttachment, root / "image.png")) {
+        observed.clear();
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "ready:!document.querySelector('#trash').disabled,"
+            "error:document.querySelector('#error').textContent}));");
+        pumpFor(std::chrono::milliseconds(150));
+        throw std::runtime_error("Attachment did not use shell service: " + observed);
+    }
+    observed.clear();
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval("probe(!document.querySelector('#trash').disabled)");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("true") != std::string::npos) break;
+    }
+    check(observed.find("true") != std::string::npos, "Attachment follow did not finish");
     window.eval(
         "[...document.querySelectorAll('.cm-preview-link')]"
         ".find(link=>link.dataset.target==='New link').click()");
