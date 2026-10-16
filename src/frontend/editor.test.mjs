@@ -311,7 +311,7 @@ test('rendered links follow through the bridge while active source edits and sho
     await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'edit');
     assert.match(ui.calls.at(-1).content, /\[\[Target\|Edited\]\]/);
-    ui.document.querySelector('#undo').click(); await ui.pause();
+    ui.dom.window.inkstowUndo(); await ui.pause();
     ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
       { key: 'Enter', altKey: true, bubbles: true }));
     await ui.pause();
@@ -449,7 +449,7 @@ test('dirty rendered navigation is refused and undo preserves source and CRLF by
     ui.document.querySelector('.cm-preview-link').click(); await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/i);
     assert.equal(ui.document.querySelector('#title').textContent, 'Source.md');
-    ui.document.querySelector('#undo').click(); await ui.pause();
+    ui.dom.window.inkstowUndo(); await ui.pause();
     ui.dom.window.inkstowSave(); await ui.pause();
     assert.deepEqual(ui.disk.get('Source.md'), Buffer.from(source));
   } finally { ui.dom.window.close(); }
@@ -871,7 +871,9 @@ test('open, edit, selection, undo and BOM-preserving save', async () => {
     assert.equal(ui.calls.at(-1).operation, 'edit');
     assert.equal(ui.document.querySelector('#dirty').hidden, false);
     assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
-    ui.document.querySelector('#undo').click();
+    assert.equal(ui.document.querySelector('#undo'), null);
+    ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+      { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
     await ui.pause();
     assert.equal(ui.document.querySelector('.cm-line').textContent, 'Hello');
     await ui.type('Hello saved');
@@ -917,7 +919,6 @@ test('mixed CRLF, LF and CR notes are read-only and cannot save, retaining disk 
     assert.match(ui.document.querySelector('#error').textContent, /mixed.*line endings/i);
     assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'false');
     assert.equal(ui.document.querySelector('#dirty').hidden, true);
-    assert.equal(ui.document.querySelector('#undo').disabled, true);
     ui.document.querySelector('.cm-content').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     ui.document.dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }));
     await ui.pause();
@@ -925,7 +926,6 @@ test('mixed CRLF, LF and CR notes are read-only and cannot save, retaining disk 
     assert.deepEqual(ui.disk.get('Mixed.md'), bytes);
     await ui.select('Other.md');
     assert.equal(ui.document.querySelector('#error').hidden, true);
-    assert.equal(ui.document.querySelector('#undo').disabled, false);
   } finally { ui.dom.window.close(); }
 });
 

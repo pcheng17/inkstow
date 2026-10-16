@@ -125,17 +125,25 @@ void clickDecision(webview::webview& window, const char* selector)
 
 void activateMenu(webview::webview& window, const char* action)
 {
-    constexpr std::array<std::string_view, 3> kActions = {"open", "save", "quit"};
+    constexpr std::array<std::string_view, 4> kActions = {"open", "save", "quit", "undo"};
     const auto index = std::find(kActions.begin(), kActions.end(), action) - kActions.begin();
     check(index < static_cast<std::ptrdiff_t>(kActions.size()), "Unknown native menu action");
 #if defined(__APPLE__)
     activateMacMenu(window, action);
 #elif defined(_WIN32)
-    SendMessageW(
-        static_cast<HWND>(window.window().value()),
-        WM_COMMAND,
-        static_cast<WPARAM>(1001 + index),
-        0);
+    auto* native = static_cast<HWND>(window.window().value());
+    if (index == 3) {
+        HMENU bar = GetMenu(native);
+        HMENU edit = GetSubMenu(bar, 1);
+        wchar_t label[16] = {};
+        GetMenuStringW(bar, 1, label, 16, MF_BYPOSITION);
+        check(
+            std::wstring_view(label) == L"Edit" && GetMenuItemCount(edit) == 1,
+            "Native Edit menu must contain only Undo");
+        GetMenuStringW(edit, 0, label, 16, MF_BYPOSITION);
+        check(std::wstring_view(label) == L"Undo\tCtrl+Z", "Native Edit menu lacks Undo");
+    }
+    SendMessageW(native, WM_COMMAND, static_cast<WPARAM>(1001 + index), 0);
 #else
     auto* native = GTK_WIDGET(window.window().value());
     auto* layout = gtk_bin_get_child(GTK_BIN(native));
@@ -143,13 +151,22 @@ void activateMenu(webview::webview& window, const char* action)
     auto* bar = GTK_WIDGET(children->data);
     g_list_free(children);
     children = gtk_container_get_children(GTK_CONTAINER(bar));
-    auto* file = GTK_WIDGET(children->data);
+    auto* top = GTK_WIDGET(g_list_nth_data(children, index == 3 ? 1 : 0));
     g_list_free(children);
-    auto* menu = gtk_menu_item_get_submenu(GTK_MENU_ITEM(file));
+    if (index == 3) {
+        const char* label = gtk_menu_item_get_label(GTK_MENU_ITEM(top));
+        check(label && std::string_view(label) == "Edit", "Native Edit menu missing");
+    }
+    auto* menu = gtk_menu_item_get_submenu(GTK_MENU_ITEM(top));
     children = gtk_container_get_children(GTK_CONTAINER(menu));
-    auto* item = GTK_WIDGET(g_list_nth_data(children, static_cast<guint>(index)));
+    if (index == 3) {
+        check(g_list_length(children) == 1, "Native Edit menu must contain only Undo");
+        const char* label = gtk_menu_item_get_label(GTK_MENU_ITEM(children->data));
+        check(label && std::string_view(label) == "Undo", "Native Edit menu lacks Undo");
+    }
+    auto* item = GTK_WIDGET(g_list_nth_data(children, index == 3 ? 0 : static_cast<guint>(index)));
     g_list_free(children);
-    check(item != nullptr, "Native file menu action missing");
+    check(item != nullptr, "Native menu action missing");
     gtk_menu_item_activate(GTK_MENU_ITEM(item));
 #endif
 }
@@ -877,6 +894,15 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         throw std::runtime_error(
             "Native Save menu did not invoke editor save: " + observed + ", disk=" + bytes(note));
     }
+    replaceEditor(window, "Undo draft");
+    activateMenu(window, "undo");
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        observed.clear();
+        window.eval("probe(document.querySelector('.cm-content').textContent)");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Menu saved") != std::string::npos) break;
+    }
+    check(observed.find("Menu saved") != std::string::npos, "Edit > Undo did not restore the note");
     replaceEditor(window, "Quit draft");
 #if defined(_WIN32)
     SendMessageW(static_cast<HWND>(window.window().value()), WM_CLOSE, 0, 0);

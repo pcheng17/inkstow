@@ -58,27 +58,19 @@ DesktopWindow::DesktopWindow(webview::webview& window)
     auto* bar = gtk_menu_bar_new();
     auto* file = gtk_menu_item_new_with_label("File");
     auto* fileMenu = gtk_menu_new();
-    auto* note = gtk_menu_item_new_with_label("Note");
-    auto* noteMenu = gtk_menu_new();
+    auto* edit = gtk_menu_item_new_with_label("Edit");
+    auto* editMenu = gtk_menu_new();
     auto* accelerators = gtk_accel_group_new();
     gtk_window_add_accel_group(GTK_WINDOW(native), accelerators);
     g_object_unref(accelerators);
     menuItem(fileMenu, "Open vault…", "inkstowOpenPicker()", this, accelerators, GDK_KEY_o);
     menuItem(fileMenu, "Save", "inkstowSave()", this, accelerators, GDK_KEY_s);
     menuItem(fileMenu, "Quit", "inkstowAskQuit()", this, accelerators, GDK_KEY_q);
-    menuItem(noteMenu, "Undo", "inkstowUndo()", this, accelerators, GDK_KEY_z);
-    auto* follow = menuItem(noteMenu, "Follow link", "inkstowFollow()", this, accelerators, 0);
-    gtk_widget_add_accelerator(
-        follow,
-        "activate",
-        accelerators,
-        GDK_KEY_Return,
-        GDK_MOD1_MASK,
-        GTK_ACCEL_VISIBLE);
+    menuItem(editMenu, "Undo", "inkstowUndo()", this, accelerators, GDK_KEY_z);
     gtk_menu_item_set_submenu(GTK_MENU_ITEM(file), fileMenu);
-    gtk_menu_item_set_submenu(GTK_MENU_ITEM(note), noteMenu);
+    gtk_menu_item_set_submenu(GTK_MENU_ITEM(edit), editMenu);
     gtk_menu_shell_append(GTK_MENU_SHELL(bar), file);
-    gtk_menu_shell_append(GTK_MENU_SHELL(bar), note);
+    gtk_menu_shell_append(GTK_MENU_SHELL(bar), edit);
     gtk_box_pack_start(GTK_BOX(box), bar, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), child, TRUE, TRUE, 0);
     g_object_unref(child);

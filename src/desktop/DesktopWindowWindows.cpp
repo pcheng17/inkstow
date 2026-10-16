@@ -13,7 +13,6 @@ constexpr UINT_PTR kOpen = 1001;
 constexpr UINT_PTR kSave = 1002;
 constexpr UINT_PTR kQuit = 1003;
 constexpr UINT_PTR kUndo = 1004;
-constexpr UINT_PTR kFollow = 1005;
 
 LRESULT CALLBACK acceleratorHook(int code, WPARAM wparam, LPARAM lparam)
 {
@@ -51,9 +50,6 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message, WPARAM wparam, LPARAM lpa
             case kUndo:
                 shell->invoke("inkstowUndo()");
                 return 0;
-            case kFollow:
-                shell->invoke("inkstowFollow()");
-                return 0;
             default:
                 break;
             }
@@ -84,21 +80,19 @@ DesktopWindow::DesktopWindow(webview::webview& window)
     }
     HMENU bar = CreateMenu();
     HMENU file = CreatePopupMenu();
-    HMENU note = CreatePopupMenu();
+    HMENU edit = CreatePopupMenu();
     AppendMenuW(file, MF_STRING, kOpen, L"Open vault…\tCtrl+O");
     AppendMenuW(file, MF_STRING, kSave, L"Save\tCtrl+S");
     AppendMenuW(file, MF_STRING, kQuit, L"Quit\tCtrl+Q");
-    AppendMenuW(note, MF_STRING, kUndo, L"Undo\tCtrl+Z");
-    AppendMenuW(note, MF_STRING, kFollow, L"Follow link\tAlt+Enter");
+    AppendMenuW(edit, MF_STRING, kUndo, L"Undo\tCtrl+Z");
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"File");
-    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(note), L"Note");
+    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(edit), L"Edit");
     SetMenu(native, bar);
     ACCEL shortcuts[] = {
-        {FVIRTKEY | FCONTROL,       'O',   kOpen},
-        {FVIRTKEY | FCONTROL,       'S',   kSave},
-        {FVIRTKEY | FCONTROL,       'Q',   kQuit},
-        {FVIRTKEY | FCONTROL,       'Z',   kUndo},
-        {    FVIRTKEY | FALT, VK_RETURN, kFollow},
+        {FVIRTKEY | FCONTROL, 'O', kOpen},
+        {FVIRTKEY | FCONTROL, 'S', kSave},
+        {FVIRTKEY | FCONTROL, 'Q', kQuit},
+        {FVIRTKEY | FCONTROL, 'Z', kUndo},
     };
     mAccelerators = CreateAcceleratorTableW(shortcuts, static_cast<int>(std::size(shortcuts)));
     if (mAccelerators)
