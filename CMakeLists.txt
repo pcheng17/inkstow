@@ -96,6 +96,7 @@ if(INKSTOW_BUILD_WEBVIEW)
             "${FRONTEND_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
     DEPENDS "${WEBVIEW_ASSET_DIR}/installed.stamp" "${FRONTEND_SOURCE_DIR}/build.mjs"
             "${FRONTEND_SOURCE_DIR}/index.html" "${FRONTEND_SOURCE_DIR}/main.ts"
+            "${FRONTEND_SOURCE_DIR}/editor.ts" "${FRONTEND_SOURCE_DIR}/ui.ts"
             "${FRONTEND_SOURCE_DIR}/preview.js" "${FRONTEND_SOURCE_DIR}/style.css"
     VERBATIM)
   add_custom_target(webview-assets DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h")

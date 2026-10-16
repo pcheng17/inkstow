@@ -745,6 +745,22 @@ test('saving does not dim unrelated controls while the bridge is busy', async ()
   } finally { ui.dom.window.close(); }
 });
 
+test('move and trash decisions dismiss on Escape without sending a bridge mutation', async () => {
+  const ui = await setup();
+  try {
+    await ui.open(); await ui.select('BOM.md');
+    for (const [button, panel] of [['move', 'move-choice'], ['trash', 'trash-choice']]) {
+      ui.document.querySelector(`#${button}`).click();
+      assert.equal(ui.document.querySelector(`#${panel}`).hidden, false);
+      ui.document.querySelector(`#${panel}`).dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+        { key: 'Escape', bubbles: true, cancelable: true }));
+      assert.equal(ui.document.querySelector(`#${panel}`).hidden, true);
+    }
+    assert.equal(ui.calls.filter((call) => ['move', 'trash'].includes(call.operation)).length, 0);
+    assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
+  } finally { ui.dom.window.close(); }
+});
+
 test('moving a note does not dim the window while the bridge is busy', async () => {
   const ui = await setup();
   try {
