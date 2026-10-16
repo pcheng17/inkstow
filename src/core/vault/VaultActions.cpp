@@ -211,6 +211,19 @@ std::optional<std::string> Vault::resolveWikilink(
     return resolve(link, source, found);
 }
 
+std::optional<std::string> Vault::missingLinkedNotePath(
+    const std::string& link, const std::string& source)
+{
+    std::string path = link.substr(0, link.find_first_of("|#"));
+    const bool rootOnly = !path.empty() && path[0] == '/';
+    if (rootOnly) path.erase(0, 1);
+    if (!safeRelative(path) || (!pathOf(path).extension().empty() && !markdown(path)))
+        return std::nullopt;
+    const std::string folder =
+        source.find('/') == std::string::npos ? "" : source.substr(0, source.find_last_of('/') + 1);
+    return (rootOnly ? "" : folder) + path + (markdown(path) ? "" : ".md");
+}
+
 std::optional<fs::path> Vault::attachmentPath(const std::string& relative) const
 {
     if (!safeRelative(relative) || markdown(relative)) return std::nullopt;
