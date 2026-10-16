@@ -212,7 +212,7 @@ std::optional<std::string> Vault::resolveWikilink(
 }
 
 std::optional<std::string> Vault::missingLinkedNotePath(
-    const std::string& link, const std::string& source) const
+    const std::string& link, const std::string& source)
 {
     std::string path = link.substr(0, link.find_first_of("|#"));
     const bool rootOnly = !path.empty() && path[0] == '/';

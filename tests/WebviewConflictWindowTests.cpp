@@ -774,7 +774,23 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
             observed.find("[[image.png]]") != std::string::npos &&
             observed.find("\\\"ready\\\":true") != std::string::npos,
         "Editor was not ready after native Follow");
+    window.eval(
+        "{const request=window.inkstowRequest;"
+        "window.inkstowRequest=async operation=>{"
+        "const reply=await request(operation);"
+        "if(operation.operation==='edit' && operation.content==='Menu saved'){"
+        "window.menuEditAccepted=reply.ok;window.inkstowRequest=request;}"
+        "return reply;};}");
     replaceEditor(window, "Menu saved");
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        observed.clear();
+        window.eval("probe(JSON.stringify({accepted:window.menuEditAccepted===true}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("\\\"accepted\\\":true") != std::string::npos) break;
+    }
+    check(
+        observed.find("\\\"accepted\\\":true") != std::string::npos,
+        "Editor did not acknowledge the edit before native Save");
     activateMenu(window, "save");
     for (int attempt = 0; attempt < 50 && bytes(note) != "Menu saved"; ++attempt)
         pumpFor(std::chrono::milliseconds(100));

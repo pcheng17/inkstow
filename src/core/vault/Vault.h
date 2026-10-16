@@ -24,8 +24,8 @@ public:
         const std::string& link, const std::string& source, std::string* error) const;
     // For an unresolved link, choose a visible Markdown path near its source.
     // Never create explicit non-Markdown destinations or unsafe paths.
-    std::optional<std::string> missingLinkedNotePath(
-        const std::string& link, const std::string& source) const;
+    static std::optional<std::string> missingLinkedNotePath(
+        const std::string& link, const std::string& source);
     std::optional<std::filesystem::path> attachmentPath(const std::string& relative) const;
     bool moveNote(
         const std::string& from,
