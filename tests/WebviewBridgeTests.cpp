@@ -1,24 +1,17 @@
 #include "Bridge.h"
+#include "PortableTestSupport.h"
+
+#include <doctest/doctest.h>
 
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
 #include <fstream>
-#include <iostream>
-#include <stdexcept>
 #include <string>
 
 namespace
 {
 using Json = nlohmann::json;
-
-void check(bool passed, const char* expression)
-{
-    if (!passed) {
-        throw std::runtime_error(std::string("Bridge check failed: ") + expression);
-    }
-}
-#define CHECK(expression) check((expression), #expression)
 
 Json request(inkstow::webview_shell::Bridge& bridge, const Json& body)
 {
@@ -39,12 +32,11 @@ std::string pathBytes(const std::filesystem::path& path)
 
 } // namespace
 
-int run()
+TEST_CASE("Bridge handles vault operations, navigation, conflicts and shell failures")
 {
     namespace fs = std::filesystem;
-    const fs::path root = fs::temp_directory_path() / "inkstow-webview-bridge-tests";
-    fs::remove_all(root);
-    fs::create_directories(root);
+    inkstow::portable::test::TempVault vault;
+    const fs::path& root = vault.mPath;
     const fs::path note = root / "BOM.md";
     {
         std::ofstream output(note, std::ios::binary);
@@ -86,28 +78,28 @@ int run()
             openedUrl = url;
             return true;
         });
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "startup"}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "pickVault"}
     })["ok"] == false);
     shell.mPicked = pathBytes(root);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "pickVault"}
     })["ok"] == true);
-    CHECK(shell.mLast == pathBytes(root));
-    CHECK(shell.mWatchingVault == pathBytes(root));
-    CHECK(
+    REQUIRE(shell.mLast == pathBytes(root));
+    REQUIRE(shell.mWatchingVault == pathBytes(root));
+    REQUIRE(
         request(
             bridge,
             {
@@ -117,7 +109,7 @@ int run()
         std::ofstream added(root / "Added.md");
         added << "Added";
     }
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
@@ -132,69 +124,69 @@ int run()
         {
             {"operation", "startup"}
     });
-    CHECK(missingVault["ok"] == false && missingVault["notes"].empty());
-    CHECK(missingVault["error"].get<std::string>().find("missing") != std::string::npos);
-    CHECK(shell.mLast == pathBytes(root / "missing"));
+    REQUIRE((missingVault["ok"] == false && missingVault["notes"].empty()));
+    REQUIRE(missingVault["error"].get<std::string>().find("missing") != std::string::npos);
+    REQUIRE(shell.mLast == pathBytes(root / "missing"));
     shell.mPicked.clear();
-    CHECK(
+    REQUIRE(
         request(
             reopened,
             {
                 {"operation", "pickVault"}
     })["ok"] == false);
-    CHECK(shell.mLast == pathBytes(root / "missing"));
+    REQUIRE(shell.mLast == pathBytes(root / "missing"));
     {
         std::ofstream(root / "Foo.bar.md") << "Dot note";
         std::ofstream(root / "image.png") << "image";
     }
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "refresh"}
     })["notes"] ==
         Json::array({"BOM.md", "Foo.bar.md", "Second.md"}));
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",             "external"},
                 {      "url", "https://example.org/"}
     })["ok"] == false);
-    CHECK(openedUrl.empty());
-    CHECK(
+    REQUIRE(openedUrl.empty());
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "save"}
     })["ok"] == false);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",          "open"},
                 {   "folder", pathBytes(root)}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "list"}
     })["notes"] ==
         Json::array({"BOM.md", "Foo.bar.md", "Second.md"}));
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "select"},
                 {     "path", "BOM.md"}
     })["content"] == "Original");
-    CHECK(shell.mWatchingNote == "BOM.md");
+    REQUIRE(shell.mWatchingNote == "BOM.md");
     {
         std::ofstream attachment(root / "image.png");
         attachment << "image";
     }
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
@@ -202,67 +194,67 @@ int run()
                 {     "link", "image.png"}
     })["ok"] == true);
     const auto expectedAttachment = pathBytes(fs::canonical(root / "image.png"));
-    CHECK(shell.mOpenedAttachment == expectedAttachment);
-    CHECK(
+    REQUIRE(shell.mOpenedAttachment == expectedAttachment);
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",         "follow"},
                 {     "link", "../outside.png"}
     })["ok"] == false);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",    "link"},
                 {     "link", "Foo.bar"}
     })["path"] == "Foo.bar.md");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",           "link"},
                 {     "link", "BOM.md#Section"}
     })["path"] == "BOM.md");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",      "link"},
                 {     "link", "image.png"}
     })["ok"] == true);
-    CHECK(fs::equivalent(openedLink, root / "image.png"));
-    CHECK(
+    REQUIRE(fs::equivalent(openedLink, root / "image.png"));
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",         "link"},
                 {     "link", "../image.png"}
     })["ok"] == false);
-    CHECK(fs::equivalent(openedLink, root / "image.png"));
-    CHECK(
+    REQUIRE(fs::equivalent(openedLink, root / "image.png"));
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "select"},
                 {     "path", "BOM.md"}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",              "external"},
                 {      "url", "https://example.org/a"}
     })["ok"] == true);
-    CHECK(openedUrl == "https://example.org/a");
-    CHECK(
+    REQUIRE(openedUrl == "https://example.org/a");
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",                   "external"},
                 {      "url", "http://localhost:8080/path"}
     })["ok"] == true);
-    CHECK(openedUrl == "http://localhost:8080/path");
+    REQUIRE(openedUrl == "http://localhost:8080/path");
     openedUrl = "https://example.org/a";
     for (const std::string url :
          {"file:///etc/passwd",
@@ -278,87 +270,88 @@ int run()
           "https://-bad.example/path",
           "https://example.org:80:90/path"})
     {
-        CHECK(
+        REQUIRE(
             request(
                 bridge,
                 {
                     {"operation", "external"},
                     {      "url",        url}
         })["ok"] == false);
-        CHECK(openedUrl == "https://example.org/a");
+        REQUIRE(openedUrl == "https://example.org/a");
     }
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",    "edit"},
                 {  "content", "Changed"}
     })["dirty"] == true);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",    "follow"},
                 {     "link", "image.png"}
     })["ok"] == false);
-    CHECK(shell.mOpenedAttachment == expectedAttachment);
-    CHECK(
+    REQUIRE(shell.mOpenedAttachment == expectedAttachment);
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",             "external"},
                 {      "url", "https://example.org/"}
     })["ok"] == false);
-    CHECK(openedUrl == "https://example.org/a");
+    REQUIRE(openedUrl == "https://example.org/a");
     const Json refusedLink = request(
         bridge,
         {
             {"operation",    "link"},
             {     "link", "Foo.bar"}
     });
-    CHECK(
-        refusedLink["ok"] == false && refusedLink["path"] == "BOM.md" &&
-        refusedLink["content"] == "Changed" &&
-        refusedLink["error"].get<std::string>().find("Save or discard") != std::string::npos);
-    CHECK(
+    REQUIRE(
+        (refusedLink["ok"] == false && refusedLink["path"] == "BOM.md" &&
+         refusedLink["content"] == "Changed" &&
+         refusedLink["error"].get<std::string>().find("Save or discard") != std::string::npos));
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",      "link"},
                 {     "link", "image.png"}
     })["ok"] == false);
-    CHECK(fs::equivalent(openedLink, root / "image.png"));
+    REQUIRE(fs::equivalent(openedLink, root / "image.png"));
     const Json refused = request(
         bridge,
         {
             {"operation",    "select"},
             {     "path", "Second.md"}
     });
-    CHECK(refused["ok"] == false && refused["path"] == "BOM.md" && refused["content"] == "Changed");
-    CHECK(
+    REQUIRE(
+        (refused["ok"] == false && refused["path"] == "BOM.md" && refused["content"] == "Changed"));
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",          "open"},
                 {   "folder", pathBytes(root)}
     })["ok"] == false);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "save"}
     })["dirty"] == false);
-    CHECK(
+    REQUIRE(
         diskBytes(note) == "\xEF\xBB\xBF"
                            "Changed");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",    "select"},
                 {     "path", "Second.md"}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             Json{
@@ -374,24 +367,25 @@ int run()
         Json{
             {"operation", "save"}
     });
-    CHECK(conflict["ok"] == false && conflict["dirty"] == true && conflict["content"] == "Unsaved");
-    CHECK(diskBytes(root / "Second.md") == "Outside");
-    CHECK(conflict["change"] == "conflict");
+    REQUIRE(
+        (conflict["ok"] == false && conflict["dirty"] == true && conflict["content"] == "Unsaved"));
+    REQUIRE(diskBytes(root / "Second.md") == "Outside");
+    REQUIRE(conflict["change"] == "conflict");
     const Json merged = request(
         bridge,
         {
             {"operation", "merge"}
     });
-    CHECK(merged["ok"] == true && merged["dirty"] == true && merged["change"] == "none");
-    CHECK(merged["content"] == "<<<<<<< mine\nUnsaved\n=======\nOutside\n>>>>>>> outside");
-    CHECK(diskBytes(root / "Second.md") == "Outside");
-    CHECK(
+    REQUIRE((merged["ok"] == true && merged["dirty"] == true && merged["change"] == "none"));
+    REQUIRE(merged["content"] == "<<<<<<< mine\nUnsaved\n=======\nOutside\n>>>>>>> outside");
+    REQUIRE(diskBytes(root / "Second.md") == "Outside");
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "save"}
     })["dirty"] == false);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
@@ -402,20 +396,20 @@ int run()
         std::ofstream output(root / "Second.md", std::ios::binary);
         output << "New outside";
     }
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "refresh"}
     })["change"] == "conflict");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "keepMine"}
     })["dirty"] == false);
-    CHECK(diskBytes(root / "Second.md") == "My next edit");
-    CHECK(
+    REQUIRE(diskBytes(root / "Second.md") == "My next edit");
+    REQUIRE(
         request(
             bridge,
             {
@@ -428,8 +422,8 @@ int run()
         {
             {"operation", "refresh"}
     });
-    CHECK(missing["change"] == "missing" && missing["content"] == "Recover me");
-    CHECK(
+    REQUIRE((missing["change"] == "missing" && missing["content"] == "Recover me"));
+    REQUIRE(
         request(
             bridge,
             {
@@ -444,21 +438,21 @@ int run()
         {
             {"operation", "saveAsNew"}
     });
-    CHECK(refusedRecovery["ok"] == false && refusedRecovery["content"] == "Recover me");
-    CHECK(diskBytes(root / "Second.md") == "Reappeared");
-    CHECK(
+    REQUIRE((refusedRecovery["ok"] == false && refusedRecovery["content"] == "Recover me"));
+    REQUIRE(diskBytes(root / "Second.md") == "Reappeared");
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "refresh"}
     })["change"] == "conflict");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "reload"}
     })["content"] == "Reappeared");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
@@ -466,20 +460,20 @@ int run()
                 {  "content", "New recovery"}
     })["dirty"] == true);
     fs::remove(root / "Second.md");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "refresh"}
     })["change"] == "missing");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "saveAsNew"}
     })["dirty"] == false);
-    CHECK(diskBytes(root / "Second.md") == "New recovery");
-    CHECK(
+    REQUIRE(diskBytes(root / "Second.md") == "New recovery");
+    REQUIRE(
         request(
             bridge,
             {
@@ -487,57 +481,57 @@ int run()
                 {  "content", "Discard me"}
     })["dirty"] == true);
     fs::remove(root / "Second.md");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "refresh"}
     })["change"] == "missing");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "discard"}
     })["dirty"] == false);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "discard"}
     })["ok"] == false);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "list"}
     })["change"] == "none");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "refresh"}
     })["change"] == "none");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation",          "edit"},
                 {  "content", "Recover again"}
     })["dirty"] == true);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "refresh"}
     })["change"] == "missing");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             Json{
                 {"operation",    "select"},
                 {     "path", "../BOM.md"}
     })["ok"] == false);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
@@ -545,18 +539,18 @@ int run()
                 {  "content", "Draft"},
                 {    "extra",       1}
     })["ok"] == false);
-    CHECK(bridge.handle("not json").find("\"ok\":false") != std::string::npos);
-    CHECK(bridge.handle("[{}]").find("\"ok\":false") != std::string::npos);
-    CHECK(
+    REQUIRE(bridge.handle("not json").find("\"ok\":false") != std::string::npos);
+    REQUIRE(bridge.handle("[{}]").find("\"ok\":false") != std::string::npos);
+    REQUIRE(
         bridge.handle("[{\"operation\":\"edit\",\"content\":12}]").find("\"ok\":false") !=
         std::string::npos);
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             {
                 {"operation", "list"}
     })["path"] == "Second.md");
-    CHECK(
+    REQUIRE(
         request(
             bridge,
             Json{
@@ -574,13 +568,13 @@ int run()
     }
     inkstow::webview_shell::Bridge picker(&shell);
     shell.mPicked = pathBytes(root);
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
                 {"operation", "pickVault"}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
@@ -588,7 +582,7 @@ int run()
                 {     "path", "Safe.md"}
     })["ok"] == true);
     fs::remove(root / "Safe.md");
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
@@ -600,11 +594,11 @@ int run()
         {
             {"operation", "pickVault"}
     });
-    CHECK(
-        switchedMissing["ok"] == true && switchedMissing["change"] == "none" &&
-        switchedMissing["path"].get<std::string>().empty() &&
-        switchedMissing["notes"] == Json::array({"New.md"}));
-    CHECK(
+    REQUIRE(
+        (switchedMissing["ok"] == true && switchedMissing["change"] == "none" &&
+         switchedMissing["path"].get<std::string>().empty() &&
+         switchedMissing["notes"] == Json::array({"New.md"})));
+    REQUIRE(
         request(
             picker,
             {
@@ -612,13 +606,13 @@ int run()
     })["ok"] == false);
 
     shell.mPicked = pathBytes(root);
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
                 {"operation", "pickVault"}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
@@ -629,7 +623,7 @@ int run()
         std::ofstream output(root / "BOM.md", std::ios::binary);
         output << "\xFF";
     }
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
@@ -641,13 +635,13 @@ int run()
         {
             {"operation", "pickVault"}
     });
-    CHECK(
-        switchedConflict["ok"] == true && switchedConflict["change"] == "none" &&
-        switchedConflict["path"].get<std::string>().empty() &&
-        switchedConflict["notes"] == Json::array({"New.md"}));
+    REQUIRE(
+        (switchedConflict["ok"] == true && switchedConflict["change"] == "none" &&
+         switchedConflict["path"].get<std::string>().empty() &&
+         switchedConflict["notes"] == Json::array({"New.md"})));
 
     // A dismissed missing note must not suppress a new missing-note decision after switching.
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
@@ -655,13 +649,13 @@ int run()
                 {     "path", "New.md"}
     })["ok"] == true);
     fs::remove(alternative / "New.md");
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
                 {"operation", "refresh"}
     })["change"] == "missing");
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
@@ -672,13 +666,13 @@ int run()
         output << "Fresh";
     }
     shell.mPicked = pathBytes(root);
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
                 {"operation", "pickVault"}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
@@ -686,7 +680,7 @@ int run()
                 {     "path", "Fresh.md"}
     })["ok"] == true);
     fs::remove(root / "Fresh.md");
-    CHECK(
+    REQUIRE(
         request(
             picker,
             {
@@ -710,29 +704,29 @@ int run()
             *error = "System trash unavailable.";
             return trashAvailable;
         });
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation",          "open"},
                 {   "folder", pathBytes(root)}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation", "create"},
                 {     "path", "Target"}
     })["ok"] == false);
-    CHECK(!fs::exists(root / "Target"));
-    CHECK(
+    REQUIRE(!fs::exists(root / "Target"));
+    REQUIRE(
         request(
             actions,
             {
                 {"operation",     "create"},
                 {     "path", "Folder/New"}
     })["path"] == "Folder/New.md");
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
@@ -740,14 +734,14 @@ int run()
                 {       "path", "Target"},
                 {"updateLinks",     true}
     })["ok"] == false);
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation",    "select"},
                 {     "path", "Target.md"}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
@@ -755,29 +749,29 @@ int run()
                 {       "path", "Folder/Renamed"},
                 {"updateLinks",             true}
     })["ok"] == true);
-    CHECK(diskBytes(root / "Source.md") == "[[/Folder/Renamed]] [[image.png]]");
-    CHECK(
+    REQUIRE(diskBytes(root / "Source.md") == "[[/Folder/Renamed]] [[image.png]]");
+    REQUIRE(
         request(
             actions,
             {
                 {"operation",    "select"},
                 {     "path", "Source.md"}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation",          "follow"},
                 {     "link", "/Folder/Renamed"}
     })["path"] == "Folder/Renamed.md");
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation",    "select"},
                 {     "path", "Source.md"}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
@@ -785,16 +779,16 @@ int run()
                 {     "link",  "image.png"}
     })["ok"] == true);
     // Vault canonicalizes attachments; temp paths can be aliases on macOS and Windows.
-    CHECK(!opened.empty() && fs::equivalent(opened, root / "image.png"));
+    REQUIRE((!opened.empty() && fs::equivalent(opened, root / "image.png")));
     inkstow::webview_shell::Bridge noShell;
-    CHECK(
+    REQUIRE(
         request(
             noShell,
             {
                 {"operation",          "open"},
                 {   "folder", pathBytes(root)}
     })["ok"] == true);
-    CHECK(
+    REQUIRE(
         request(
             noShell,
             {
@@ -807,52 +801,52 @@ int run()
             {"operation", "attachment"},
             {     "link",  "image.png"}
     });
-    CHECK(
-        shellFailure["ok"] == false &&
-        shellFailure["error"] == "Attachment shell service is unavailable.");
-    CHECK(
+    REQUIRE(
+        (shellFailure["ok"] == false &&
+         shellFailure["error"] == "Attachment shell service is unavailable."));
+    REQUIRE(
         request(
             actions,
             {
                 {"operation",     "attachment"},
                 {     "link", "../outside.png"}
     })["ok"] == false);
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation", "trash"}
     })["ok"] == false);
-    CHECK(fs::exists(root / "Source.md"));
-    CHECK(
+    REQUIRE(fs::exists(root / "Source.md"));
+    REQUIRE(
         request(
             actions,
             {
                 {"operation",  "edit"},
                 {  "content", "draft"}
     })["dirty"] == true);
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation", "trash"}
     })["ok"] == false);
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation", "create"},
                 {     "path",  "Draft"}
     })["ok"] == false);
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation", "attachment"},
                 {     "link",  "image.png"}
     })["ok"] == false);
-    CHECK(!opened.empty() && fs::equivalent(opened, root / "image.png"));
-    CHECK(
+    REQUIRE((!opened.empty() && fs::equivalent(opened, root / "image.png")));
+    REQUIRE(
         request(
             actions,
             {
@@ -860,29 +854,17 @@ int run()
     })["ok"] == true);
     trashAvailable = true;
     // Injected trash service does not remove the file; the bridge must still call it.
-    CHECK(
+    REQUIRE(
         request(
             actions,
             {
                 {"operation", "trash"}
     })["ok"] == true);
-    CHECK(request(
-              actions,
-              {
-                  {"operation", "list"}
+    REQUIRE(request(
+                actions,
+                {
+                    {"operation", "list"}
     })["path"]
-              .get<std::string>()
-              .empty());
-    fs::remove_all(root);
-    return 0;
-}
-
-int main()
-{
-    try {
-        return run();
-    } catch (const std::exception& error) {
-        std::cerr << error.what() << '\n';
-        return 1;
-    }
+                .get<std::string>()
+                .empty());
 }

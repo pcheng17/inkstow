@@ -19,6 +19,10 @@ set_tests_properties(highlighter-tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=o
 add_executable(inkstow-tests EXCLUDE_FROM_ALL
                DoctestMain.cpp VaultTests.cpp SessionTests.cpp GuardedReplaceTests.cpp)
 target_link_libraries(inkstow-tests PRIVATE portable-core doctest::doctest inkstow-warnings)
+if(INKSTOW_BUILD_WEBVIEW)
+  target_sources(inkstow-tests PRIVATE WebviewBridgeTests.cpp)
+  target_link_libraries(inkstow-tests PRIVATE webview-bridge)
+endif()
 target_compile_definitions(inkstow-tests PRIVATE SAMPLE_VAULT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sample")
 add_test(NAME inkstow-tests COMMAND inkstow-tests)
 
@@ -37,11 +41,6 @@ if(INKSTOW_BUILD_WEBVIEW)
   target_link_libraries(webview-watch-tests PRIVATE webview-watch inkstow-warnings)
   add_test(NAME webview-watch-tests COMMAND webview-watch-tests)
   add_dependencies(unit-tests webview-watch-tests)
-
-  add_executable(webview-bridge-tests EXCLUDE_FROM_ALL WebviewBridgeTests.cpp)
-  target_link_libraries(webview-bridge-tests PRIVATE webview-bridge inkstow-warnings)
-  add_test(NAME webview-bridge-tests COMMAND webview-bridge-tests)
-  add_dependencies(unit-tests webview-bridge-tests)
 
   add_executable(webview-navigation-tests EXCLUDE_FROM_ALL WebviewNavigationTests.cpp)
   target_include_directories(webview-navigation-tests PRIVATE ${PROJECT_SOURCE_DIR}/src/desktop)
