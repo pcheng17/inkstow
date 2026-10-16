@@ -1,34 +1,22 @@
 ---
 name: inkstow-ui
-description: Launch Inkstow on a headless X11 display, drive it with clicks and keys, and capture screenshots. Use when changing how the Inkstow UI looks or behaves, when asked to run, show, or screenshot the app, or to check an end-to-end workflow in the real window.
+description: Run the real Inkstow system-webview window with a disposable vault on a headless X11 display and capture a screenshot. Use when changing how the Inkstow UI looks or behaves, when asked to run, show, or screenshot the app, or to check an end-to-end workflow in the real window.
 ---
 
-# Drive and screenshot the Inkstow UI
+# Check and screenshot the WebView UI
 
-Screenshots show what a change looks like; they do not prove it is correct. Keep behavior checks in `tests/UiTests.cpp` and `tests/CoreTests.cpp`, and still run `ctest --preset debug` per `AGENTS.md`.
+Use a throwaway vault, never a personal vault. The old Qt `scripts/inkstow-headless.sh` helper has been retired; the supported automated window driver is the `WebviewWindow*` doctest case in `inkstow-tests`.
 
-1. **Build.** `cmake --build --preset debug --parallel` in the worktree you are changing. For a before/after comparison, also build the base commit in its own worktree (`git worktree add ../inkstow-base main`, then configure and build there). Completion: each binary you will compare exists and reflects its commit.
-2. **Write an actions script.** The helper runs it with `bash -e` (any shebang is ignored, and the first failing command fails the run) from the directory you launched the helper in. It runs once Inkstow is visible, with the fixture copy already opened. Available: `$VAULT` (disposable vault copy), `$TRIAL`, `$SHOTS`, `$WINDOW` (X window id), `$SIZE`, `xdotool`, and `shot NAME`, which saves the window as `$SHOTS/NAME.png` with the cursor hidden. The window sits at screen `0,0`, so screen coordinates are window coordinates. Prefer keyboard input (`xdotool type`, `xdotool key Tab Return`) where focus is predictable. For clicks, read coordinates off a fresh screenshot of the *same build*, because a redesign moves widgets. Completion: every state you want to show has a `shot` after the action that reaches it.
-3. **Run.** From the repo root: `scripts/inkstow-headless.sh [--bin PATH] [--size WxH] [--no-open] FIXTURE_DIR ACTIONS_SH`. The defaults are `build/debug/inkstow`, `1100x750` (the app's default size), and opening the fixture copy by seeding Inkstow's last-vault setting so it reopens on launch. Use `--no-open` to show the empty state. Builds from before the folder picker had a vault path field instead and ignore the setting; for those, pass `--no-open` and type `$VAULT` and Return in the actions script. Use `tests/fixtures/sample` or another fixture, never a personal vault; the helper works on a copy in a temp directory. Run the same actions script with the same size and fixture for both builds. Completion: the helper prints the trial directory and exits 0; on failure, read `$TRIAL/inkstow.log`.
-4. **Look and report.** Open the PNGs and check them yourself before you describe them. Send before/after pairs to the user (with SendUserFile, if available) when they are judging a design. Leave screenshots in `/tmp` or the scratchpad; commit them only if the user asks. Completion: the user has the images, or a clear statement of what you saw.
+1. **Build the app and tests.** From the active worktree run `cmake --preset debug`, `cmake --build --preset debug --parallel`, and `cmake --build --preset debug --target unit-tests --parallel`. Completion: `build/debug/inkstow-webview` and `build/debug/tests/inkstow-tests` exist.
+2. **Exercise the real window.** Run `ctest --preset debug --output-on-failure`. On Linux this runs native-navigation and WebView window cases under Xvfb. To run only the window case and save its screenshot:
 
-## Example
+   ```sh
+   INKSTOW_SCREENSHOT=/tmp/inkstow-webview.png xvfb-run -a \
+     ./build/debug/tests/inkstow-tests --test-case=WebviewWindow*
+   ```
 
-```sh
-actions=$(mktemp)
-cat > "$actions" <<'SH'
-shot opened
-xdotool mousemove 50 59 click 1   # Welcome.md in the note list
-shot note
-SH
-scripts/inkstow-headless.sh tests/fixtures/sample "$actions"
-```
+   The case creates its own disposable vault, checks menu/picker/attachment and conflict/quit flows with injected native services, and writes the screenshot when requested. Completion: the case passes and the PNG exists.
+3. **Inspect the screenshot.** Read the PNG yourself before describing what it shows. A passing test is behavior evidence; a screenshot is visual evidence, not proof of correctness. Compare images from separate worktrees only after building and running the same test on both commits. Leave scratch screenshots outside the repository unless asked to commit them.
+4. **Manual platform smoke.** For real OS folder dialogs and default attachment handlers, copy `tests/fixtures/sample` to a temporary vault and launch `inkstow-webview` on the target desktop. Follow the README's WebView smoke steps, including native picker, edit/save, watcher, conflict and quit; do not claim this manual check from the injected-service test alone.
 
-## Caveats
-
-- Xvfb runs without a window manager: windows and dialogs have **no title bars or borders**, and dialogs appear wherever Qt places them. Judge the app's contents, not window chrome.
-- Fonts and rendering follow this server's installed fonts and Qt style, which may differ from a desktop or from macOS.
-- The X screen is exactly `$SIZE`, the same as the window, so Qt keeps menus and dialogs on-screen and `shot` captures them. A dropdown near an edge may open in a different direction than it would on a larger desktop.
-- Use `SHOT_SETTLE=1 shot NAME` if an animation or a slow vault scan hasn't finished when the shot is taken.
-
-The helper requires `xvfb-run`, `dbus-run-session`, `xdotool`, and `ffmpeg`. If any is missing, add it idempotently to `~/.vps-dotfiles/install` instead of installing it ad hoc.
+The headless Linux run needs `xvfb-run` and WebKitGTK. macOS and Windows real-window cases run through CTest without Xvfb. If the screenshot variable is unsupported in a particular test revision, treat the passing CTest run as behavioral evidence and state that no screenshot was captured.

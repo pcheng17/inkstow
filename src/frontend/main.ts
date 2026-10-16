@@ -13,6 +13,10 @@ let controlsLocked = false;
 let syncFailed = false;
 let missingVaultError = '';
 let busyTimer;
+// A newer lock transition (including canceling a modal) revokes refresh's lock ownership.
+let lockRevision = 0;
+let refreshLockRevision = null;
+let pendingKeepMine = null;
 
 const mixedEndingsError = 'This note has mixed CRLF, LF, or CR line endings. Editing and saving are disabled to preserve its bytes (see #63).';
 
@@ -60,6 +64,7 @@ const editor = createNoteEditor({
 render();
 
 function setLocked(value, updateUi = true) {
+  ++lockRevision;
   locked = value;
   // Only modal locks visually disable controls. Bridge work blocks competing actions
   // and editing without making every button flash gray on an unrelated render().
@@ -176,7 +181,15 @@ async function save() {
 }
 
 async function resolve(operation) {
-  if (locked || !snapshot.path) return;
+  if (locked) {
+    if (operation === 'keepMine' && refreshLockRevision === lockRevision &&
+        quitPrompt.hidden && !pendingKeepMine &&
+        snapshot.path && snapshot.change === 'conflict') {
+      pendingKeepMine = { path: snapshot.path, conflictRevision: snapshot.conflictRevision };
+    }
+    return;
+  }
+  if (!snapshot.path) return;
   lockForAction();
   await queue;
   if (syncFailed) {
@@ -194,21 +207,36 @@ async function resolve(operation) {
 }
 
 async function refresh() {
-  if (locked) return;
+  if (locked || refreshLockRevision !== null) return;
   // Keep edits blocked while the bridge checks disk, but don't disable and redraw the
   // entire UI for a background refresh that usually has nothing new to show.
   setLocked(true, false);
+  const ownLockRevision = lockRevision;
+  refreshLockRevision = ownLockRevision;
   await queue;
+  let refreshOk = false;
   if (!syncFailed) {
     const reply = await request({ operation: 'refresh' });
+    refreshOk = reply.ok;
     if (reply.path === snapshot.path) {
       snapshot = reply;
       if (reply.ok && reply.change === 'reloaded') editor.load(reply.content);
     }
     showReplyError(reply, 'Could not check for outside changes.');
   }
-  setLocked(false, false);
+  const ownsLock = lockRevision === ownLockRevision;
+  refreshLockRevision = null;
+  if (ownsLock && quitPrompt.hidden) setLocked(false, false);
   render();
+  const decision = pendingKeepMine;
+  pendingKeepMine = null;
+  if (!decision || !ownsLock || !refreshOk || !quitPrompt.hidden || syncFailed ||
+      snapshot.path !== decision.path || snapshot.change !== 'conflict') return;
+  if (snapshot.conflictRevision !== decision.conflictRevision) {
+    showError('Outside note changed again; review the new conflict before choosing Keep mine.');
+    return;
+  }
+  resolve('keepMine');
 }
 
 let quitAttempt = 0;

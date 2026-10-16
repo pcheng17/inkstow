@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check all CI clang-tidy sources against a WebView-enabled CMake build."""
+"""Check all CI clang-tidy sources against the WebView CMake build."""
 
 import argparse
 import json
@@ -11,7 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 LINUX_ONLY_SOURCES = {"tests/WebviewNativeNavigationTests.cpp", "src/desktop/NavigationPolicyLinux.cpp"}
 SOURCE_GROUPS = (
-    ("src/*.cpp", "src/core/*.cpp", "src/ui/*.cpp", "tests/*.cpp"),
+    ("src/VaultInspect.cpp", "tests/*.cpp"),
     (
         "src/core/vault/*.cpp",
         "src/desktop/Bridge.cpp",
@@ -49,7 +49,7 @@ def check_entries(database, groups):
     missing = [source for group in groups for source in group if (ROOT / source).resolve() not in compiled]
     if missing:
         raise ValueError(
-            "Missing clang-tidy compilation entries (configure with WebView ON and build all checked targets): "
+            "Missing clang-tidy compilation entries (build all checked targets): "
             + ", ".join(missing)
         )
 

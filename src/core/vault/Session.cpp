@@ -284,6 +284,7 @@ DiskChange Session::syncWithDisk(std::string* error)
     std::string bytes;
     if (!mVault->readNote(mPath, &bytes, error)) return DiskChange::Missing;
     if (bytes == mSavedBytes) return DiskChange::None;
+    if (!mConflictBytes || *mConflictBytes != bytes) ++mConflictRevision;
     mConflictBytes = bytes;
     if (isDirty()) {
         *error = "Note changed on disk while you have unsaved edits; reload from disk or keep your "

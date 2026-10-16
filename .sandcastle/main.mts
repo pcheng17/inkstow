@@ -99,8 +99,8 @@ export async function verify(sandbox: Pick<Sandbox, 'exec'>, base: string): Prom
   const changedCpp = await mustExec(sandbox, `git diff --name-only ${quote(base)}...HEAD -- '*.h' '*.cpp'`);
   const paths = changedCpp ? await mustExec(sandbox, `git diff --name-only --diff-filter=ACM ${quote(base)}...HEAD -- '*.h' '*.cpp'`) : '';
   const commands = [
-    'cmake --preset debug -DINKSTOW_BUILD_WEBVIEW=ON',
-    'cmake --build --preset debug --target inkstow inkstow-webview unit-tests ui-tests vault-inspect --parallel 2',
+    'cmake --preset debug',
+    'cmake --build --preset debug --target inkstow-webview unit-tests vault-inspect --parallel 2',
     'ctest --preset debug',
   ];
   if (paths) commands.push(`clang-format --dry-run --Werror ${paths.split('\n').map(quote).join(' ')}`);

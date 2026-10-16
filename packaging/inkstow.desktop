@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Inkstow
-Exec=inkstow
+Exec=inkstow-webview
 Icon=inkstow
 Terminal=false
 Categories=Utility;TextEditor;
