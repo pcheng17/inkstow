@@ -5,6 +5,7 @@
 #include <doctest/doctest.h>
 
 #include <filesystem>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -364,5 +365,26 @@ TEST_CASE("Vault refuses trash when unavailable")
     REQUIRE(read(temp.mPath / "Note.md") == "safe");
     REQUIRE(!vault->trashNote("../Note.md", &error));
 }
+
+#ifdef _WIN32
+// Manual only: --test-case="Windows interactive trash smoke" --no-skip.
+// Creates a unique disposable vault; never pass a personal vault to this test.
+TEST_CASE("Windows interactive trash smoke" * doctest::skip())
+{
+    TempVault temp;
+    const std::string note = temp.mPath.filename().string() + ".md";
+    write(temp.mPath / note, "Disposable trash smoke test.\n");
+    std::cout << "Windows shell delete for disposable file: " << temp.mPath / note << std::endl;
+    std::string error;
+    const auto vault = Vault::open(utf8Path(temp.mPath), &error);
+    REQUIRE(vault);
+    if (!vault) return;
+    const bool deleted = vault->trashNote(note, &error);
+    const bool remains = fs::exists(temp.mPath / note);
+    std::cout << (deleted ? "Shell delete completed" : "Shell delete refused: " + error)
+              << "; file remains: " << remains << '\n';
+    REQUIRE(deleted != remains);
+}
+#endif
 
 } // namespace

@@ -80,10 +80,10 @@ test('verify fails closed on dirty tree, absent commits, failed build and C++ ch
     commands.push(command);
     if (command === 'git status --porcelain') return { stdout: status, stderr: '', exitCode: 0 };
     if (command.startsWith('git rev-list')) return { stdout: commits, stderr: '', exitCode: 0 };
-    if (command.startsWith('git diff --name-only')) return { stdout: 'src/main.cpp', stderr: '', exitCode: 0 };
+    if (command.startsWith('git diff --name-only')) return { stdout: 'src/VaultInspect.cpp', stderr: '', exitCode: 0 };
     return { stdout: 'failure output', stderr: '', exitCode: command.includes(fail) && fail ? 2 : 0 };
   } };
-  status = ' M src/main.cpp';
+  status = ' M src/VaultInspect.cpp';
   assert.match((await verify(sandbox, 'abc'))!, /not clean/);
   status = '';
   commits = '0';
@@ -97,7 +97,8 @@ test('verify fails closed on dirty tree, absent commits, failed build and C++ ch
   assert.match((await verify(sandbox, 'abc'))!, /check-clang-tidy.py.*failed/);
   assert.ok(commands.some(command => command.includes('clang-format --dry-run --Werror')));
   assert.ok(commands.some(command => command.includes('ctest --preset debug')));
-  assert.ok(commands.some(command => command.includes('INKSTOW_BUILD_WEBVIEW=ON')));
+  assert.ok(commands.some(command => command.includes('cmake --preset debug')));
+  assert.ok(commands.some(command => command.includes('--target inkstow-webview unit-tests vault-inspect')));
   await assert.rejects(mustExec({ exec: async () => ({ stdout: '', stderr: 'error', exitCode: 1 }) }, 'broken'), /failed/);
 });
 
