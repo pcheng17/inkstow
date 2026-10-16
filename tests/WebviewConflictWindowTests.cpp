@@ -589,13 +589,57 @@ int run()
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Note.md').click()");
-    pumpFor(std::chrono::milliseconds(350));
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        observed.clear();
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "text:document.querySelector('.cm-content').textContent,"
+            "ready:!document.querySelector('#follow').disabled && "
+            "!!document.querySelector('#editor [contenteditable=true]')}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Note.md") != std::string::npos &&
+            observed.find("[[image.png]]") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        observed.find("Note.md") != std::string::npos &&
+            observed.find("[[image.png]]") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos,
+        "Note was not ready for native Follow");
+    // Delay just this test's link request so a previous attachment opening cannot satisfy the wait.
+    window.eval(
+        "{const request=window.inkstowRequest;"
+        "window.inkstowRequest=async operation=>{"
+        "if(operation.operation==='link'){"
+        "window.inkstowRequest=request;"
+        "await new Promise(resolve=>setTimeout(resolve,450));}"
+        "return request(operation);};}");
+    openedAttachment.clear();
     window.eval("inkstowFollow()");
     for (int attempt = 0; attempt < 50 && openedAttachment.empty(); ++attempt)
         pumpFor(std::chrono::milliseconds(100));
     check(
         !openedAttachment.empty() && fs::equivalent(openedAttachment, root / "image.png"),
         "Validated attachment did not reach native opener");
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        observed.clear();
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "text:document.querySelector('.cm-content').textContent,"
+            "ready:!document.querySelector('#save').disabled && "
+            "!!document.querySelector('#editor [contenteditable=true]')}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Note.md") != std::string::npos &&
+            observed.find("[[image.png]]") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        observed.find("Note.md") != std::string::npos &&
+            observed.find("[[image.png]]") != std::string::npos &&
+            observed.find("\\\"ready\\\":true") != std::string::npos,
+        "Editor was not ready after native Follow");
     replaceEditor(window, "Menu saved");
     activateMenu(window, "save");
     for (int attempt = 0; attempt < 50 && bytes(note) != "Menu saved"; ++attempt)
