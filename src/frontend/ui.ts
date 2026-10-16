@@ -31,7 +31,7 @@ export function render({ snapshot, controlsLocked, mixedLineEndings, syncFailed,
   setBoolean(form.querySelector('button'), 'disabled', controlsLocked);
   setBoolean(document.querySelector('#pick-vault'), 'disabled', controlsLocked);
   setBoolean(document.querySelector('#create-form button'), 'disabled', controlsLocked);
-  for (const id of ['move', 'trash', 'follow', 'open-attachment']) {
+  for (const id of ['move', 'trash']) {
     setBoolean(document.querySelector(`#${id}`), 'disabled', controlsLocked || !snapshot.path);
   }
   const existing = new Map([...notes.children].map((item) => [item.firstElementChild.textContent, item]));
@@ -91,11 +91,6 @@ export function bindNoteControls({ isLocked, selectedPath, noteAction }) {
     dismissChoices();
     noteAction({ operation: 'trash' }, 'Could not move note to trash.');
   });
-  for (const [id, operation] of [['follow', 'follow'], ['open-attachment', 'attachment']]) {
-    document.querySelector(`#${id}`).addEventListener('click', () => {
-      noteAction({ operation, link: document.querySelector('#link').value }, 'Could not follow link.');
-    });
-  }
   for (const panel of [moveChoice, trashChoice]) {
     panel.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') { event.preventDefault(); dismissChoices(); }
