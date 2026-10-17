@@ -218,6 +218,9 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     const auto& root = temp.mPath;
     const auto note = root / "Note.md";
     put(note, "Base");
+    fs::create_directory(root / "Folder");
+    put(root / "Folder" / "First.md", "First in folder");
+    put(root / "Folder" / "Second.md", "Second in folder");
     struct Shell final : inkstow::webview_shell::ShellServices
     {
         std::string mFolder;
@@ -281,8 +284,65 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     window.eval("document.querySelector('#pick-vault').click()");
     pumpFor(std::chrono::milliseconds(350));
     check(shell.mPickerCalls == 1, "Empty-state button did not invoke the folder picker");
-    window.eval("document.querySelector('#notes button').click()");
-    pumpFor(std::chrono::milliseconds(350));
+    observed.clear();
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({folders:[...document.querySelectorAll('#notes > li > details > "
+            "summary')].map(s=>s.textContent),"
+            "nested:[...document.querySelectorAll('#notes > li > details > ul > li > "
+            "button')].map(b=>b.title),"
+            "root:[...document.querySelectorAll('#notes > li > button')].map(b=>b.title)}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Folder/Second.md") != std::string::npos &&
+            observed.find("Note.md") != std::string::npos)
+            break;
+    }
+    if (observed.find("Folder/Second.md") == std::string::npos)
+        throw std::runtime_error("Real window did not render the folder tree: " + observed);
+    const auto tree =
+        nlohmann::json::parse(nlohmann::json::parse(observed).at(0).get<std::string>());
+    if (tree.at("folders") != nlohmann::json::array({"Folder"}) ||
+        tree.at("nested") != nlohmann::json::array({"Folder/First.md", "Folder/Second.md"}) ||
+        tree.at("root") != nlohmann::json::array({"Note.md"}))
+        throw std::runtime_error(
+            "Real window did not group multiple notes under their folder: " + tree.dump());
+    window.eval("document.querySelector('#notes summary').click()");
+    window.eval(
+        "probe(JSON.stringify({open:document.querySelector('#notes details').open,"
+        "visible:document.querySelector('#notes button[title=\"Folder/First.md\"]')"
+        ".getClientRects().length>0}))");
+    pumpFor(std::chrono::milliseconds(150));
+    if (nlohmann::json::parse(observed).at(0) != R"({"open":false,"visible":false})")
+        throw std::runtime_error("Closing a folder did not hide its notes: " + observed);
+    window.eval("document.querySelector('#notes summary').click()");
+    window.eval(
+        "probe(JSON.stringify({open:document.querySelector('#notes details').open,"
+        "visible:document.querySelector('#notes button[title=\"Folder/First.md\"]')"
+        ".getClientRects().length>0}))");
+    pumpFor(std::chrono::milliseconds(150));
+    check(
+        nlohmann::json::parse(observed).at(0) == R"({"open":true,"visible":true})",
+        "Reopening a folder did not show its notes");
+    window.eval("document.querySelector('#notes button[title=\"Folder/Second.md\"]').click()");
+    waitForEditorReady(window, observed, "Selecting a nested note");
+    check(
+        observed.find("Folder/Second.md") != std::string::npos,
+        "Nested note did not open at its full path");
+    window.eval("document.querySelector('#notes > li > button[title=\"Note.md\"]').click()");
+    observed.clear();
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
+            "editable:!!document.querySelector('#editor [contenteditable=true]')}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("\\\"title\\\":\\\"Note.md\\\"") != std::string::npos &&
+            observed.find("\\\"editable\\\":true") != std::string::npos)
+            break;
+    }
+    check(
+        observed.find("\\\"title\\\":\\\"Note.md\\\"") != std::string::npos &&
+            observed.find("\\\"editable\\\":true") != std::string::npos,
+        "Root note did not open");
     replaceEditor(window, "Mine");
     put(note, "Outside");
     window.eval("window.dispatchEvent(new Event('focus'));");

@@ -884,6 +884,7 @@ test('notes are grouped into collapsible nested folders with full-path selection
       .map((button) => button.getAttribute('aria-label')), ['A/First.md', 'B/First.md']);
     a.querySelector('summary').click();
     assert.equal(a.open, false);
+    assert.equal(ui.dom.window.getComputedStyle(a.querySelector('ul')).display, 'none');
     assert.notEqual(ui.dom.window.getComputedStyle(icon).transform, 'rotate(90deg)');
     await ui.select('B/First.md');
     assert.equal(ui.calls.at(-1).path, 'B/First.md');
