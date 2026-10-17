@@ -43,6 +43,7 @@ target_include_directories(inkstow-webview PRIVATE "${PROJECT_BINARY_DIR}/genera
 target_link_libraries(inkstow-webview PRIVATE webview-bridge webview-watch webview::core_static inkstow-warnings)
 if(APPLE)
   set_target_properties(inkstow-webview PROPERTIES MACOSX_BUNDLE TRUE
+                                               MACOSX_BUNDLE_GUI_IDENTIFIER io.github.pcheng17.inkstow
                                                OUTPUT_NAME Inkstow
                                                OBJCXX_STANDARD 20
                                                OBJCXX_STANDARD_REQUIRED ON)
