@@ -33,6 +33,10 @@ if(APPLE OR WIN32 OR XVFB_RUN_EXECUTABLE)
   target_include_directories(inkstow-tests PRIVATE "${PROJECT_BINARY_DIR}/generated")
   target_link_libraries(inkstow-tests PRIVATE webview::core_static ${DESKTOP_WINDOW_LIBRARIES})
   if(APPLE)
+    add_test(NAME macos-bundle-picker-metadata
+             COMMAND "${CMAKE_COMMAND}"
+                     "-DINFO_PLIST=$<TARGET_BUNDLE_DIR:inkstow-webview>/Contents/Info.plist"
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/CheckMacBundle.cmake")
     target_sources(inkstow-tests PRIVATE WebviewDesktopMac.mm)
     target_link_libraries(inkstow-tests PRIVATE "-framework AppKit")
     set_target_properties(inkstow-tests PROPERTIES OBJCXX_STANDARD 17
