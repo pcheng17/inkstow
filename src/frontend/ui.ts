@@ -12,6 +12,81 @@ export function showError(message, missingVaultError) {
   if (error.hidden !== !text) error.hidden = !text;
 }
 
+function syncNotes(list, branch, selectedPath, controlsLocked, changeNote) {
+  const existing = new Map([...list.children].map((item) => [item.dataset.key, item]));
+  const entries = [
+    ...[...branch.folders].sort(([a], [b]) => a.localeCompare(b)).map(([name, child]) => ({ name, child })),
+    ...branch.files.sort().map((path) => ({ path })),
+  ];
+  const keys = new Set(entries.map((entry) => entry.child ? `folder:${entry.child.path}` : `note:${entry.path}`));
+  for (const [key, item] of existing) if (!keys.has(key)) { item.remove(); existing.delete(key); }
+  entries.forEach((entry, index) => {
+    const key = entry.child ? `folder:${entry.child.path}` : `note:${entry.path}`;
+    let item = existing.get(key);
+    if (!item) {
+      item = document.createElement('li');
+      item.dataset.key = key;
+      if (entry.child) {
+        const details = document.createElement('details');
+        details.open = true;
+        const summary = document.createElement('summary');
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 16 16');
+        icon.setAttribute('aria-hidden', 'true');
+        const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        chevron.setAttribute('d', 'M6 3.5 10.5 8 6 12.5');
+        icon.append(chevron);
+        summary.append(icon, document.createTextNode(entry.name));
+        const children = document.createElement('ul');
+        details.append(summary, children);
+        item.append(details);
+      } else {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = entry.path.split('/').at(-1);
+        button.setAttribute('aria-label', entry.path);
+        button.title = entry.path;
+        button.addEventListener('click', () => changeNote(entry.path));
+        item.append(button);
+      }
+    }
+    if (entry.child) {
+      syncNotes(item.firstElementChild.lastElementChild, entry.child, selectedPath, controlsLocked, changeNote);
+    } else {
+      const button = item.firstElementChild;
+      const selected = String(entry.path === selectedPath);
+      if (button.getAttribute('aria-current') !== selected) button.setAttribute('aria-current', selected);
+      setBoolean(button, 'disabled', controlsLocked);
+    }
+    if (list.children[index] !== item) list.insertBefore(item, list.children[index] || null);
+  });
+}
+
+function renderNotes(paths, selectedPath, controlsLocked, changeNote) {
+  const root = { folders: new Map(), files: [], path: '' };
+  for (const path of paths) {
+    const parts = path.split('/');
+    let branch = root;
+    for (const name of parts.slice(0, -1)) {
+      if (!branch.folders.has(name)) {
+        branch.folders.set(name, { folders: new Map(), files: [], path: branch.path ? `${branch.path}/${name}` : name });
+      }
+      branch = branch.folders.get(name);
+    }
+    branch.files.push(path);
+  }
+  const previous = notes.dataset.selectedPath || '';
+  syncNotes(notes, root, selectedPath, controlsLocked, changeNote);
+  // A selection made via a link or move must be visible even if its folder was collapsed.
+  if (selectedPath && selectedPath !== previous) {
+    const selected = [...notes.querySelectorAll('button')].find((button) => button.title === selectedPath);
+    for (let parent = selected?.parentElement; parent && parent !== notes; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    }
+  }
+  if (previous !== selectedPath) notes.dataset.selectedPath = selectedPath;
+}
+
 export function render({ snapshot, controlsLocked, syncFailed, content, changeNote }) {
   setBoolean(document.querySelector('#empty-vault'), 'hidden', snapshot.vaultOpen);
   setBoolean(document.querySelector('main'), 'hidden', !snapshot.vaultOpen);
@@ -28,25 +103,7 @@ export function render({ snapshot, controlsLocked, syncFailed, content, changeNo
   for (const id of ['move', 'trash']) {
     setBoolean(document.querySelector(`#${id}`), 'disabled', controlsLocked || !snapshot.path);
   }
-  const existing = new Map([...notes.children].map((item) => [item.firstElementChild.textContent, item]));
-  const paths = new Set(snapshot.notes);
-  for (const [path, item] of existing) if (!paths.has(path)) item.remove();
-  snapshot.notes.forEach((path, index) => {
-    let item = existing.get(path);
-    if (!item) {
-      item = document.createElement('li');
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = path;
-      button.addEventListener('click', () => changeNote(path));
-      item.append(button);
-    }
-    const button = item.firstElementChild;
-    const selected = String(path === snapshot.path);
-    if (button.getAttribute('aria-current') !== selected) button.setAttribute('aria-current', selected);
-    setBoolean(button, 'disabled', controlsLocked);
-    if (notes.children[index] !== item) notes.insertBefore(item, notes.children[index] || null);
-  });
+  renderNotes(snapshot.notes, snapshot.path, controlsLocked, changeNote);
 }
 
 export function bindNoteControls({ isLocked, selectedPath, noteAction }) {

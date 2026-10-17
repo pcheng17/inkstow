@@ -1,7 +1,8 @@
 * { box-sizing: border-box; }
-body { margin: 0; color: #242730; background: #f7f8fa; font: 15px/1.5 system-ui, sans-serif; }
+body { margin: 0; color: #242730; background: #f7f8fa; font: 14px/1.5 system-ui, sans-serif; }
 #empty-vault { height: 100vh; min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 #empty-vault[hidden], main[hidden] { display: none; }
+button, input { font: inherit; color: inherit; }
 button { cursor: pointer; padding: 6px 12px; }
 button:disabled { cursor: default; }
 main { display: flex; height: 100vh; min-height: 320px; }
@@ -10,8 +11,19 @@ h2 { margin: 0 0 10px; font-size: 1rem; }
 ul { list-style: none; padding: 0; margin: 0; }
 #create-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 #create-form input, #move-path { min-width: 0; padding: 6px; }
-#notes button { width: 100%; border: 0; background: transparent; text-align: left; overflow-wrap: anywhere; }
-#notes button:hover, #notes button[aria-current="true"] { background: #dce5f5; }
+#notes { color: #5d636b; }
+#notes ul { margin-left: 9px; padding-left: 10px; border-left: 1px solid #c8d0de; }
+#notes summary, #notes button { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+#notes summary { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 12px; list-style: none; }
+#notes summary::-webkit-details-marker { display: none; }
+#notes summary svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 160ms ease-in-out; }
+#notes details[open] > summary svg { transform: rotate(90deg); }
+#notes details:not([open]) > ul { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  #notes summary svg { transition: none; }
+}
+#notes button { width: 100%; border: 0; background: transparent; text-align: left; }
+#notes summary:hover, #notes button:hover, #notes button[aria-current="true"] { background: #dce5f5; }
 #workspace { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #c8d0de; }
 #title { font-weight: 600; overflow-wrap: anywhere; }
