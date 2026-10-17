@@ -11,7 +11,7 @@ ul { list-style: none; padding: 0; margin: 0; }
 #create-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 #create-form input, #move-path { min-width: 0; padding: 6px; }
 #notes ul { margin-left: 9px; padding-left: 10px; border-left: 1px solid #c8d0de; }
-#notes summary, #notes button { font: inherit; line-height: inherit; overflow-wrap: anywhere; }
+#notes summary, #notes button { font: 13px/1.5 system-ui, sans-serif; overflow-wrap: anywhere; }
 #notes summary { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 12px; list-style: none; }
 #notes summary::-webkit-details-marker { display: none; }
 #notes summary svg { width: 16px; height: 16px; flex: none; fill: #526780; }
