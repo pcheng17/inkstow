@@ -197,6 +197,32 @@ void waitForEditorReady(webview::webview& window, std::string& observed, const c
     throw std::runtime_error(std::string(action) + " did not unlock the editor: " + observed);
 }
 
+void waitForEditorState(
+    webview::webview& window,
+    std::string& observed,
+    std::string_view expectedText,
+    bool expectedDirty,
+    bool expectedConflict,
+    const char* action)
+{
+    observed.clear();
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        window.eval(
+            "probe(JSON.stringify({text:document.querySelector('.cm-content').textContent,"
+            "dirty:!document.querySelector('#dirty').hidden,"
+            "conflict:!document.querySelector('#conflict').hidden}))");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("\\\"text\\\"") == std::string::npos) continue;
+        const auto state =
+            nlohmann::json::parse(nlohmann::json::parse(observed).at(0).get<std::string>());
+        if (state.at("text") == expectedText && state.at("dirty") == expectedDirty &&
+            state.at("conflict") == expectedConflict)
+            return;
+    }
+    throw std::runtime_error(
+        std::string(action) + " did not reach the expected state: " + observed);
+}
+
 void replaceEditor(webview::webview& window, const std::string& text)
 {
     // Update the editable line and dispatch input through CodeMirror's real DOM observer.
@@ -424,19 +450,18 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
 
     put(note, "Baseline");
     window.eval("window.dispatchEvent(new Event('focus'))");
-    pumpFor(std::chrono::milliseconds(350));
+    waitForEditorState(window, observed, "Baseline", false, false, "Baseline reload");
     replaceEditor(window, "Local for keep");
+    waitForEditorState(window, observed, "Local for keep", true, false, "Local edit");
     put(note, "Outside keep");
     window.eval("window.dispatchEvent(new Event('focus'))");
-    pumpFor(std::chrono::milliseconds(350));
-    window.eval(
-        "probe(JSON.stringify({text:document.querySelector('.cm-content').textContent,"
-        "conflict:!document.querySelector('#conflict').hidden}))");
-    pumpFor(std::chrono::milliseconds(150));
-    check(
-        observed.find("Local for keep") != std::string::npos &&
-            observed.find("\\\"conflict\\\":true") != std::string::npos,
-        "Outside change lost unsaved edits before Keep mine");
+    waitForEditorState(
+        window,
+        observed,
+        "Local for keep",
+        true,
+        true,
+        "Outside change before Keep mine");
     // The visible button remains enabled while refresh locks the editor. Click before
     // the refresh bridge reply, as a user can when the native bridge is slow.
     window.eval("window.inkstowRefresh();document.querySelector('#keep-mine').click()");
