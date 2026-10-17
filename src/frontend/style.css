@@ -10,8 +10,10 @@ h2 { margin: 0 0 10px; font-size: 1rem; }
 ul { list-style: none; padding: 0; margin: 0; }
 #create-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 #create-form input, #move-path { min-width: 0; padding: 6px; }
+#notes ul { margin-left: 9px; padding-left: 10px; border-left: 1px solid #c8d0de; }
+#notes summary { cursor: pointer; padding: 6px 0; overflow-wrap: anywhere; }
 #notes button { width: 100%; border: 0; background: transparent; text-align: left; overflow-wrap: anywhere; }
-#notes button:hover, #notes button[aria-current="true"] { background: #dce5f5; }
+#notes summary:hover, #notes button:hover, #notes button[aria-current="true"] { background: #dce5f5; }
 #workspace { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #c8d0de; }
 #title { font-weight: 600; overflow-wrap: anywhere; }

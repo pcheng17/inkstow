@@ -201,7 +201,7 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
     await pause();
   }
   async function select(name) {
-    [...document.querySelectorAll('#notes button')].find((button) => button.textContent === name).click();
+    [...document.querySelectorAll('#notes button')].find((button) => button.title === name).click();
     await pause();
   }
   async function type(text) {
@@ -852,6 +852,65 @@ test('refresh removes an early note without moving surviving buttons', async () 
     assert.deepEqual([...ui.document.querySelectorAll('#notes button')].map((b) => b.textContent), ['Other.md']);
     assert.equal(ui.document.querySelector('#notes button'), survivor);
     assert.deepEqual(moved, []);
+  } finally { ui.dom.window.close(); }
+});
+
+test('notes are grouped into collapsible nested folders with full-path selection', async () => {
+  const ui = await setup({
+    'Root.md': Buffer.from('Root'), 'B/Second.md': Buffer.from('Second'),
+    'A/First.md': Buffer.from('First'), 'A/Nested/Deep.md': Buffer.from('Deep'),
+    'B/First.md': Buffer.from('Other first'),
+  });
+  try {
+    await ui.open();
+    const list = ui.document.querySelector('#notes');
+    assert.deepEqual([...list.children].map((item) => item.querySelector('summary')?.textContent || item.querySelector('button').textContent),
+      ['A', 'B', 'Root.md']);
+    const a = list.children[0].querySelector('details');
+    assert.deepEqual([...a.querySelector('ul').children].map((item) => item.querySelector('summary')?.textContent || item.querySelector('button').textContent),
+      ['Nested', 'First.md']);
+    assert.deepEqual([...list.querySelectorAll('button')].map((button) => button.title),
+      ['A/Nested/Deep.md', 'A/First.md', 'B/First.md', 'B/Second.md', 'Root.md']);
+    assert.deepEqual([...list.querySelectorAll('button')].filter((button) => button.textContent === 'First.md')
+      .map((button) => button.getAttribute('aria-label')), ['A/First.md', 'B/First.md']);
+    a.querySelector('summary').click();
+    assert.equal(a.open, false);
+    await ui.select('B/First.md');
+    assert.equal(ui.calls.at(-1).path, 'B/First.md');
+    assert.equal(ui.document.querySelector('#title').textContent, 'B/First.md');
+    assert.equal(a.open, false);
+    await ui.select('A/Nested/Deep.md');
+    assert.equal(a.open, true);
+    assert.equal(a.querySelector('details').open, true);
+    assert.equal([...list.querySelectorAll('button')].find((button) => button.title === 'A/Nested/Deep.md').getAttribute('aria-current'), 'true');
+  } finally { ui.dom.window.close(); }
+});
+
+test('folder collapse and note identity survive refresh; empty folders disappear', async () => {
+  const ui = await setup({ 'Root.md': Buffer.from('Root'), 'Folder/Keep.md': Buffer.from('Keep'),
+    'Folder/Nested/Old.md': Buffer.from('Old') });
+  try {
+    await ui.open();
+    const list = ui.document.querySelector('#notes');
+    const folder = list.querySelector('details');
+    const kept = [...list.querySelectorAll('button')].find((button) => button.title === 'Folder/Keep.md');
+    folder.querySelector('summary').click();
+    ui.disk.set('Folder/Nested/New.md', Buffer.from('New'));
+    ui.disk.delete('Folder/Nested/Old.md');
+    await ui.dom.window.inkstowRefresh();
+    assert.equal(list.querySelector('details'), folder);
+    assert.equal(folder.open, false);
+    assert.equal([...list.querySelectorAll('button')].find((button) => button.title === 'Folder/Keep.md'), kept);
+    assert.deepEqual([...list.querySelectorAll('button')].map((button) => button.title),
+      ['Folder/Nested/New.md', 'Folder/Keep.md', 'Root.md']);
+    ui.disk.delete('Folder/Nested/New.md');
+    await ui.dom.window.inkstowRefresh();
+    assert.equal(list.querySelectorAll('details').length, 1);
+    assert.equal(folder.open, false);
+    ui.disk.delete('Folder/Keep.md');
+    await ui.dom.window.inkstowRefresh();
+    assert.equal(list.querySelectorAll('details').length, 0);
+    assert.deepEqual([...list.querySelectorAll('button')].map((button) => button.title), ['Root.md']);
   } finally { ui.dom.window.close(); }
 });
 
