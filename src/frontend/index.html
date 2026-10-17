@@ -19,13 +19,14 @@
       <form id="create-form"><label for="new-path">New note path</label><input id="new-path" required autocomplete="off"><button type="submit">Create note</button></form>
       <ul id="notes"></ul>
     </aside>
+    <div id="note-menu" role="menu" aria-label="Note actions" hidden><button id="note-menu-rename" type="button" role="menuitem">Rename</button></div>
     <section id="workspace" aria-label="Editor">
-      <div class="toolbar"><span id="title">No note selected</span><span id="dirty" aria-label="Unsaved changes" hidden>● Unsaved</span><button id="move" type="button" disabled>Rename or move</button><button id="trash" type="button" disabled>Move to trash</button></div>
-      <div id="move-choice" class="decision" role="group" aria-label="Rename or move note" hidden>
-        <label for="move-path">New note path (existing folder)</label><input id="move-path" autocomplete="off">
-        <button id="move-with-links" type="button">Move and update links</button>
-        <button id="move-without-links" type="button">Move without updating links (links may break)</button>
-        <button id="move-cancel" type="button">Cancel move</button>
+      <div class="toolbar"><span id="title">No note selected</span><span id="dirty" aria-label="Unsaved changes" hidden>● Unsaved</span><button id="trash" type="button" disabled>Move to trash</button></div>
+      <div id="rename-choice" class="decision" role="group" aria-label="Rename note" hidden>
+        <label for="rename-name">New note name</label><input id="rename-name" autocomplete="off">
+        <button id="rename-with-links" type="button">Rename and update links</button>
+        <button id="rename-without-links" type="button">Rename without updating links (links may break)</button>
+        <button id="rename-cancel" type="button">Cancel rename</button>
       </div>
       <div id="trash-choice" class="decision" role="group" aria-label="Confirm move to system trash" hidden>
         <span>Move this note to system trash?</span><button id="trash-confirm" type="button">Confirm move to trash</button><button id="trash-cancel" type="button">Cancel trash</button>

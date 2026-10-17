@@ -656,29 +656,35 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     pumpFor(std::chrono::milliseconds(350));
     check(fs::exists(root / "Fresh.md"), "Create control did not create note");
     window.eval(
-        "document.querySelector('#move').click();"
-        "document.querySelector('#move-path').value='Cancelled';"
-        "document.querySelector('#move-cancel').click()");
+        "document.querySelector('#notes button[aria-current=true]')"
+        ".dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));"
+        "document.querySelector('#note-menu-rename').click();"
+        "document.querySelector('#rename-name').value='Cancelled';"
+        "document.querySelector('#rename-cancel').click()");
     pumpFor(std::chrono::milliseconds(150));
-    check(!fs::exists(root / "Cancelled.md"), "Cancelled move wrote a note");
+    check(!fs::exists(root / "Cancelled.md"), "Cancelled rename wrote a note");
     window.eval(
-        "document.querySelector('#move').click();"
-        "document.querySelector('#move-path').value='Moved';"
-        "document.querySelector('#move-without-links').click()");
+        "document.querySelector('#notes button[aria-current=true]')"
+        ".dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));"
+        "document.querySelector('#note-menu-rename').click();"
+        "document.querySelector('#rename-name').value='Updated';"
+        "document.querySelector('#rename-without-links').click()");
     pumpFor(std::chrono::milliseconds(350));
-    check(fs::exists(root / "Moved.md") && !fs::exists(root / "Fresh.md"), "Move failed");
+    check(fs::exists(root / "Updated.md") && !fs::exists(root / "Fresh.md"), "Rename failed");
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Target.md').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
-        "document.querySelector('#move').click();"
-        "document.querySelector('#move-path').value='Renamed';"
-        "document.querySelector('#move-with-links').click()");
+        "document.querySelector('#notes button[aria-current=true]')"
+        ".dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));"
+        "document.querySelector('#note-menu-rename').click();"
+        "document.querySelector('#rename-name').value='Renamed';"
+        "document.querySelector('#rename-with-links').click()");
     pumpFor(std::chrono::milliseconds(350));
     check(
         bytes(root / "Source.md").find("[[/Renamed]]") != std::string::npos,
-        "Move with links did not rewrite supported link");
+        "Rename with links did not rewrite supported link");
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Source.md').click()");

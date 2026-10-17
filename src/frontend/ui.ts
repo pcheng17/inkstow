@@ -45,6 +45,7 @@ function syncNotes(list, branch, selectedPath, controlsLocked, changeNote) {
         button.type = 'button';
         button.textContent = entry.path.split('/').at(-1);
         button.setAttribute('aria-label', entry.path);
+        button.setAttribute('aria-haspopup', 'menu');
         button.title = entry.path;
         button.addEventListener('click', () => changeNote(entry.path));
         item.append(button);
@@ -100,26 +101,69 @@ export function render({ snapshot, controlsLocked, syncFailed, content, changeNo
   for (const button of document.querySelectorAll('.decision button')) setBoolean(button, 'disabled', controlsLocked);
   setBoolean(document.querySelector('#pick-vault'), 'disabled', controlsLocked);
   setBoolean(document.querySelector('#create-form button'), 'disabled', controlsLocked);
-  for (const id of ['move', 'trash']) {
-    setBoolean(document.querySelector(`#${id}`), 'disabled', controlsLocked || !snapshot.path);
-  }
+  setBoolean(document.querySelector('#trash'), 'disabled', controlsLocked || !snapshot.path);
+  const menu = document.querySelector('#note-menu');
+  if (!menu.hidden && !snapshot.notes.includes(menu.dataset.path)) menu.hidden = true;
+  const renameChoice = document.querySelector('#rename-choice');
+  if (!renameChoice.hidden && renameChoice.dataset.path !== snapshot.path) renameChoice.hidden = true;
   renderNotes(snapshot.notes, snapshot.path, controlsLocked, changeNote);
 }
 
-export function bindNoteControls({ isLocked, selectedPath, noteAction }) {
+export function bindNoteControls({ isLocked, selectedPath, selectNote, noteAction, showError }) {
   document.querySelector('#create-form').addEventListener('submit', (event) => {
     event.preventDefault();
     noteAction({ operation: 'create', path: document.querySelector('#new-path').value }, 'Could not create note.');
   });
-  const moveChoice = document.querySelector('#move-choice');
+  const renameChoice = document.querySelector('#rename-choice');
   const trashChoice = document.querySelector('#trash-choice');
-  function dismissChoices() { moveChoice.hidden = true; trashChoice.hidden = true; }
-  document.querySelector('#move').addEventListener('click', () => {
+  const menu = document.querySelector('#note-menu');
+  const noteList = document.querySelector('#notes');
+  function dismissChoices() { renameChoice.hidden = true; trashChoice.hidden = true; }
+  function dismissMenu(restoreFocus = false) {
+    if (!menu.hidden) menu.hidden = true;
+    if (restoreFocus) [...noteList.querySelectorAll('button')]
+      .find((button) => button.title === menu.dataset.path)?.focus();
+  }
+  function showMenu(button, x, y) {
+    if (isLocked() || button.disabled) return;
+    menu.dataset.path = button.title;
+    menu.setAttribute('aria-label', `Note actions for ${button.title}`);
+    menu.hidden = false;
+    menu.style.left = `${Math.max(0, Math.min(x, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(0, Math.min(y, window.innerHeight - menu.offsetHeight - 8))}px`;
+    document.querySelector('#note-menu-rename').focus();
+  }
+  noteList.addEventListener('contextmenu', (event) => {
+    const button = event.target.closest('button');
+    if (!button || !noteList.contains(button)) return;
+    event.preventDefault();
+    showMenu(button, event.clientX, event.clientY);
+  });
+  noteList.addEventListener('keydown', (event) => {
+    if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+    const button = event.target.closest('button');
+    if (!button || !noteList.contains(button)) return;
+    event.preventDefault();
+    const rect = button.getBoundingClientRect();
+    showMenu(button, rect.left, rect.bottom);
+  });
+  document.addEventListener('click', (event) => {
+    if (!menu.contains(event.target)) dismissMenu();
+  });
+  menu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); dismissMenu(true); }
+  });
+  document.querySelector('#note-menu-rename').addEventListener('click', async () => {
+    const path = menu.dataset.path;
+    dismissMenu();
     if (isLocked()) return;
+    if (path !== selectedPath()) await selectNote(path);
+    if (isLocked() || selectedPath() !== path) { dismissMenu(true); return; }
     dismissChoices();
-    document.querySelector('#move-path').value = selectedPath();
-    moveChoice.hidden = false;
-    document.querySelector('#move-path').focus();
+    renameChoice.dataset.path = path;
+    document.querySelector('#rename-name').value = path.split('/').at(-1);
+    renameChoice.hidden = false;
+    document.querySelector('#rename-name').focus();
   });
   document.querySelector('#trash').addEventListener('click', () => {
     if (isLocked()) return;
@@ -127,14 +171,22 @@ export function bindNoteControls({ isLocked, selectedPath, noteAction }) {
     trashChoice.hidden = false;
     document.querySelector('#trash-confirm').focus();
   });
-  document.querySelector('#move-cancel').addEventListener('click', dismissChoices);
+  document.querySelector('#rename-cancel').addEventListener('click', dismissChoices);
   document.querySelector('#trash-cancel').addEventListener('click', dismissChoices);
-  for (const [id, updateLinks] of [['move-with-links', true], ['move-without-links', false]]) {
+  for (const [id, updateLinks] of [['rename-with-links', true], ['rename-without-links', false]]) {
     document.querySelector(`#${id}`).addEventListener('click', () => {
       if (isLocked()) return;
-      const path = document.querySelector('#move-path').value;
+      const original = renameChoice.dataset.path;
+      if (selectedPath() !== original) { dismissChoices(); return; }
+      const name = document.querySelector('#rename-name').value.trim();
+      if (!name || name.startsWith('.') || /[/\\]/.test(name)) {
+        showError('Enter a note name without folders or path separators.');
+        document.querySelector('#rename-name').focus();
+        return;
+      }
+      const path = original.slice(0, original.lastIndexOf('/') + 1) + name;
       dismissChoices();
-      noteAction({ operation: 'move', path, updateLinks }, 'Could not move note.');
+      noteAction({ operation: 'move', path, updateLinks }, 'Could not rename note.');
     });
   }
   document.querySelector('#trash-confirm').addEventListener('click', () => {
@@ -142,12 +194,13 @@ export function bindNoteControls({ isLocked, selectedPath, noteAction }) {
     dismissChoices();
     noteAction({ operation: 'trash' }, 'Could not move note to trash.');
   });
-  for (const panel of [moveChoice, trashChoice]) {
+  for (const panel of [renameChoice, trashChoice]) {
     panel.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') { event.preventDefault(); dismissChoices(); }
-      if (event.key === 'Enter' && panel === moveChoice && event.target.id === 'move-path') {
-        event.preventDefault(); document.querySelector('#move-with-links').click();
+      if (event.key === 'Enter' && panel === renameChoice && event.target.id === 'rename-name') {
+        event.preventDefault(); document.querySelector('#rename-with-links').click();
       }
     });
   }
+  return dismissMenu;
 }
