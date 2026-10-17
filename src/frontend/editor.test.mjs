@@ -867,7 +867,10 @@ test('notes are grouped into collapsible nested folders with full-path selection
     assert.deepEqual([...list.children].map((item) => item.querySelector('summary')?.textContent || item.querySelector('button').textContent),
       ['A', 'B', 'Root.md']);
     const a = list.children[0].querySelector('details');
-    assert.equal(a.querySelector('summary svg').getAttribute('aria-hidden'), 'true');
+    const icon = a.querySelector('summary svg');
+    assert.equal(icon.getAttribute('aria-hidden'), 'true');
+    assert.equal(ui.dom.window.getComputedStyle(icon.querySelector('.folder-closed')).display, 'none');
+    assert.notEqual(ui.dom.window.getComputedStyle(icon.querySelector('.folder-open')).display, 'none');
     assert.equal(a.querySelector('summary').textContent, 'A');
     assert.deepEqual([...a.querySelector('ul').children].map((item) => item.querySelector('summary')?.textContent || item.querySelector('button').textContent),
       ['Nested', 'First.md']);
@@ -877,6 +880,8 @@ test('notes are grouped into collapsible nested folders with full-path selection
       .map((button) => button.getAttribute('aria-label')), ['A/First.md', 'B/First.md']);
     a.querySelector('summary').click();
     assert.equal(a.open, false);
+    assert.equal(ui.dom.window.getComputedStyle(icon.querySelector('.folder-open')).display, 'none');
+    assert.notEqual(ui.dom.window.getComputedStyle(icon.querySelector('.folder-closed')).display, 'none');
     await ui.select('B/First.md');
     assert.equal(ui.calls.at(-1).path, 'B/First.md');
     assert.equal(ui.document.querySelector('#title').textContent, 'B/First.md');
