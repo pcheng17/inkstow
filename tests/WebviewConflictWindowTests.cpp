@@ -215,7 +215,7 @@ void waitForEditorState(
         if (observed.find("\\\"text\\\"") == std::string::npos) continue;
         const auto state =
             nlohmann::json::parse(nlohmann::json::parse(observed).at(0).get<std::string>());
-        if (state.at("text") == expectedText && state.at("dirty") == expectedDirty &&
+        if (state.at("text") == std::string(expectedText) && state.at("dirty") == expectedDirty &&
             state.at("conflict") == expectedConflict)
             return;
     }
