@@ -656,13 +656,17 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     pumpFor(std::chrono::milliseconds(350));
     check(fs::exists(root / "Fresh.md"), "Create control did not create note");
     window.eval(
-        "document.querySelector('#move').click();"
+        "document.querySelector('#notes button[aria-current=true]')"
+        ".dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));"
+        "document.querySelector('#note-menu-move').click();"
         "document.querySelector('#move-path').value='Cancelled';"
         "document.querySelector('#move-cancel').click()");
     pumpFor(std::chrono::milliseconds(150));
     check(!fs::exists(root / "Cancelled.md"), "Cancelled move wrote a note");
     window.eval(
-        "document.querySelector('#move').click();"
+        "document.querySelector('#notes button[aria-current=true]')"
+        ".dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));"
+        "document.querySelector('#note-menu-move').click();"
         "document.querySelector('#move-path').value='Moved';"
         "document.querySelector('#move-without-links').click()");
     pumpFor(std::chrono::milliseconds(350));
@@ -672,7 +676,9 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         ".find(b=>b.textContent==='Target.md').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
-        "document.querySelector('#move').click();"
+        "document.querySelector('#notes button[aria-current=true]')"
+        ".dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));"
+        "document.querySelector('#note-menu-move').click();"
         "document.querySelector('#move-path').value='Renamed';"
         "document.querySelector('#move-with-links').click()");
     pumpFor(std::chrono::milliseconds(350));

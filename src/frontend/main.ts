@@ -80,6 +80,7 @@ function lockForAction() {
 
 async function navigate(operation) {
   if (locked) return;
+  dismissNoteMenu();
   // Ignore competing actions and pause editor input without dimming every control.
   // The new note replaces the visible one only after the bridge replies.
   if (operation.operation === 'startup') setLocked(true, false);
@@ -106,7 +107,7 @@ async function navigate(operation) {
 }
 
 function changeNote(path) {
-  if (path !== snapshot.path) navigate({ operation: 'select', path });
+  if (path !== snapshot.path) return navigate({ operation: 'select', path });
 }
 
 window.inkstowOpenPicker = () => navigate({ operation: 'pickVault' });
@@ -147,7 +148,7 @@ async function noteAction(operation, fallback) {
   setLocked(false);
 }
 
-bindNoteControls({ isLocked: () => locked, selectedPath: () => snapshot.path, noteAction });
+const dismissNoteMenu = bindNoteControls({ isLocked: () => locked, selectedPath: () => snapshot.path, selectNote: changeNote, noteAction });
 
 async function save() {
   if (editor.mixedLineEndings) { showError(mixedEndingsError); return; }

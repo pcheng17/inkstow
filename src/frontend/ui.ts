@@ -45,6 +45,7 @@ function syncNotes(list, branch, selectedPath, controlsLocked, changeNote) {
         button.type = 'button';
         button.textContent = entry.path.split('/').at(-1);
         button.setAttribute('aria-label', entry.path);
+        button.setAttribute('aria-haspopup', 'menu');
         button.title = entry.path;
         button.addEventListener('click', () => changeNote(entry.path));
         item.append(button);
@@ -100,24 +101,64 @@ export function render({ snapshot, controlsLocked, syncFailed, content, changeNo
   for (const button of document.querySelectorAll('.decision button')) setBoolean(button, 'disabled', controlsLocked);
   setBoolean(document.querySelector('#pick-vault'), 'disabled', controlsLocked);
   setBoolean(document.querySelector('#create-form button'), 'disabled', controlsLocked);
-  for (const id of ['move', 'trash']) {
-    setBoolean(document.querySelector(`#${id}`), 'disabled', controlsLocked || !snapshot.path);
-  }
+  setBoolean(document.querySelector('#trash'), 'disabled', controlsLocked || !snapshot.path);
+  const menu = document.querySelector('#note-menu');
+  if (!menu.hidden && !snapshot.notes.includes(menu.dataset.path)) menu.hidden = true;
   renderNotes(snapshot.notes, snapshot.path, controlsLocked, changeNote);
 }
 
-export function bindNoteControls({ isLocked, selectedPath, noteAction }) {
+export function bindNoteControls({ isLocked, selectedPath, selectNote, noteAction }) {
   document.querySelector('#create-form').addEventListener('submit', (event) => {
     event.preventDefault();
     noteAction({ operation: 'create', path: document.querySelector('#new-path').value }, 'Could not create note.');
   });
   const moveChoice = document.querySelector('#move-choice');
   const trashChoice = document.querySelector('#trash-choice');
+  const menu = document.querySelector('#note-menu');
+  const noteList = document.querySelector('#notes');
   function dismissChoices() { moveChoice.hidden = true; trashChoice.hidden = true; }
-  document.querySelector('#move').addEventListener('click', () => {
+  function dismissMenu(restoreFocus = false) {
+    if (!menu.hidden) menu.hidden = true;
+    if (restoreFocus) [...noteList.querySelectorAll('button')]
+      .find((button) => button.title === menu.dataset.path)?.focus();
+  }
+  function showMenu(button, x, y) {
+    if (isLocked() || button.disabled) return;
+    menu.dataset.path = button.title;
+    menu.setAttribute('aria-label', `Note actions for ${button.title}`);
+    menu.hidden = false;
+    menu.style.left = `${Math.max(0, Math.min(x, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(0, Math.min(y, window.innerHeight - menu.offsetHeight - 8))}px`;
+    document.querySelector('#note-menu-move').focus();
+  }
+  noteList.addEventListener('contextmenu', (event) => {
+    const button = event.target.closest('button');
+    if (!button || !noteList.contains(button)) return;
+    event.preventDefault();
+    showMenu(button, event.clientX, event.clientY);
+  });
+  noteList.addEventListener('keydown', (event) => {
+    if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+    const button = event.target.closest('button');
+    if (!button || !noteList.contains(button)) return;
+    event.preventDefault();
+    const rect = button.getBoundingClientRect();
+    showMenu(button, rect.left, rect.bottom);
+  });
+  document.addEventListener('click', (event) => {
+    if (!menu.contains(event.target)) dismissMenu();
+  });
+  menu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); dismissMenu(true); }
+  });
+  document.querySelector('#note-menu-move').addEventListener('click', async () => {
+    const path = menu.dataset.path;
+    dismissMenu();
     if (isLocked()) return;
+    if (path !== selectedPath()) await selectNote(path);
+    if (isLocked() || selectedPath() !== path) { dismissMenu(true); return; }
     dismissChoices();
-    document.querySelector('#move-path').value = selectedPath();
+    document.querySelector('#move-path').value = path;
     moveChoice.hidden = false;
     document.querySelector('#move-path').focus();
   });
@@ -150,4 +191,5 @@ export function bindNoteControls({ isLocked, selectedPath, noteAction }) {
       }
     });
   }
+  return dismissMenu;
 }

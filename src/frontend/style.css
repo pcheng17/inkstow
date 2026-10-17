@@ -24,6 +24,9 @@ ul { list-style: none; padding: 0; margin: 0; }
 }
 #notes button { width: 100%; border: 0; background: transparent; text-align: left; }
 #notes summary:hover, #notes button:hover, #notes button[aria-current="true"] { background: #dce5f5; }
+#note-menu:not([hidden]) { position: fixed; z-index: 6; min-width: 150px; padding: 4px; background: white; border: 1px solid #c8d0de; border-radius: 4px; box-shadow: 0 4px 12px #0003; }
+#note-menu button { width: 100%; border: 0; background: transparent; text-align: left; }
+#note-menu button:hover, #note-menu button:focus { background: #dce5f5; }
 #workspace { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #c8d0de; }
 #title { font-weight: 600; overflow-wrap: anywhere; }
