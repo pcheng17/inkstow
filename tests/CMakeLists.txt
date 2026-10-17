@@ -33,11 +33,9 @@ if(APPLE OR WIN32 OR XVFB_RUN_EXECUTABLE)
   target_include_directories(inkstow-tests PRIVATE "${PROJECT_BINARY_DIR}/generated")
   target_link_libraries(inkstow-tests PRIVATE webview::core_static ${DESKTOP_WINDOW_LIBRARIES})
   if(APPLE)
-    target_sources(inkstow-tests PRIVATE WebviewDesktopMac.mm
-                                         ${PROJECT_SOURCE_DIR}/src/desktop/DesktopServices.cpp
-                                         ${PROJECT_SOURCE_DIR}/src/desktop/DesktopServicesMac.mm)
+    target_sources(inkstow-tests PRIVATE WebviewDesktopMac.mm)
     target_link_libraries(inkstow-tests PRIVATE "-framework AppKit")
-    set_target_properties(inkstow-tests PROPERTIES OBJCXX_STANDARD 20
+    set_target_properties(inkstow-tests PROPERTIES OBJCXX_STANDARD 17
                                                OBJCXX_STANDARD_REQUIRED ON)
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

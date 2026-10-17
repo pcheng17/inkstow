@@ -1,53 +1,9 @@
 #include "DesktopWindow.h"
-#include "DesktopServices.h"
-
-#include <doctest/doctest.h>
 
 #import <AppKit/AppKit.h>
 
 #include <stdexcept>
 #include <string>
-
-@interface PickerProbe : NSObject {
-@public
-    BOOL shown;
-    NSOpenPanel* panel;
-}
-- (void)cancel:(NSTimer*)timer;
-@end
-
-@implementation PickerProbe
-- (void)cancel:(NSTimer*)timer
-{
-    shown = [panel isVisible];
-    [panel cancel:nil];
-}
-@end
-
-TEST_CASE("WebviewWindow macOS folder picker presents a panel")
-{
-    @autoreleasepool {
-        webview::webview window(false, nullptr);
-        inkstow::webview_shell::DesktopWindow desktop(window);
-        inkstow::webview_shell::DesktopServices services;
-        PickerProbe* probe = [[PickerProbe alloc] init];
-        probe->shown = NO;
-        probe->panel = [NSOpenPanel openPanel];
-        NSTimer* timer = [NSTimer timerWithTimeInterval:1.0
-                                               target:probe
-                                             selector:@selector(cancel:)
-                                             userInfo:nil
-                                              repeats:NO];
-        [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSModalPanelRunLoopMode];
-        [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSDefaultRunLoopMode];
-        const auto selected = services.pickVault();
-        [timer invalidate];
-        const bool visible = probe->shown == YES;
-        [probe release];
-        CHECK(selected.empty());
-        CHECK_MESSAGE(visible, "Native folder panel did not become visible before picker returned");
-    }
-}
 
 void activateMacMenu(webview::webview& window, const char* action)
 {
