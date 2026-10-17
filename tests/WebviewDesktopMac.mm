@@ -9,7 +9,14 @@ void activateMacMenu(webview::webview& window, const char* action)
 {
     @autoreleasepool {
         const std::string name(action);
-        NSString* key = name == "open" ? @"o" : name == "save" ? @"s" : @"q";
+        NSString* key = name == "open" ? @"o" : name == "save" ? @"s" : name == "undo" ? @"z" : @"q";
+        if (name == "undo") {
+            NSMenuItem* edit = [[NSApp mainMenu] itemAtIndex:2];
+            if (![[[edit submenu] title] isEqualToString:@"Edit"] ||
+                [[edit submenu] numberOfItems] != 1 ||
+                ![[[[edit submenu] itemAtIndex:0] title] isEqualToString:@"Undo"])
+                throw std::runtime_error("Native Edit menu must contain only Undo");
+        }
         auto* native = static_cast<NSWindow*>(window.window().value());
         NSEvent* event = [NSEvent keyEventWithType:NSEventTypeKeyDown
                                          location:NSZeroPoint

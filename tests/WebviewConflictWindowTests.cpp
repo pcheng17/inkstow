@@ -125,17 +125,25 @@ void clickDecision(webview::webview& window, const char* selector)
 
 void activateMenu(webview::webview& window, const char* action)
 {
-    constexpr std::array<std::string_view, 3> kActions = {"open", "save", "quit"};
+    constexpr std::array<std::string_view, 4> kActions = {"open", "save", "quit", "undo"};
     const auto index = std::find(kActions.begin(), kActions.end(), action) - kActions.begin();
     check(index < static_cast<std::ptrdiff_t>(kActions.size()), "Unknown native menu action");
 #if defined(__APPLE__)
     activateMacMenu(window, action);
 #elif defined(_WIN32)
-    SendMessageW(
-        static_cast<HWND>(window.window().value()),
-        WM_COMMAND,
-        static_cast<WPARAM>(1001 + index),
-        0);
+    auto* native = static_cast<HWND>(window.window().value());
+    if (index == 3) {
+        HMENU bar = GetMenu(native);
+        HMENU edit = GetSubMenu(bar, 1);
+        wchar_t label[16] = {};
+        GetMenuStringW(bar, 1, label, 16, MF_BYPOSITION);
+        check(
+            std::wstring_view(label) == L"Edit" && GetMenuItemCount(edit) == 1,
+            "Native Edit menu must contain only Undo");
+        GetMenuStringW(edit, 0, label, 16, MF_BYPOSITION);
+        check(std::wstring_view(label) == L"Undo\tCtrl+Z", "Native Edit menu lacks Undo");
+    }
+    SendMessageW(native, WM_COMMAND, static_cast<WPARAM>(1001 + index), 0);
 #else
     auto* native = GTK_WIDGET(window.window().value());
     auto* layout = gtk_bin_get_child(GTK_BIN(native));
@@ -143,13 +151,22 @@ void activateMenu(webview::webview& window, const char* action)
     auto* bar = GTK_WIDGET(children->data);
     g_list_free(children);
     children = gtk_container_get_children(GTK_CONTAINER(bar));
-    auto* file = GTK_WIDGET(children->data);
+    auto* top = GTK_WIDGET(g_list_nth_data(children, index == 3 ? 1 : 0));
     g_list_free(children);
-    auto* menu = gtk_menu_item_get_submenu(GTK_MENU_ITEM(file));
+    if (index == 3) {
+        const char* label = gtk_menu_item_get_label(GTK_MENU_ITEM(top));
+        check(label && std::string_view(label) == "Edit", "Native Edit menu missing");
+    }
+    auto* menu = gtk_menu_item_get_submenu(GTK_MENU_ITEM(top));
     children = gtk_container_get_children(GTK_CONTAINER(menu));
-    auto* item = GTK_WIDGET(g_list_nth_data(children, static_cast<guint>(index)));
+    if (index == 3) {
+        check(g_list_length(children) == 1, "Native Edit menu must contain only Undo");
+        const char* label = gtk_menu_item_get_label(GTK_MENU_ITEM(children->data));
+        check(label && std::string_view(label) == "Undo", "Native Edit menu lacks Undo");
+    }
+    auto* item = GTK_WIDGET(g_list_nth_data(children, index == 3 ? 0 : static_cast<guint>(index)));
     g_list_free(children);
-    check(item != nullptr, "Native file menu action missing");
+    check(item != nullptr, "Native menu action missing");
     gtk_menu_item_activate(GTK_MENU_ITEM(item));
 #endif
 }
@@ -257,15 +274,13 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     });
     window.set_html(kLocalHtml);
     for (int attempt = 0; attempt < 100 && observed.find("ready") == std::string::npos; ++attempt) {
-        window.eval("if (document.querySelector('#folder')) probe('ready')");
+        window.eval("if (document.querySelector('#pick-vault')) probe('ready')");
         pumpFor(std::chrono::milliseconds(100));
     }
     check(observed.find("ready") != std::string::npos, "Embedded editor did not load");
-    const std::string folder = pathBytes(root);
-    window.eval(
-        "document.querySelector('#folder').value=" + nlohmann::json(folder).dump() +
-        ";document.querySelector('#vault-form button').click();");
+    window.eval("document.querySelector('#pick-vault').click()");
     pumpFor(std::chrono::milliseconds(350));
+    check(shell.mPickerCalls == 1, "Empty-state button did not invoke the folder picker");
     window.eval("document.querySelector('#notes button').click()");
     pumpFor(std::chrono::milliseconds(350));
     replaceEditor(window, "Mine");
@@ -281,7 +296,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         observed.find("\\\"conflict\\\":true") != std::string::npos,
         "No conflict in real window");
     check(observed.find("Mine") != std::string::npos, "Outside edit lost local text");
-    window.eval("document.querySelector('#save').click()");
+    window.eval("inkstowSave()");
     pumpFor(std::chrono::milliseconds(350));
     check(bytes(note) == "Outside", "Stale save replaced outside file");
     window.eval(
@@ -471,7 +486,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         "Quit prompt did not open while refresh reply was held");
     window.eval(
         "document.querySelector('#quit-cancel').click();"
-        "document.querySelector('#save').click();"
+        "inkstowSave();"
         "window.releaseRefresh();window.holdRefresh=false");
     for (int attempt = 0; attempt < 50; ++attempt) {
         window.eval(
@@ -543,7 +558,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         "[[New link]]");
     put(root / "Target.md", "Target");
     put(root / "image.png", "image");
-    window.eval("document.querySelector('#vault-form button').click()");
+    window.eval("document.querySelector('#pick-vault').click()");
     pumpFor(std::chrono::milliseconds(350));
     window.eval(
         "document.querySelector('#new-path').value='Target';"
@@ -790,16 +805,13 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
     // Exercise native menus with a disposable vault after conflict/recovery scenarios.
     put(note, "[[image.png]]");
     put(root / "image.png", "image");
+    const int pickerCalls = shell.mPickerCalls;
     activateMenu(window, "open");
-    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == 0; ++attempt)
+    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == pickerCalls; ++attempt)
         pumpFor(std::chrono::milliseconds(100));
     check(
-        shell.mPickerCalls == 1 && shell.mLast == shell.mFolder,
+        shell.mPickerCalls == pickerCalls + 1 && shell.mLast == shell.mFolder,
         "Native Open menu did not invoke the folder picker");
-    window.eval("document.querySelector('#pick-vault').click()");
-    for (int attempt = 0; attempt < 50 && shell.mPickerCalls == 1; ++attempt)
-        pumpFor(std::chrono::milliseconds(100));
-    check(shell.mPickerCalls == 2, "Picker control did not use the menu's native service");
     window.eval(
         "[...document.querySelectorAll('#notes button')]"
         ".find(b=>b.textContent==='Note.md').click()");
@@ -841,8 +853,7 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
             "text:document.querySelector('.cm-content').textContent,"
-            "ready:!document.querySelector('#save').disabled && "
-            "!!document.querySelector('#editor [contenteditable=true]')}))");
+            "ready:!!document.querySelector('#editor [contenteditable=true]')}))");
         pumpFor(std::chrono::milliseconds(100));
         if (observed.find("Note.md") != std::string::npos &&
             observed.find("[[image.png]]") != std::string::npos &&
@@ -878,12 +889,20 @@ TEST_CASE("WebviewWindow protects edits and exercises native window actions")
         window.eval(
             "probe(JSON.stringify({title:document.querySelector('#title').textContent,"
             "text:document.querySelector('.cm-content').textContent,"
-            "error:document.querySelector('#error').textContent,"
-            "disabled:document.querySelector('#save').disabled}))");
+            "error:document.querySelector('#error').textContent}))");
         pumpFor(std::chrono::milliseconds(150));
         throw std::runtime_error(
             "Native Save menu did not invoke editor save: " + observed + ", disk=" + bytes(note));
     }
+    replaceEditor(window, "Undo draft");
+    activateMenu(window, "undo");
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        observed.clear();
+        window.eval("probe(document.querySelector('.cm-content').textContent)");
+        pumpFor(std::chrono::milliseconds(100));
+        if (observed.find("Menu saved") != std::string::npos) break;
+    }
+    check(observed.find("Menu saved") != std::string::npos, "Edit > Undo did not restore the note");
     replaceEditor(window, "Quit draft");
 #if defined(_WIN32)
     SendMessageW(static_cast<HWND>(window.window().value()), WM_CLOSE, 0, 0);

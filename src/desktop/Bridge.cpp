@@ -332,6 +332,7 @@ std::string Bridge::handle(const std::string& arguments)
         reply = {
             {              "ok",                        success},
             {           "notes",            mSession.getNotes()},
+            {       "vaultOpen",            mSession.hasVault()},
             {            "path",             mSession.getPath()},
             {         "content",          mSession.getContent()},
             {           "dirty",             mSession.isDirty()},
