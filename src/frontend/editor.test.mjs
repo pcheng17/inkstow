@@ -867,6 +867,8 @@ test('notes are grouped into collapsible nested folders with full-path selection
     assert.deepEqual([...list.children].map((item) => item.querySelector('summary')?.textContent || item.querySelector('button').textContent),
       ['A', 'B', 'Root.md']);
     const a = list.children[0].querySelector('details');
+    assert.equal(a.querySelector('summary svg').getAttribute('aria-hidden'), 'true');
+    assert.equal(a.querySelector('summary').textContent, 'A');
     assert.deepEqual([...a.querySelector('ul').children].map((item) => item.querySelector('summary')?.textContent || item.querySelector('button').textContent),
       ['Nested', 'First.md']);
     assert.deepEqual([...list.querySelectorAll('button')].map((button) => button.title),

@@ -30,7 +30,13 @@ function syncNotes(list, branch, selectedPath, controlsLocked, changeNote) {
         const details = document.createElement('details');
         details.open = true;
         const summary = document.createElement('summary');
-        summary.textContent = entry.name;
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('aria-hidden', 'true');
+        const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        shape.setAttribute('d', 'M3 5h6l2 2h10v12H3z');
+        icon.append(shape);
+        summary.append(icon, document.createTextNode(entry.name));
         const children = document.createElement('ul');
         details.append(summary, children);
         item.append(details);
