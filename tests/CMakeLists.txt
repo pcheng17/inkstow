@@ -37,7 +37,7 @@ if(APPLE OR WIN32 OR XVFB_RUN_EXECUTABLE)
                                          ${PROJECT_SOURCE_DIR}/src/desktop/DesktopServices.cpp
                                          ${PROJECT_SOURCE_DIR}/src/desktop/DesktopServicesMac.mm)
     target_link_libraries(inkstow-tests PRIVATE "-framework AppKit")
-    set_target_properties(inkstow-tests PROPERTIES OBJCXX_STANDARD 17
+    set_target_properties(inkstow-tests PROPERTIES OBJCXX_STANDARD 20
                                                OBJCXX_STANDARD_REQUIRED ON)
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
