@@ -148,7 +148,7 @@ async function noteAction(operation, fallback) {
   setLocked(false);
 }
 
-const dismissNoteMenu = bindNoteControls({ isLocked: () => locked, selectedPath: () => snapshot.path, selectNote: changeNote, noteAction });
+const dismissNoteMenu = bindNoteControls({ isLocked: () => locked, selectedPath: () => snapshot.path, selectNote: changeNote, noteAction, showError });
 
 async function save() {
   if (editor.mixedLineEndings) { showError(mixedEndingsError); return; }

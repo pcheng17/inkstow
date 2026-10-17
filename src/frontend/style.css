@@ -10,7 +10,7 @@ aside { width: 240px; flex-shrink: 0; overflow: auto; padding: 12px; border-righ
 h2 { margin: 0 0 10px; font-size: 1rem; }
 ul { list-style: none; padding: 0; margin: 0; }
 #create-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-#create-form input, #move-path { min-width: 0; padding: 6px; }
+#create-form input, #rename-name { min-width: 0; padding: 6px; }
 #notes { color: #5d636b; }
 #notes ul { margin-left: 9px; padding-left: 10px; border-left: 1px solid #c8d0de; }
 #notes summary, #notes button { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }

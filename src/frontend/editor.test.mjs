@@ -240,13 +240,13 @@ async function setup(initial = { 'BOM.md': Buffer.from([0xef, 0xbb, 0xbf, ...enc
     } };
 }
 
-async function openMove(ui, path) {
+async function openRename(ui, path) {
   const button = [...ui.document.querySelectorAll('#notes button')].find((item) => item.title === path);
   const event = new ui.dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true });
   button.dispatchEvent(event);
   assert.equal(event.defaultPrevented, true);
   assert.equal(ui.document.querySelector('#note-menu').hidden, false);
-  ui.document.querySelector('#note-menu-move').click();
+  ui.document.querySelector('#note-menu-rename').click();
   await ui.pause();
 }
 
@@ -265,18 +265,18 @@ test('tree note context menu targets an unselected note and supports keyboard di
     other.focus();
     other.dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
       { key: 'F10', shiftKey: true, bubbles: true, cancelable: true }));
-    assert.equal(ui.document.activeElement.id, 'note-menu-move');
+    assert.equal(ui.document.activeElement.id, 'note-menu-rename');
     assert.equal(ui.document.querySelector('#note-menu').getAttribute('aria-label'),
       'Note actions for Folder/Other.md');
     ui.document.querySelector('#note-menu').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
       { key: 'Escape', bubbles: true, cancelable: true }));
     assert.equal(ui.document.querySelector('#note-menu').hidden, true);
     assert.equal(ui.document.activeElement, other);
-    await openMove(ui, 'Folder/Other.md');
+    await openRename(ui, 'Folder/Other.md');
     assert.equal(ui.document.querySelector('#title').textContent, 'Folder/Other.md');
-    assert.equal(ui.document.querySelector('#move-path').value, 'Folder/Other.md');
-    ui.document.querySelector('#move-path').value = 'Folder/Renamed';
-    ui.document.querySelector('#move-without-links').click(); await ui.pause();
+    assert.equal(ui.document.querySelector('#rename-name').value, 'Other.md');
+    ui.document.querySelector('#rename-name').value = 'Renamed';
+    ui.document.querySelector('#rename-without-links').click(); await ui.pause();
     assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.at(-1))),
       { operation: 'move', path: 'Folder/Renamed', updateLinks: false });
     assert.equal(ui.disk.has('Folder/Other.md'), false);
@@ -284,12 +284,38 @@ test('tree note context menu targets an unselected note and supports keyboard di
   } finally { ui.dom.window.close(); }
 });
 
-test('context menu does not move another note when unsaved edits block selection', async () => {
+test('rename accepts only a filename and never uses it as a destination folder', async () => {
+  const ui = await setup({ 'Folder/Note.md': Buffer.from('Note'), 'Other.md': Buffer.from('Other') });
+  try {
+    await ui.open(); await ui.select('Folder/Note.md');
+    await openRename(ui, 'Folder/Note.md');
+    for (const name of ['', '../Elsewhere', 'Other/New', 'Other\\New']) {
+      ui.document.querySelector('#rename-name').value = name;
+      ui.document.querySelector('#rename-with-links').click();
+      assert.equal(ui.document.querySelector('#rename-choice').hidden, false);
+      assert.match(ui.document.querySelector('#error').textContent, /note name without folders/i);
+    }
+    assert.equal(ui.calls.filter((call) => call.operation === 'move').length, 0);
+    ui.document.querySelector('#rename-name').value = 'Renamed.md';
+    ui.document.querySelector('#rename-with-links').click(); await ui.pause();
+    assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.at(-1))),
+      { operation: 'move', path: 'Folder/Renamed.md', updateLinks: true });
+    assert.equal(ui.disk.has('Folder/Note.md'), false);
+    assert.equal(ui.disk.get('Folder/Renamed.md').toString(), 'Note');
+    await openRename(ui, 'Folder/Renamed.md');
+    await ui.select('Other.md');
+    assert.equal(ui.document.querySelector('#rename-choice').hidden, true);
+    ui.document.querySelector('#rename-with-links').click();
+    assert.equal(ui.calls.filter((call) => call.operation === 'move').length, 1);
+  } finally { ui.dom.window.close(); }
+});
+
+test('context menu does not rename another note when unsaved edits block selection', async () => {
   const ui = await setup();
   try {
     await ui.open(); await ui.select('BOM.md'); await ui.type('Unsaved');
-    await openMove(ui, 'Other.md');
-    assert.equal(ui.document.querySelector('#move-choice').hidden, true);
+    await openRename(ui, 'Other.md');
+    assert.equal(ui.document.querySelector('#rename-choice').hidden, true);
     assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
     assert.match(ui.document.querySelector('#error').textContent, /Unsaved changes/i);
     assert.equal(ui.document.activeElement.title, 'Other.md');
@@ -754,16 +780,16 @@ test('background refresh blocks note actions without visually disabling the wind
     button.dispatchEvent(new ui.dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     ui.document.querySelector('#trash').click();
     assert.equal(ui.document.querySelector('#note-menu').hidden, true);
-    assert.equal(ui.document.querySelector('#move-choice').hidden, true);
+    assert.equal(ui.document.querySelector('#rename-choice').hidden, true);
     assert.equal(ui.document.querySelector('#trash-choice').hidden, true);
     release(); await refreshing;
-    await openMove(ui, 'BOM.md');
-    assert.equal(ui.document.querySelector('#move-choice').hidden, false);
+    await openRename(ui, 'BOM.md');
+    assert.equal(ui.document.querySelector('#rename-choice').hidden, false);
     const releaseAgain = ui.delayRefresh();
     const refreshingAgain = ui.dom.window.inkstowRefresh();
     await ui.pause();
-    ui.document.querySelector('#move-with-links').click();
-    assert.equal(ui.document.querySelector('#move-choice').hidden, false);
+    ui.document.querySelector('#rename-with-links').click();
+    assert.equal(ui.document.querySelector('#rename-choice').hidden, false);
     assert.equal(ui.calls.filter((call) => call.operation === 'move').length, 0);
     releaseAgain(); await refreshingAgain;
   } finally { ui.dom.window.close(); }
@@ -850,15 +876,15 @@ test('saving does not dim unrelated controls while the bridge is busy', async ()
   } finally { ui.dom.window.close(); }
 });
 
-test('move and trash decisions dismiss on Escape without sending a bridge mutation', async () => {
+test('rename and trash decisions dismiss on Escape without sending a bridge mutation', async () => {
   const ui = await setup();
   try {
     await ui.open(); await ui.select('BOM.md');
-    await openMove(ui, 'BOM.md');
-    assert.equal(ui.document.querySelector('#move-choice').hidden, false);
-    ui.document.querySelector('#move-choice').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
+    await openRename(ui, 'BOM.md');
+    assert.equal(ui.document.querySelector('#rename-choice').hidden, false);
+    ui.document.querySelector('#rename-choice').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
       { key: 'Escape', bubbles: true, cancelable: true }));
-    assert.equal(ui.document.querySelector('#move-choice').hidden, true);
+    assert.equal(ui.document.querySelector('#rename-choice').hidden, true);
     ui.document.querySelector('#trash').click();
     assert.equal(ui.document.querySelector('#trash-choice').hidden, false);
     ui.document.querySelector('#trash-choice').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown',
@@ -869,14 +895,14 @@ test('move and trash decisions dismiss on Escape without sending a bridge mutati
   } finally { ui.dom.window.close(); }
 });
 
-test('moving a note does not dim the window while the bridge is busy', async () => {
+test('renaming a note does not dim the window while the bridge is busy', async () => {
   const ui = await setup();
   try {
     await ui.open(); await ui.select('BOM.md');
     const release = ui.delayMove();
-    await openMove(ui, 'BOM.md');
-    ui.document.querySelector('#move-path').value = 'Renamed';
-    ui.document.querySelector('#move-with-links').click(); await ui.pause();
+    await openRename(ui, 'BOM.md');
+    ui.document.querySelector('#rename-name').value = 'Renamed';
+    ui.document.querySelector('#rename-with-links').click(); await ui.pause();
     assert.equal(ui.calls.at(-1).operation, 'move');
     assert.equal(ui.document.querySelector('#pick-vault').disabled, false);
     assert.equal(ui.document.querySelector('#notes button').disabled, false);
@@ -1211,7 +1237,7 @@ test('missing note retains edits and refuses to overwrite a reappeared file', as
   } finally { ui.dom.window.close(); }
 });
 
-test('note actions require explicit move and trash choices and preserve errors and unsaved text', async () => {
+test('note actions require explicit rename and trash choices and preserve errors and unsaved text', async () => {
   const ui = await setup({ 'Source.md': Buffer.from('[[Target]]'), 'Target.md': Buffer.from('Target'), 'image.png': Buffer.from('image') });
   try {
     await ui.open(); await ui.select('Source.md');
@@ -1222,19 +1248,19 @@ test('note actions require explicit move and trash choices and preserve errors a
     ui.document.querySelector('#create-form').requestSubmit(); await ui.pause();
     assert.equal(ui.document.querySelector('#title').textContent, 'New.md');
     assert.equal(ui.disk.get('New.md').toString(), '');
-    await openMove(ui, 'New.md');
-    ui.document.querySelector('#move-path').value = 'Moved';
-    ui.document.querySelector('#move-path').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    assert.equal(ui.document.querySelector('#move-choice').hidden, true);
+    await openRename(ui, 'New.md');
+    ui.document.querySelector('#rename-name').value = 'Moved';
+    ui.document.querySelector('#rename-name').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(ui.document.querySelector('#rename-choice').hidden, true);
     assert.equal(ui.calls.filter((call) => call.operation === 'move').length, 0);
-    await openMove(ui, 'New.md');
-    ui.document.querySelector('#move-path').value = 'Moved';
-    ui.document.querySelector('#move-path').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await openRename(ui, 'New.md');
+    ui.document.querySelector('#rename-name').value = 'Moved';
+    ui.document.querySelector('#rename-name').dispatchEvent(new ui.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await ui.pause();
     assert.deepEqual(JSON.parse(JSON.stringify(ui.calls.find((call) => call.operation === 'move'))),
       { operation: 'move', path: 'Moved', updateLinks: true });
     assert.equal(ui.document.querySelector('#title').textContent, 'Moved.md');
-    for (const id of ['note-menu-move', 'trash']) {
+    for (const id of ['note-menu-rename', 'trash']) {
       assert.ok(ui.document.querySelector(`#${id}`).textContent.trim(), `${id} has an accessible name`);
     }
     ui.document.querySelector('#trash').click();
@@ -1263,9 +1289,9 @@ test('note action errors without a snapshot leave the editor unlocked', async ()
   try {
     await ui.open(); await ui.select('BOM.md');
     ui.injectError('Could not serialize vault state.');
-    await openMove(ui, 'BOM.md');
-    ui.document.querySelector('#move-path').value = 'Moved';
-    ui.document.querySelector('#move-without-links').click(); await ui.pause();
+    await openRename(ui, 'BOM.md');
+    ui.document.querySelector('#rename-name').value = 'Moved';
+    ui.document.querySelector('#rename-without-links').click(); await ui.pause();
     assert.match(ui.document.querySelector('#error').textContent, /serialize vault state/);
     assert.equal(ui.document.querySelector('#title').textContent, 'BOM.md');
     assert.equal(ui.document.querySelector('.cm-content').getAttribute('contenteditable'), 'true');
