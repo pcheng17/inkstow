@@ -870,6 +870,8 @@ test('notes are grouped into collapsible nested folders with full-path selection
     const icon = a.querySelector('summary svg');
     assert.equal(icon.getAttribute('aria-hidden'), 'true');
     assert.equal(icon.querySelectorAll('path').length, 1);
+    assert.equal(ui.dom.window.getComputedStyle(icon).width, '14px');
+    assert.equal(ui.dom.window.getComputedStyle(icon).transition, 'transform 160ms ease-in-out');
     assert.equal(ui.dom.window.getComputedStyle(icon).transform, 'rotate(90deg)');
     assert.equal(a.querySelector('summary').textContent, 'A');
     assert.equal(ui.dom.window.getComputedStyle(ui.document.body).fontSize, '14px');

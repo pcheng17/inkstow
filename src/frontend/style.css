@@ -16,8 +16,11 @@ ul { list-style: none; padding: 0; margin: 0; }
 #notes summary, #notes button { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 #notes summary { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 12px; list-style: none; }
 #notes summary::-webkit-details-marker { display: none; }
-#notes summary svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#notes summary svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 160ms ease-in-out; }
 #notes details[open] > summary svg { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+  #notes summary svg { transition: none; }
+}
 #notes button { width: 100%; border: 0; background: transparent; text-align: left; }
 #notes summary:hover, #notes button:hover, #notes button[aria-current="true"] { background: #dce5f5; }
 #workspace { display: flex; flex-direction: column; min-width: 0; flex: 1; }
