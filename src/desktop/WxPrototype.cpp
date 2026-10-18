@@ -2,11 +2,14 @@
 
 #include <wx/dirdlg.h>
 #include <wx/listbox.h>
+#include <wx/notebook.h>
 #include <wx/splitter.h>
 #include <wx/textctrl.h>
 #include <wx/wx.h>
 
+#include <memory>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -20,6 +23,12 @@ std::string toUtf8(const wxString& value)
     const auto bytes = value.ToUTF8();
     return std::string(bytes.data(), bytes.length());
 }
+
+struct NoteTab
+{
+    inkstow::portable::Session session;
+    wxTextCtrl* editor = nullptr; // Owned by the notebook.
+};
 
 class PrototypeFrame final : public wxFrame
 {
@@ -35,6 +44,7 @@ public:
         auto* file = new wxMenu;
         file->Append(wxID_OPEN, "&Open vault...\tCtrl+O");
         file->Append(wxID_SAVE, "&Save\tCtrl+S");
+        file->Append(wxID_CLOSE, "&Close tab\tCtrl+W");
         file->AppendSeparator();
         file->Append(wxID_EXIT, "&Quit");
         auto* bar = new wxMenuBar;
@@ -50,28 +60,24 @@ public:
             wxDefaultSize,
             wxSP_LIVE_UPDATE | wxSP_3D);
         mNotes = new wxListBox(splitter, wxID_ANY);
-        mEditor = new wxTextCtrl(
-            splitter,
-            wxID_ANY,
-            wxEmptyString,
-            wxDefaultPosition,
-            wxDefaultSize,
-            wxTE_MULTILINE | wxTE_RICH2);
-        mEditor->Enable(false);
+        mNotebook = new wxNotebook(splitter, wxID_ANY);
         splitter->SetMinimumPaneSize(130);
-        splitter->SplitVertically(mNotes, mEditor, 260);
+        splitter->SplitVertically(mNotes, mNotebook, 260);
         splitter->SetSashGravity(0.0);
 
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { openPicker(); }, wxID_OPEN);
-        Bind(wxEVT_MENU, [this](wxCommandEvent&) { save(); }, wxID_SAVE);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { saveActive(); }, wxID_SAVE);
+        Bind(wxEVT_MENU, [this](wxCommandEvent&) { closeTab(); }, wxID_CLOSE);
         Bind(wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT);
-        mNotes->Bind(wxEVT_LISTBOX, [this](wxCommandEvent&) { selectNote(); });
-        mEditor->Bind(wxEVT_TEXT, [this](wxCommandEvent&) {
-            mSession.setContent(toUtf8(mEditor->GetValue()));
-            updateTitle();
+        mNotes->Bind(wxEVT_LISTBOX, [this](wxCommandEvent&) { openSelectedNote(); });
+        mNotebook->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, [this](wxBookCtrlEvent& event) {
+            if (!mChangingPages) {
+                updateActive();
+            }
+            event.Skip();
         });
         Bind(wxEVT_CLOSE_WINDOW, [this](wxCloseEvent& event) {
-            if (confirmLeave()) {
+            if (confirmAllTabs()) {
                 event.Skip();
             } else if (event.CanVeto()) {
                 event.Veto();
@@ -81,26 +87,27 @@ public:
 
     void openVault(const wxString& folder)
     {
-        const std::string previousContent = mSession.getContent();
-        bool discarded = false;
-        if (!confirmLeave(&discarded)) {
-            return;
-        }
+        inkstow::portable::Session next;
         std::string error;
-        if (!mSession.openVault(toUtf8(folder), &error)) {
-            restoreFailedNavigation(discarded, previousContent);
+        if (!next.openVault(toUtf8(folder), &error)) {
             showError(error);
             return;
         }
+        if (!confirmAllTabs()) {
+            return;
+        }
+        mChangingPages = true;
+        mNotebook->DeleteAllPages();
+        mTabs.clear();
+        mChangingPages = false;
+        mBrowser = std::move(next);
         mFolder = folder;
         mNotes->Clear();
-        for (const auto& note : mSession.getNotes()) {
+        for (const auto& note : mBrowser.getNotes()) {
             mNotes->Append(fromUtf8(note));
         }
-        mEditor->ChangeValue(wxEmptyString);
-        mEditor->Enable(false);
-        updateTitle();
-        SetStatusText(wxString::Format("%zu notes in %s", mSession.getNotes().size(), folder));
+        updateActive();
+        SetStatusText(wxString::Format("%zu notes in %s", mBrowser.getNotes().size(), folder));
     }
 
 private:
@@ -109,53 +116,113 @@ private:
         wxMessageBox(fromUtf8(error), "Inkstow", wxOK | wxICON_ERROR, this);
     }
 
-    bool save()
+    NoteTab* activeTab() const
     {
-        if (!mSession.isDirty()) {
+        const int index = mNotebook->GetSelection();
+        return index == wxNOT_FOUND ? nullptr : mTabs[static_cast<std::size_t>(index)].get();
+    }
+
+    void updateTabLabel(NoteTab& tab)
+    {
+        for (std::size_t i = 0; i < mTabs.size(); ++i) {
+            if (mTabs[i].get() == &tab) {
+                mNotebook->SetPageText(
+                    i,
+                    (tab.session.isDirty() ? "* " : "") + fromUtf8(tab.session.getPath()));
+                break;
+            }
+        }
+        updateActive();
+    }
+
+    void updateActive()
+    {
+        const NoteTab* tab = activeTab();
+        const wxString note = tab == nullptr ? "No note" : fromUtf8(tab->session.getPath());
+        SetTitle(
+            (tab != nullptr && tab->session.isDirty() ? "* " : "") + note +
+            " - Inkstow (wxWidgets experiment)");
+        mNotes->SetSelection(tab == nullptr ? wxNOT_FOUND : mNotes->FindString(note));
+        if (tab != nullptr) {
+            SetStatusText(note);
+        }
+    }
+
+    bool saveTab(NoteTab& tab)
+    {
+        if (!tab.session.isDirty()) {
             return true;
         }
         std::string error;
-        if (!mSession.save(&error)) {
-            showError(error);
+        if (!tab.session.save(&error)) {
+            showError(tab.session.getPath() + ": " + error);
             return false;
         }
-        updateTitle();
-        SetStatusText("Saved " + fromUtf8(mSession.getPath()));
+        updateTabLabel(tab);
+        SetStatusText("Saved " + fromUtf8(tab.session.getPath()));
         return true;
     }
 
-    bool confirmLeave(bool* discarded = nullptr)
+    void saveActive()
     {
-        if (discarded != nullptr) {
-            *discarded = false;
+        if (auto* tab = activeTab()) {
+            saveTab(*tab);
         }
-        if (!mSession.isDirty()) {
+    }
+
+    // Discard is only applied after the destination is ready (or the tab is removed).
+    bool confirmTab(NoteTab& tab)
+    {
+        if (!tab.session.isDirty()) {
             return true;
         }
         const int choice = wxMessageBox(
-            "Save changes before leaving this note?",
+            "Save changes to " + fromUtf8(tab.session.getPath()) + "?",
             "Unsaved changes",
             wxYES_NO | wxCANCEL | wxICON_QUESTION,
             this);
-        if (choice == wxYES) {
-            return save();
-        }
-        if (choice == wxNO) {
-            mSession.discardEdits();
-            if (discarded != nullptr) {
-                *discarded = true;
-            }
-            return true;
-        }
-        return false;
+        return choice == wxNO || (choice == wxYES && saveTab(tab));
     }
 
-    void restoreFailedNavigation(bool discarded, const std::string& previousContent)
+    bool confirmAllTabs()
     {
-        if (discarded) {
-            mSession.setContent(previousContent);
+        bool dirty = false;
+        for (const auto& tab : mTabs) {
+            dirty |= tab->session.isDirty();
         }
-        updateTitle();
+        if (!dirty) {
+            return true;
+        }
+        const int choice = wxMessageBox(
+            "Save changes in open tabs before leaving this vault?",
+            "Unsaved changes",
+            wxYES_NO | wxCANCEL | wxICON_QUESTION,
+            this);
+        if (choice == wxNO) {
+            return true;
+        }
+        if (choice != wxYES) {
+            return false;
+        }
+        for (const auto& tab : mTabs) {
+            if (!saveTab(*tab)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void closeTab()
+    {
+        const int selected = mNotebook->GetSelection();
+        if (selected == wxNOT_FOUND || !confirmTab(*mTabs[static_cast<std::size_t>(selected)])) {
+            return;
+        }
+        mChangingPages = true;
+        mNotebook->DeletePage(static_cast<std::size_t>(selected));
+        mTabs.erase(mTabs.begin() + selected);
+        mChangingPages = false;
+        updateActive();
     }
 
     void openPicker()
@@ -166,45 +233,52 @@ private:
         }
     }
 
-    void selectNote()
+    void openSelectedNote()
     {
         const int selected = mNotes->GetSelection();
         if (selected == wxNOT_FOUND) {
             return;
         }
-        const std::string previousContent = mSession.getContent();
-        bool discarded = false;
-        if (!confirmLeave(&discarded)) {
-            mNotes->SetSelection(
-                mSession.getPath().empty() ? wxNOT_FOUND
-                                           : mNotes->FindString(fromUtf8(mSession.getPath())));
-            return;
+        const std::string path = toUtf8(mNotes->GetString(selected));
+        for (std::size_t i = 0; i < mTabs.size(); ++i) {
+            if (mTabs[i]->session.getPath() == path) {
+                mNotebook->SetSelection(i);
+                updateActive();
+                return;
+            }
         }
+        auto tab = std::make_unique<NoteTab>();
         std::string error;
-        if (!mSession.selectNote(toUtf8(mNotes->GetString(selected)), &error)) {
-            restoreFailedNavigation(discarded, previousContent);
+        if (!tab->session.openVault(toUtf8(mFolder), &error) ||
+            !tab->session.selectNote(path, &error))
+        {
             showError(error);
-            mNotes->SetSelection(
-                mSession.getPath().empty() ? wxNOT_FOUND
-                                           : mNotes->FindString(fromUtf8(mSession.getPath())));
+            updateActive();
             return;
         }
-        mEditor->Enable(true);
-        mEditor->ChangeValue(fromUtf8(mSession.getContent()));
-        updateTitle();
-        SetStatusText(fromUtf8(mSession.getPath()));
+        tab->editor = new wxTextCtrl(
+            mNotebook,
+            wxID_ANY,
+            fromUtf8(tab->session.getContent()),
+            wxDefaultPosition,
+            wxDefaultSize,
+            wxTE_MULTILINE | wxTE_RICH2);
+        NoteTab* current = tab.get();
+        tab->editor->Bind(wxEVT_TEXT, [this, current](wxCommandEvent&) {
+            current->session.setContent(toUtf8(current->editor->GetValue()));
+            updateTabLabel(*current);
+        });
+        mTabs.push_back(std::move(tab));
+        mNotebook->AddPage(current->editor, fromUtf8(path), true);
+        updateActive();
     }
 
-    void updateTitle()
-    {
-        const wxString note = mSession.getPath().empty() ? "No note" : fromUtf8(mSession.getPath());
-        SetTitle((mSession.isDirty() ? "* " : "") + note + " - Inkstow (wxWidgets experiment)");
-    }
-
-    inkstow::portable::Session mSession;
+    inkstow::portable::Session mBrowser;
+    std::vector<std::unique_ptr<NoteTab>> mTabs;
     wxListBox* mNotes = nullptr;
-    wxTextCtrl* mEditor = nullptr;
+    wxNotebook* mNotebook = nullptr;
     wxString mFolder;
+    bool mChangingPages = false;
 };
 
 class PrototypeApp final : public wxApp

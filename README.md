@@ -31,7 +31,7 @@ Open that folder in Inkstow. Only `Welcome.md` and `Folder/Second note.md` shoul
 
 ## wxWidgets native-widget experiment (opt-in)
 
-This branch includes a separate **minimal** `inkstow-wx` window to compare platform-native widgets with the WebView shell. It uses the same portable `Session` for opening a vault, listing and editing notes, saving, and prompting before discarding edits. It intentionally has no Markdown preview, link navigation, watcher, conflict-resolution UI, note management, or persistent last-vault setting. Use **only a disposable vault**; the platform text control may normalize line endings and is not a replacement for the WebView editor.
+This branch includes a separate **minimal** `inkstow-wx` window to compare platform-native widgets with the WebView shell. It uses the same portable `Session` for opening a vault, listing and editing notes, saving, and prompting before discarding edits. Clicking a note in the left list opens it in a new native tab; clicking an already open note focuses its tab. Each tab keeps its own unsaved edits while you switch tabs. Save (Ctrl+S) affects the active tab; **File > Close tab** (Ctrl+W) prompts for edits in that tab, while switching vaults or quitting prompts for all dirty tabs. The standard wxNotebook has no close buttons. It intentionally has no Markdown preview, link navigation, watcher, conflict-resolution UI, note management, or persistent last-vault setting. Use **only a disposable vault**; the platform text control may normalize line endings and is not a replacement for the WebView editor.
 
 Install wxWidgets 3.2+ development headers/libraries separately (`wxwidgets` via Homebrew, `libwxgtk3.2-dev` on Ubuntu 24.04, or the appropriate wxWidgets development package on Windows), then build with:
 
@@ -43,7 +43,7 @@ cp -a tests/fixtures/sample/. "$vault/"
 ./build/debug/inkstow-wx "$vault"
 ```
 
-The regular build does not require wxWidgets unless this option is enabled. [Linux GTK screenshot](docs/wxwidgets-linux-gtk.png) shows the disposable sample vault with `Welcome.md` selected under the Adwaita light theme on Xvfb. This does **not** demonstrate macOS or Windows appearance; run the same optional target on each OS to judge those themes. The experiment is not part of release packaging. On Linux, prefer a system wxWidgets package when building against the system WebKitGTK: Homebrew wxWidgets can mix Homebrew and distribution GTK/GIO libraries, producing CMake runtime-path warnings.
+The regular build does not require wxWidgets unless this option is enabled. [Linux GTK screenshot with tabs](docs/wxwidgets-tabs-linux-gtk.png) shows two notes from a disposable sample vault open under the Adwaita light theme on Xvfb. This does **not** demonstrate macOS or Windows appearance; run the same optional target on each OS to judge those themes. The experiment is not part of release packaging. On Linux, prefer a system wxWidgets package when building against the system WebKitGTK: Homebrew wxWidgets can mix Homebrew and distribution GTK/GIO libraries, producing CMake runtime-path warnings.
 
 ## Sandcastle/Pi issue workflow (Linux Docker)
 
