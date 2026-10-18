@@ -52,7 +52,7 @@ function checkComment(body: string): void {
 
 export class TicketNotReadyError extends Error {
   constructor(
-    public readonly reason: 'not-open' | 'missing-ready-for-agent' | 'open-blockers',
+    public readonly reason: 'not-open' | 'missing-agent-label' | 'open-blockers',
     public readonly blockerNumbers: number[] = [],
   ) {
     super(reason === 'open-blockers'
@@ -82,11 +82,18 @@ export class GitHubIssueTracker {
     ])));
   }
 
-  async getEligibleTicket(number: number): Promise<Ticket> {
+  getEligibleTicket(number: number): Promise<Ticket> { return this.getTicket(number, ['agent:ready']); }
+  getResumeTicket(number: number, publishing = false): Promise<Ticket> {
+    return this.getTicket(number, publishing ? ['agent:blocked', 'agent:running', 'agent:review'] : ['agent:blocked', 'agent:running']);
+  }
+  getRunningTicket(number: number): Promise<Ticket> { return this.getTicket(number, ['agent:running']); }
+
+  private async getTicket(number: number, allowed: string[]): Promise<Ticket> {
     const issue = this.view(number);
     if (issue.state !== 'OPEN') throw new TicketNotReadyError('not-open');
-    if (!issue.labels.some(({ name }) => name === 'ready-for-agent')) {
-      throw new TicketNotReadyError('missing-ready-for-agent');
+    const lifecycle = issue.labels.map(({ name }) => name).filter(name => ['agent:ready', 'agent:running', 'agent:blocked', 'agent:review'].includes(name));
+    if (lifecycle.length !== 1 || !allowed.includes(lifecycle[0])) {
+      throw new TicketNotReadyError('missing-agent-label');
     }
 
     // --slurp keeps all pages as one JSON value, including when there are no blockers.
@@ -104,7 +111,7 @@ export class GitHubIssueTracker {
       title: issue.title,
       body: issue.body,
       url: issue.url,
-      comments: issue.comments.map(({ body }) => body),
+      comments: issue.comments.map(({ body }) => body).filter(body => !body.startsWith('Sandcastle stopped on ') && !body.startsWith('Sandcastle implemented on ')),
       parentSpec: parent ? {
         number: parent.number,
         title: parent.title,
@@ -121,13 +128,16 @@ export class GitHubIssueTracker {
     this.run(['issue', 'comment', String(number), '--repo', REPO, '--body', body]);
   }
 
-  markNeedsInfo(number: number, reason: string): void {
+  markBlockedIfRunning(number: number): void {
+    if (this.view(number).labels.some(({ name }) => name === 'agent:running')) this.setAgentStatus(number, 'blocked');
+  }
+
+  setAgentStatus(number: number, status: 'running' | 'blocked' | 'review'): void {
     checkIssueNumber(number);
-    checkComment(reason);
-    this.postIssueComment(number, reason);
     this.run([
       'issue', 'edit', String(number), '--repo', REPO,
-      '--add-label', 'needs-info', '--remove-label', 'ready-for-agent',
+      '--add-label', `agent:${status}`,
+      '--remove-label', ['ready', 'running', 'blocked', 'review'].filter(value => value !== status).map(value => `agent:${value}`).join(','),
     ]);
   }
 }
