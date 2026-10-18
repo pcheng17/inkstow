@@ -6,7 +6,7 @@ For changes to the vault core or UI, run the CMake build and CTest commands in R
 
 Use `tests/fixtures/sample` or a throwaway vault for verification, not a personal vault. Add small regression fixtures for newly discovered Obsidian behaviors. Use the Qt-free vault implementation in `src/core/vault/`; the Qt app and duplicate Qt core have been retired. Keep vault operations in Vault and UI-independent state in Session, testable without a display. Put native host/bridge/platform code in `src/desktop/` and offline editor behavior in `src/frontend/`. Follow README's "Portable vault and recovery migration (#88, #89)" and "Source and test layout" for boundaries and tests; consult its "Boundaries and limitations" for current link behavior and save caveats.
 
-See README for setup and manual smoke steps.
+See README for setup and manual smoke steps. For code style when changing C++ or frontend files, read `CONTRIBUTING.md`.
 
 ## Agent skills
 
