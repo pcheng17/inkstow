@@ -21,4 +21,4 @@ Prefer early returns to deeply nested conditionals.
 
 ### Casts
 
-Use functional casts such as `int(x)` and `double(x)` for non-pointer, non-reference conversions. Reserve `static_cast` for pointer and reference conversions. Do not rewrite unrelated existing casts for style alone.
+Use functional casts such as `int(x)` and `double(x)` for primitive conversions. Reserve `static_cast` for pointer and reference conversions.
