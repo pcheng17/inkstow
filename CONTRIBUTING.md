@@ -21,4 +21,4 @@ Prefer early returns to deeply nested conditionals.
 
 ### Casts
 
-Use explicit `static_cast` for conversions, including primitive conversions, as in the existing C++ code. Keep casts local to where the converted value is needed; do not rewrite unrelated casts for style alone.
+Use functional casts such as `int(x)` and `double(x)` for non-pointer, non-reference conversions. Reserve `static_cast` for pointer and reference conversions. Do not rewrite unrelated existing casts for style alone.
