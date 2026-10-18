@@ -41,7 +41,7 @@ ENV HOME=/home/agent
 USER ${AGENT_UID}:${AGENT_GID}
 
 # Install the pinned Harness Kit checkout, including its Pi package and agent dependencies.
-ARG HARNESS_KIT_REF=251529b0bda6b3a85ee76a736a0ed03e557c5532
+ARG HARNESS_KIT_REF=bc96832240863548b801389cd4eb1958bfa7acd8
 RUN git init -q /home/agent/harness-kit \
   && cd /home/agent/harness-kit \
   && git fetch -q --depth 1 https://github.com/pcheng17/harness-kit.git "$HARNESS_KIT_REF" \
