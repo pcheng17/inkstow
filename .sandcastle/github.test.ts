@@ -102,13 +102,17 @@ test('getEligibleTicket fails closed if dependency state is missing', async () =
 test('lifecycle labels enforce one eligible state and resume only from running or blocked', async () => {
   for (const label of ['agent:running', 'agent:blocked']) {
     const { tracker } = fakeGh({ ...issue, parent: null, labels: [{ name: label }] }, [[]]);
-    assert.equal((await tracker.getResumeTicket(12)).number, 12);
+    assert.equal((await tracker.getResumeTicket(12, 'verify')).number, 12);
     await assert.rejects(tracker.getEligibleTicket(12), /missing-agent-label/);
   }
   const { tracker } = fakeGh({ ...issue, labels: [{ name: 'agent:ready' }, { name: 'agent:review' }] });
   await assert.rejects(tracker.getEligibleTicket(12), /missing-agent-label/);
   const reviewed = fakeGh({ ...issue, labels: [{ name: 'agent:review' }] });
-  await assert.rejects(reviewed.tracker.getResumeTicket(12), /missing-agent-label/);
+  await assert.rejects(reviewed.tracker.getResumeTicket(12, 'verify'), /missing-agent-label/);
+  assert.equal((await reviewed.tracker.getResumeTicket(12, 'publish')).number, 12);
+  const setup = fakeGh({ ...issue, parent: null }, [[]]);
+  assert.equal((await setup.tracker.getResumeTicket(12, 'implement')).number, 12);
+  await assert.rejects(setup.tracker.getResumeTicket(12, 'verify'), /missing-agent-label/);
 });
 
 test('setAgentStatus swaps lifecycle labels in one issue edit', () => {

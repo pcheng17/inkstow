@@ -83,8 +83,12 @@ export class GitHubIssueTracker {
   }
 
   getEligibleTicket(number: number): Promise<Ticket> { return this.getTicket(number, ['agent:ready']); }
-  getResumeTicket(number: number, publishing = false): Promise<Ticket> {
-    return this.getTicket(number, publishing ? ['agent:blocked', 'agent:running', 'agent:review'] : ['agent:blocked', 'agent:running']);
+  getResumeTicket(number: number, phase: 'implement' | 'simplify' | 'verify' | 'fix' | 'publish'): Promise<Ticket> {
+    const allowed = ['agent:blocked', 'agent:running'];
+    // The checkpoint can precede the first status update when GitHub is down.
+    if (phase === 'implement') allowed.push('agent:ready');
+    if (phase === 'publish') allowed.push('agent:review');
+    return this.getTicket(number, allowed);
   }
   getRunningTicket(number: number): Promise<Ticket> { return this.getTicket(number, ['agent:running']); }
 
