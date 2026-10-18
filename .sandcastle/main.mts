@@ -286,7 +286,7 @@ async function main(argv: string[]): Promise<void> {
   if (!resumed && checkpointExists(number!)) throw new Error(`Issue #${number} has a saved run; use --resume ${number}`);
   const state = resumed ? loadCheckpoint(number!) : undefined;
   let ticket: Ticket;
-  try { ticket = resumed ? await tracker.getResumeTicket(number!, state?.phase === 'publish') : await tracker.getEligibleTicket(number!); }
+  try { ticket = resumed ? await tracker.getResumeTicket(number!, state!.phase) : await tracker.getEligibleTicket(number!); }
   catch (error) {
     if (mode !== '--check' && !resumed && error instanceof TicketNotReadyError && error.reason === 'open-blockers') {
       tracker.setAgentStatus(number!, 'blocked');

@@ -208,7 +208,7 @@ test('published PR checkpoint survives a failed review-label update and can be r
     await assert.rejects(runWorkflow(ticket, sandbox, 'base', pi(SANDBOX_PI_MODEL), tracker, publish, state, () => {}), /gh issue edit failed/);
     assert.equal(state.phase, 'publish');
     assert.equal(label, 'agent:review');
-    assert.equal((await tracker.getResumeTicket(78, true)).number, 78);
+    assert.equal((await tracker.getResumeTicket(78, 'publish')).number, 78);
     tracker.setAgentStatus(78, 'running'); // main claims a resumed run
     await runWorkflow(ticket, sandbox, 'base', pi(SANDBOX_PI_MODEL), tracker, publish, state, () => {});
     assert.equal(label, 'agent:review');
