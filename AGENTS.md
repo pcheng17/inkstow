@@ -16,7 +16,7 @@ Issues are tracked in GitHub Issues on `pcheng17/inkstow` via the `gh` CLI. See 
 
 ### Triage labels
 
-Uses the five default triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+Use `agent:ready`, `agent:running`, `agent:blocked`, and `agent:review` for Sandcastle issue lifecycle. See `docs/agents/triage-labels.md` for triage and recovery.
 
 ### Domain docs
 

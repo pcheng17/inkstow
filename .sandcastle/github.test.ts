@@ -8,7 +8,7 @@ const issue = {
   body: 'Ticket body',
   url: 'https://github.com/pcheng17/inkstow/issues/12',
   state: 'OPEN',
-  labels: [{ name: 'ready-for-agent' }],
+  labels: [{ name: 'agent:ready' }],
   comments: [{ body: 'A detail' }],
   parent: { number: 3 },
 };
@@ -66,7 +66,7 @@ test('getEligibleTicket accepts an unparented ticket without blockers', async ()
 test('getEligibleTicket rejects closed and unlabelled tickets before querying dependencies', async () => {
   for (const [ticket, reason] of [
     [{ ...issue, state: 'CLOSED' }, 'not-open'],
-    [{ ...issue, labels: [{ name: 'needs-info' }] }, 'missing-ready-for-agent'],
+    [{ ...issue, labels: [{ name: 'agent:blocked' }] }, 'missing-agent-label'],
   ] as const) {
     const { tracker, calls } = fakeGh(ticket);
     await assert.rejects(tracker.getEligibleTicket(12),
@@ -97,4 +97,24 @@ test('getEligibleTicket fails closed if the GitHub dependencies API fails', asyn
 test('getEligibleTicket fails closed if dependency state is missing', async () => {
   const { tracker } = fakeGh(issue, [[{ number: 8 }]]);
   await assert.rejects(tracker.getEligibleTicket(12), /Invalid option/);
+});
+
+test('lifecycle labels enforce one eligible state and resume only from running or blocked', async () => {
+  for (const label of ['agent:running', 'agent:blocked']) {
+    const { tracker } = fakeGh({ ...issue, parent: null, labels: [{ name: label }] }, [[]]);
+    assert.equal((await tracker.getResumeTicket(12)).number, 12);
+    await assert.rejects(tracker.getEligibleTicket(12), /missing-agent-label/);
+  }
+  const { tracker } = fakeGh({ ...issue, labels: [{ name: 'agent:ready' }, { name: 'agent:review' }] });
+  await assert.rejects(tracker.getEligibleTicket(12), /missing-agent-label/);
+  const reviewed = fakeGh({ ...issue, labels: [{ name: 'agent:review' }] });
+  await assert.rejects(reviewed.tracker.getResumeTicket(12), /missing-agent-label/);
+});
+
+test('setAgentStatus swaps lifecycle labels in one issue edit', () => {
+  const calls: string[][] = [];
+  new GitHubIssueTracker(args => { calls.push([...args]); return ''; }).setAgentStatus(12, 'review');
+  assert.deepEqual(calls.map(args => args.slice(0, 2)), [['issue', 'edit']]);
+  assert.ok(calls[0].includes('agent:review'));
+  assert.ok(calls[0].includes('agent:ready,agent:running,agent:blocked'));
 });

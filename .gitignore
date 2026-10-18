@@ -4,6 +4,7 @@ node_modules/
 .sandcastle/worktrees/
 .sandcastle/sandboxes/
 .sandcastle/logs/
+.sandcastle/state/
 .DS_Store
 *.swp
 .claude/worktrees/
