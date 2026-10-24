@@ -82,6 +82,14 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h"
 add_custom_target(webview-assets DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/LocalHtml.h")
 add_subdirectory(src/desktop)
 
+# Opt-in native widget experiment; the shipped WebView app remains unchanged.
+option(INKSTOW_BUILD_WX_PROTOTYPE "Build the minimal wxWidgets desktop experiment" OFF)
+if(INKSTOW_BUILD_WX_PROTOTYPE)
+  find_package(wxWidgets 3.2 REQUIRED COMPONENTS core base)
+  add_executable(inkstow-wx src/desktop/WxPrototype.cpp)
+  target_link_libraries(inkstow-wx PRIVATE portable-core inkstow-warnings wxWidgets::wxWidgets)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
   include(FetchContent)
